@@ -2,7 +2,11 @@ import { render, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CloudHousehold } from '@/hooks/useHousehold'
 import { HouseholdChangeGuard } from './HouseholdChangeGuard'
-import { LAST_HOUSEHOLD_ID_KEY } from './householdGuard'
+import {
+  getShownHouseholdId,
+  LAST_HOUSEHOLD_ID_KEY,
+  resetHouseholdGuardForTests,
+} from './householdGuard'
 
 // What `GetHousehold` answers. `networkStatus` 7 is `NetworkStatus.ready`:
 // the answer came from the server. 1 is `loading`: with
@@ -61,6 +65,8 @@ beforeEach(() => {
   })
   localStorage.setItem(ACTIVE_KEY, 'location-of-old-household')
   localStorage.setItem(LAST_USER_ID_KEY, 'user-1')
+  // A new page load: the page has not read its household id yet
+  resetHouseholdGuardForTests()
 })
 
 afterEach(() => {
@@ -142,9 +148,34 @@ describe('HouseholdChangeGuard', () => {
     rerender(<HouseholdChangeGuard />)
 
     // Then this tab clears its own cache and reloads too. Comparing with the
-    // stored id alone would see "h-2 = h-2" and keep the old rows on screen
+    // stored id alone would see "h-2 = h-2" and keep the old rows on screen.
+    // (Since the review of L.3 two things give h-1 here: the id this page
+    // saw first, and the id this page shows. Removing either one alone
+    // leaves this test green.)
     await waitFor(() => expect(reloadMock).toHaveBeenCalledOnce())
     expect(clearCacheMock).toHaveBeenCalledOnce()
+  })
+
+  it("user's stale tab moves when another tab stored the new id before this tab's first answer", async () => {
+    // Given this page loaded showing hh-a: its first request read hh-a and
+    // sent it in x-household-id
+    localStorage.setItem(LAST_HOUSEHOLD_ID_KEY, 'hh-a')
+    expect(getShownHouseholdId()).toBe('hh-a')
+
+    // And another tab moved to hh-b and stored it, before this page's first
+    // household answer arrived
+    localStorage.setItem(LAST_HOUSEHOLD_ID_KEY, 'hh-b')
+
+    // When the server's first answer to this page is hh-b
+    setHousehold({ data: household('hh-b') })
+    render(<HouseholdChangeGuard />)
+
+    // Then this page clears and reloads. Comparing with the shared stored
+    // id would see "hh-b = hh-b" and leave hh-b's name and role over hh-a's
+    // rows
+    await waitFor(() => expect(reloadMock).toHaveBeenCalledOnce())
+    expect(clearCacheMock).toHaveBeenCalledOnce()
+    expect(localStorage.getItem(LAST_HOUSEHOLD_ID_KEY)).toBe('hh-b')
   })
 
   it('does nothing while the household is loading or failed to load', async () => {

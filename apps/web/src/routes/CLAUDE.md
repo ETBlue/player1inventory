@@ -495,7 +495,9 @@ root in cloud mode, in the Clerk tree and the E2E tree. It acts only on a `GetHo
 answer from the SERVER (`networkStatus === ready`): the query is `cache-and-network`, and
 the first answer may come from the cache restored from `Player1InventoryCloudCache`. When
 the server answers a household id other than the one this tab saw first (or, before it has
-seen one, the stored `last-household-id`), it calls `switchToHousehold` with no target:
+seen one, the household this PAGE shows: `getShownHouseholdId()`, read from
+`last-household-id` once on the page's first request; not the key read again now, which
+another tab may already have changed — review of H7 task L.3, F2), it calls `switchToHousehold` with no target:
 `clearCache()` (memory and the saved copy; `LAST_USER_ID_KEY` stays), remove
 `active-location-id:cloud`, store the id, reload this page. If the cache cannot be cleared
 it logs and does not reload.
