@@ -153,6 +153,23 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     // provider. Placed right after `...original` so this file's own overrides
     // below still win.
     useGetLocationsQuery: () => mockUseGetLocationsQuery(),
+    // `PostLoginMigrationDialog` in `__root.tsx` offers the copy into another
+    // household (households H7 task L.5), so in cloud mode it calls these.
+    // This factory replaces `src/test/setup.ts`'s, so they are stubbed here
+    // too: the real hooks need an ApolloProvider.
+    useMyHouseholdsQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useSetActiveHouseholdMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useCreateHouseholdMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
     // `usePermissions` (households H5 task F.6) reads the household role. In
     // local mode the hook skips it; in cloud mode no role arrives, so the
     // location roles from `GetLocations` decide alone.

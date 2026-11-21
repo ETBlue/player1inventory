@@ -855,7 +855,15 @@
       "cannotCopyMember": "只有這個家庭的擁有者或管理者可以把資料複製進來。這台裝置上的資料不會變動。",
       "cannotCopyClear": "只有這個家庭的擁有者可以清除它並把資料複製進來。這台裝置上的資料不會變動。",
       "clearConfirmTitle": "要先清空 {{household}} 嗎？",
-      "clearConfirmDescription": "「複製到這裡」會先刪除 {{household}} 的目錄和所有據點及其內容，然後複製您的離線資料。成員和他們的家庭角色會保留。"
+      "clearConfirmDescription": "「複製到這裡」會先刪除 {{household}} 的目錄和所有據點及其內容，然後複製您的離線資料。成員和他們的家庭角色會保留。",
+      "chooseLabel": "複製到",
+      "newHousehold": "新的家庭",
+      "newHouseholdName": "新家庭的名稱",
+      "newHouseholdTitle": "要把離線資料複製到新的家庭嗎？",
+      "newHouseholdNote": "會建立一個新家庭，你是它的擁有者。這個頁面會先切換到新家庭，再開始複製。這台裝置上的資料不會變動。",
+      "moveNote": "這個頁面會先切換到 {{household}}，再開始複製。",
+      "moveAndCopy": "切換過去並複製",
+      "moveError": "無法切換到那個家庭，沒有複製任何資料。請再試一次。"
     },
     "export": {
       "label": "下載我的資料",

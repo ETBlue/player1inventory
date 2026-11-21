@@ -13,8 +13,14 @@ import * as stories from './index.stories'
 // The three cloud stories need a household and a location list. `setup.ts`
 // stubs both Apollo hooks with no data, and `MockedProvider` takes effect only
 // in real Storybook, so this file answers them. Each test sets the role.
+type Role = 'owner' | 'manager' | 'member'
+// `households` is what `MyHouseholds` answers (households H7 task L.5). It
+// repeats the story's `MockedProvider` list, which only real Storybook reads.
 const { state } = vi.hoisted(() => ({
-  state: { role: 'owner' as 'owner' | 'manager' | 'member' },
+  state: {
+    role: 'owner' as Role,
+    households: [] as Array<{ id: string; name: string; role: Role }>,
+  },
 }))
 vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
@@ -32,6 +38,19 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
               hasOwner: true,
               pendingTransfer: null,
             },
+          },
+      loading: false,
+      error: undefined,
+    }),
+    useMyHouseholdsQuery: (options?: { skip?: boolean }) => ({
+      data: options?.skip
+        ? undefined
+        : {
+            myHouseholds: state.households.map((h) => ({
+              __typename: 'HouseholdChoice',
+              ...h,
+              isActive: h.id === 'household-1',
+            })),
           },
       loading: false,
       error: undefined,
@@ -74,6 +93,8 @@ const {
   AskBeforeClear,
   AskBeforeCopyShared,
   MemberCannotCopy,
+  ChooseHouseholdTwo,
+  ChooseHouseholdOne,
 } = composeStories(stories)
 
 // composeStories does not run a story's `beforeEach`, so each test sets the
@@ -180,6 +201,51 @@ describe('PostLoginMigrationDialog stories smoke tests', () => {
         await screen.findByText(/Only the owner or a manager/),
       ).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: 'Copy here' })).toBeNull()
+    })
+  })
+
+  describe('the household choice', () => {
+    beforeEach(storedCopy)
+    afterEach(() => {
+      localStorage.clear()
+      state.role = 'owner'
+      state.households = []
+    })
+
+    it('ChooseHouseholdTwo lists the two households the copy may go into, not the member one', async () => {
+      state.households = [
+        { id: 'household-1', name: 'Our Home', role: 'owner' },
+        { id: 'household-chen', name: 'Chen flat', role: 'manager' },
+        { id: 'household-lee', name: 'Lee house', role: 'member' },
+      ]
+      render(<ChooseHouseholdTwo />)
+      const group = await screen.findByRole('radiogroup', {
+        name: 'Copy into',
+      })
+      expect(group).toBeInTheDocument()
+      expect(
+        screen.getByRole('radio', { name: 'Our Home (Owner)' }),
+      ).toBeChecked()
+      expect(
+        screen.getByRole('radio', { name: 'Chen flat (Manager)' }),
+      ).not.toBeChecked()
+      expect(
+        screen.getByRole('radio', { name: 'A new household' }),
+      ).toBeInTheDocument()
+      expect(screen.queryByRole('radio', { name: /Lee house/ })).toBeNull()
+    })
+
+    it('ChooseHouseholdOne lists the one household and a new one', async () => {
+      state.households = [
+        { id: 'household-1', name: 'Our Home', role: 'owner' },
+      ]
+      render(<ChooseHouseholdOne />)
+      await screen.findByRole('radiogroup', { name: 'Copy into' })
+      expect(screen.getAllByRole('radio')).toHaveLength(2)
+      expect(
+        screen.getByRole('radio', { name: 'Our Home (Owner)' }),
+      ).toBeChecked()
+      expect(screen.getByRole('button', { name: 'Copy here' })).toBeEnabled()
     })
   })
 })

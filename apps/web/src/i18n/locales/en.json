@@ -855,7 +855,15 @@
       "cannotCopyMember": "Only the owner or a manager of this household can copy data into it. The data on this device stays as it is.",
       "cannotCopyClear": "Only the owner of this household can clear it and copy data into it. The data on this device stays as it is.",
       "clearConfirmTitle": "Clear {{household}} first?",
-      "clearConfirmDescription": "Copy here first deletes the catalog and every location of {{household}}, with everything in them. Then it copies your offline data. People and their household roles stay."
+      "clearConfirmDescription": "Copy here first deletes the catalog and every location of {{household}}, with everything in them. Then it copies your offline data. People and their household roles stay.",
+      "chooseLabel": "Copy into",
+      "newHousehold": "A new household",
+      "newHouseholdName": "Name of the new household",
+      "newHouseholdTitle": "Copy your offline data into a new household?",
+      "newHouseholdNote": "A new household is made, and you are its owner. This page moves to it first, then the copy starts. The data on this device stays as it is.",
+      "moveNote": "This page moves to {{household}} first, then the copy starts.",
+      "moveAndCopy": "Move there and copy",
+      "moveError": "Could not move to that household. Nothing was copied. Try again."
     },
     "export": {
       "label": "Download my data",
