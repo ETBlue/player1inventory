@@ -331,6 +331,7 @@ everywhere.
 | O55 | **A.** When it becomes the active location, at most once a minute (2026-11-21) |
 | O56 | **A.** The reload message names both households and says a change being saved was not saved (2026-11-21). Applied in L.7 |
 | O57 | **B, with the role rule.** The copy list offers a household joined on this device whenever `canCopyInto` allows it (2026-11-21). The automatic question after sign-in still skips joined households (O12-A). Applied in L.7 |
+| O58 | **A.** "Last updated" does not move while a page is open. The location lists refetch only on `LOCATION`; they show new dates when they mount again (open or reload). A list that reorders itself while in use could make a person tap the wrong location (2026-11-22) |
 
 ---
 
@@ -1132,7 +1133,7 @@ Filled in from the task reports and reviews.
 | M.4 Step 3 | "`canReorderLocations` … (it was `manager`)" | No such field existed. Reorder used `canManageLocations`, which also gates Delete. M.4 added `canReorderLocations` and kept the other for Delete |
 | M.3 / M.4 | the gap was "a single `Location` from a write overwrites the cached `order`" | The larger race is between the two LIST queries. Since T77 each gives a position in its own list, and both write one cached `Location`. M.4 reads `order` from the array position instead |
 | M.4 | nothing about refusals | Once every role may reorder, `FORBIDDEN` means "your list is out of date", not "no right". The hook and the page had to change |
-| M.4 | nothing about live updates | "Last updated" needs the location lists to refetch on `STOCK`, `CART` and `LOG`. Not done; asked as O58 |
+| M.4 | nothing about live updates | "Last updated" needs the location lists to refetch on `STOCK`, `CART` and `LOG`. Not done: owner decision O58-A keeps it so |
 
 ## Status
 
