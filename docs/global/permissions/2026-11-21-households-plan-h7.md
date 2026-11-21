@@ -329,6 +329,8 @@ everywhere.
 | O53 | **A.** The switcher uses the chosen sort (2026-11-21) |
 | O54 | **B.** Name and Custom only in local mode, saved on the device (`localStorage`). See M.4 (2026-11-21) |
 | O55 | **A.** When it becomes the active location, at most once a minute (2026-11-21) |
+| O56 | **A.** The reload message names both households and says a change being saved was not saved (2026-11-21). Applied in L.7 |
+| O57 | **B, with the role rule.** The copy list offers a household joined on this device whenever `canCopyInto` allows it (2026-11-21). The automatic question after sign-in still skips joined households (O12-A). Applied in L.7 |
 
 ---
 
