@@ -25,7 +25,6 @@ import {
   canCopyInto,
   type MigrationAuth,
   type MigrationHousehold,
-  readSkippedHouseholds,
   usePostLoginMigration,
 } from '@/hooks/usePostLoginMigration'
 import {
@@ -106,12 +105,15 @@ type CopyTargetOption = { id: string; name: string; role: HouseholdRole }
  *
  * 1. the household the page shows, when the role there allows the copy;
  * 2. every other household of `myHouseholds` where it does, in that list's
- *    order (oldest membership first), but not one in
- *    `migration-skip-households` (a household the person joined on this
- *    device; owner decision O12-A).
+ *    order (oldest membership first).
  *
- * `canCopyInto(role, strategy)` decides, the same rule as the server: a
- * member never, a manager not for `clear`. An empty list means the person
+ * `canCopyInto(role, strategy)` alone decides, the same rule as the server:
+ * a member never, a manager not for `clear`. A household the person joined
+ * on this device (`migration-skip-households`) IS listed when the role
+ * allows it (owner decision O57-B, applied in task L.7). That list only
+ * stops the automatic question after sign-in (owner decision O12-A, in
+ * `usePostLoginMigration`); a person who opens this choice has asked to
+ * copy, so it does not hide a household here. An empty list means the person
  * may copy nowhere they are now. Then the dialog shows today's sentence and
  * Done, and does not offer "A new household" either.
  */
@@ -119,13 +121,11 @@ export function copyTargetOptions(
   current: MigrationHousehold,
   households: HouseholdChoice[] | undefined,
   strategy: ImportStrategy,
-  skipped: string[],
 ): CopyTargetOption[] {
   const options: CopyTargetOption[] = []
   if (canCopyInto(current.role, strategy)) options.push(current)
   for (const other of households ?? []) {
     if (other.id === current.id) continue
-    if (skipped.includes(other.id)) continue
     if (!canCopyInto(other.role, strategy)) continue
     options.push({ id: other.id, name: other.name, role: other.role })
   }
@@ -289,12 +289,7 @@ function MigrationDialogs({
         : null
   const options =
     household !== undefined && choiceStrategy !== null
-      ? copyTargetOptions(
-          household,
-          myHouseholds.data,
-          choiceStrategy,
-          readSkippedHouseholds(),
-        )
+      ? copyTargetOptions(household, myHouseholds.data, choiceStrategy)
       : []
   // Derived, not copied into state: the list of households arrives after the
   // first render. A pick that is no longer listed falls back to the first.

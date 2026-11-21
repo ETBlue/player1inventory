@@ -1188,8 +1188,9 @@ describe('PostLoginMigrationDialog — the copy can go into another household', 
     expect(screen.queryByRole('radiogroup')).toBeNull()
   })
 
-  it('a household joined on this device is not offered', async () => {
+  it('user sees a household they joined on this device offered when they manage it', async () => {
     // Given Chen flat is in the skip list (joined here, owner decision O12-A)
+    // and the person is a manager there
     storedCopy('skip')
     setHousehold('owner')
     choices(['hh-1', 'Our Home', 'owner'], ['hh-chen', 'Chen flat', 'manager'])
@@ -1201,10 +1202,39 @@ describe('PostLoginMigrationDialog — the copy can go into another household', 
     // When the dialog mounts
     renderDialog()
 
-    // Then Chen flat is not listed
+    // Then Chen flat is listed: the role decides, not the skip list
+    // (owner decision O57-B)
     await screen.findByRole('radiogroup', { name: 'Copy into' })
     expect(radioNames().map(([name]) => name)).toEqual([
       'Our Home (Owner)',
+      'Chen flat (Manager)',
+      'A new household',
+    ])
+  })
+
+  it('a household joined on this device where the person is a member is not offered', async () => {
+    // Given Chen flat is in the skip list and the person is only a member
+    // there, and Camp is a joined household they manage
+    storedCopy('skip')
+    setHousehold('owner')
+    choices(
+      ['hh-1', 'Our Home', 'owner'],
+      ['hh-chen', 'Chen flat', 'member'],
+      ['hh-camp', 'Camp', 'manager'],
+    )
+    localStorage.setItem(
+      'migration-skip-households',
+      JSON.stringify(['hh-chen', 'hh-camp']),
+    )
+
+    // When the dialog mounts
+    renderDialog()
+
+    // Then Camp is listed and Chen flat is not: a member may never copy
+    await screen.findByRole('radiogroup', { name: 'Copy into' })
+    expect(radioNames().map(([name]) => name)).toEqual([
+      'Our Home (Owner)',
+      'Camp (Manager)',
       'A new household',
     ])
   })
