@@ -55,8 +55,9 @@ H6b: `O49…`. Disagreements with the code are `Z1…` (H6 used `Y…`). Outside
 Every task brief passes these down (see also *Rules every task brief must pass down*).
 
 - Local mode has no households, no roles and no household switch. Nothing in
-  `apps/web/src/db/` changes in H7a. Whether local mode gets the new sorts is owner decision
-  **O54**; the plan as written (O54-A) changes nothing in `apps/web/src/db/` in H7b either.
+  `apps/web/src/db/` changes in H7a or H7b. Local mode gets two of the sorts, **Name** and
+  **Custom** (owner decision **O54-B**). The choice is saved on the device in `localStorage`,
+  not in Dexie, so no Dexie version is added.
 - Never write `row.userId === ctx.userId` or `row.householdId === …` as an authorization
   check. Every server check goes through `apps/server/src/lib/authz.ts`. **The new header
   check (T67) is not an authorization check.** It compares two household ids the SAME person
@@ -321,13 +322,13 @@ everywhere.
 
 | Question | Answer |
 |---|---|
-| O49 | *open* |
-| O50 | *open* |
-| O51 | *open* |
-| O52 | *open* |
-| O53 | *open* |
-| O54 | *open* |
-| O55 | *open* |
+| O49 | **A.** Two PRs, H7a (L.1–L.7) first, then H7b (M.1–M.6) (2026-11-21) |
+| O50 | **A.** Per person (`User.activeHouseholdId`) (2026-11-21) |
+| O51 | **A.** Reload into the current household, with the one-time message (2026-11-21) |
+| O52 | **A.** Custom (2026-11-21) |
+| O53 | **A.** The switcher uses the chosen sort (2026-11-21) |
+| O54 | **B.** Name and Custom only in local mode, saved on the device (`localStorage`). See M.4 (2026-11-21) |
+| O55 | **A.** When it becomes the active location, at most once a minute (2026-11-21) |
 
 ---
 
@@ -846,8 +847,13 @@ and tests, `routes/settings/household/locations/index.tsx` and its tests and sto
   - `ActiveLocationProvider`, cloud: a change of the active location calls
     `markLocationVisited` once; the first pick after load counts as a change only if O55 says
     so; local mode never calls it.
-  - Local mode (O54-A): the settings list and the switcher behave as today, and no **Sort
-    by** control shows.
+  - Local mode (O54-B): **Sort by** shows two choices only, **Name** and **Custom**. The
+    choice is saved in `localStorage` under the key `location-sort` and read back after a
+    reload. A missing, unknown or cloud-only value (`lastUpdated`, `lastVisited`) falls back
+    to **Custom**. Every read and write is in `try/catch`, so a blocked storage still shows
+    **Custom**. Drag handles show only with **Custom**, as in cloud. The switcher uses the same
+    sort (O53-A). Nothing in `apps/web/src/db/` changes, and local mode never calls
+    `markLocationVisited` or `setLocationSort`.
 - [ ] **Step 2:** run: red.
 - [ ] **Step 3:** the pure function, the documents (`dataUpdatedAt`, `lastVisitedAt` in
   `GetLocations` and `GetHouseholdLocations`; `MyLocationSort`, `SetLocationSort`,
@@ -865,6 +871,8 @@ and tests, `routes/settings/household/locations/index.tsx` and its tests and sto
 | drag handles shown for every sort | the "only with Custom" test |
 | `canReorderLocations` still `manager` | the member drag test |
 | the switcher sorts by `order` only | the switcher test (with a fixture whose `order` differs from the chosen sort) |
+| local mode ignores the stored `location-sort` (always Custom) | the local "Name survives a reload" test |
+| local mode offers all four sorts | the local "two choices only" test |
 
 **E2E:** M.5.
 
@@ -886,6 +894,7 @@ because their reorder tests now write a personal order in cloud.
 | 4 | `user sees locations by name` | shared order not by name | `name` mapped to `custom` in `sortLocations` |
 | 5 | `user sees the same sort on another device` | Mia in two browser contexts | `setLocationSort` replaced by a `localStorage` write |
 | 6 | axe scans of the locations page with **Sort by** open, light and dark | — | (a scan) |
+| 7 | `user can sort locations by name in local mode` (O54-B). In `settings/locations.spec.ts`, run in `local` only (skip in cloud, which test 4 covers). After a reload the list is still by name, and the switcher uses the same order | three local locations whose order is not by name | the stored `location-sort` not read back (always Custom) |
 
 - [ ] Step 1: write the spec; run it alone with `--project=cloud`.
 - [ ] Step 2: run each mutation; copy the file aside first; record red or green.
@@ -996,7 +1005,8 @@ Filled in from the task reports and reviews.
 ## Status
 
 **Plan written 2026-11-21** on `feature/households-h7`, based on `develop` at `9701ddff`
-(plus `5cc4e741`, which records H6b as merged). Owner decisions O49–O55: open. Nothing built.
+(plus `5cc4e741`, which records H6b as merged). Owner decisions O49–O55 answered 2026-11-21: all A, except **O54-B** (Name and Custom in
+local mode, saved on the device). Nothing built.
 
 ---
 
