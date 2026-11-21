@@ -329,6 +329,21 @@ test.describe('the /e2e/cleanup endpoint really deletes', () => {
     }>(`query { household { pendingTransfer { toUserId } } }`)
     expect(household.pendingTransfer?.toUserId).toBe(OFFER_MEMBER)
 
+    // LocationPreference — one row, written by the real `markLocationVisited`
+    // mutation (households H7b task M.2): the user's visit to Home. It is
+    // the user's own row, so the `userId` half of the cleanup's filter can
+    // delete it; the delete runs before the location delete, which would
+    // take it by cascade. `true` means the row was written.
+    const { markLocationVisited } = await gql<{
+      markLocationVisited: boolean
+    }>(
+      `mutation ($locationId: ID!) { markLocationVisited(locationId: $locationId) }`,
+      {
+        locationId: home.id,
+      },
+    )
+    expect(markLocationVisited).toBe(true)
+
     // ── The seed really wrote rows ───────────────────────────────────────────
     //
     // A seed that quietly wrote nothing would leave every readback empty, so the
@@ -378,11 +393,10 @@ test.describe('the /e2e/cleanup endpoint really deletes', () => {
     expect(deleted.householdActivities).toBeGreaterThanOrEqual(1)
     // And for the model households H6b task K.1 added.
     expect(deleted.ownershipOffers).toBeGreaterThanOrEqual(1)
-    // Households H7b task M.1 added `locationPreferences`. Nothing seeds a
-    // preference row yet: the writer, `markLocationVisited`, comes in task
-    // M.2, and task M.5 adds the seed. Until then the check above reports
-    // `"locationPreferences":0` and this spec FAILS, as it did for
-    // `ownershipOffers` between H6b tasks K.1 and K.8.
+    // And for the model households H7b task M.1 added. The seed's visit
+    // above wrote its row (task M.5). Between tasks M.1 and M.5 nothing
+    // seeded one, and this spec failed on `"locationPreferences":0`.
+    expect(deleted.locationPreferences).toBeGreaterThanOrEqual(1)
 
     // ── And nothing of the user's is left ────────────────────────────────────
     const after = await gql<ReadBack>(READ_BACK, { itemId })
