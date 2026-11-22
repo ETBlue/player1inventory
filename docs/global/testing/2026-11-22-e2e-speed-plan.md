@@ -477,7 +477,7 @@ after.
 `e2eCleanupSql.ts`, `e2eCleanup.test.ts`, `e2e/tests/household-ownership.spec.ts`,
 `e2e/tests/cleanup-endpoint.spec.ts`, and every spec that cleans more than one user.
 
-- [ ] **Step 1: failing tests.**
+- [x] **Step 1: failing tests.**
   - `e2eCleanup.test.ts`: a body `{ "userIds": ["a", "b"] }` reaches the function as one
     bound array; `forgetSeenToday` runs for both.
   - `cleanup-endpoint.spec.ts`, new test 2: two users, each with one row of a few models;
@@ -485,17 +485,17 @@ after.
   - `cleanup-endpoint.spec.ts`, new test 3 (needs P5 = yes): a household with no owner
     (owner deleted with `sendFakeUserDeleted`, the hand-over leaves an offer) and two members
     A and B. A call with `[A]` keeps it; a call with `[A, B]` deletes it and its data.
-- [ ] **Step 2:** the D6 rule in the function: the owned set also gets every household
+- [x] **Step 2:** the D6 rule in the function: the owned set also gets every household
   whose members are all in `user_ids`.
-- [ ] **Step 3:** `cleanupCloudData(request, userIds?: string | string[])`. One string
+- [x] **Step 3:** `cleanupCloudData(request, userIds?: string | string[])`. One string
   keeps today's header call; a list sends the body.
-- [ ] **Step 4: `household-ownership.spec.ts`.** `beforeEach` makes ONE call with
+- [x] **Step 4: `household-ownership.spec.ts`.** `beforeEach` makes ONE call with
   `[...ALL_USERS, E2E_USER_ID]`. Remove `rescueOrphans` and `cleanupAll` if the
   failure-injection check below is green without them. Update the file's header
   (*The cleanup trap*).
-- [ ] **Step 5:** the other specs that clean several users in a row get one call each.
+- [x] **Step 5:** the other specs that clean several users in a row get one call each.
   List them with `git grep -n "cleanupCloudData(request, " -- e2e/tests`.
-- [ ] **Step 6:** the gate without E2E, then
+- [x] **Step 6:** the gate without E2E, then
   `pnpm test:e2e --project=cloud e2e/tests/household-ownership.spec.ts
   e2e/tests/cleanup-endpoint.spec.ts e2e/tests/household-member-cleanup.spec.ts`.
 
@@ -509,6 +509,37 @@ after.
 
 **Proof (speed):** `household-ownership.spec.ts`'s time from the JSON report, before (S.1)
 and after. Expect about 20 s less per test.
+
+**Done 2026-11-22** in `1b24e899` (server), `e3876ada` (helper and `cleanup-endpoint.spec.ts`),
+`3b7756b1` (`household-ownership.spec.ts`) and `b673333e` (16 specs), on `chore/e2e-speed`.
+
+- **The route:** a body `{ "userIds": [...] }` sends every id to `e2e_cleanup` as ONE bound
+  array. The header still works for one user. With the header too, another key, an empty
+  list, or an id that is not a string or is empty, the answer is 400. A repeated id is sent
+  once.
+- **D6:** `e2e_cleanup` also takes every household that has a member who is listed and no
+  member who is not. A household with no member at all is left to `e2e_cleanup_all`.
+- **`cleanupCloudData(request, userIds)`** takes a string (the header) or a list (the body).
+  The 16 specs that cleaned several users now make one call. `household-member-cleanup.spec.ts`
+  still cleans one person at a time inside its tests, because that order is its subject.
+- **`household-ownership.spec.ts`:** one call with `[...ALL_USERS, E2E_USER_ID]`.
+  `rescueOrphans`, `MAY_HOLD_OFFERS`, the old `cleanupAll` and the last accept step of the
+  two axe tests are gone.
+- **`cleanup-endpoint.spec.ts`:** test 2 (two users in one call, each count is the sum) and
+  test 3 (a household with no owner: `[A]` keeps it, `[A, B]` deletes it).
+- **Gate without E2E:** all green. `pnpm test`: web 3899 / 378, server 2861 / 89 (was
+  2858), `scripts/spec` 78. esbuild 275.8 KiB.
+- **E2E:** the 3 specs of step 6, 14 passed in 2.8 m. The whole `cloud` project: 211
+  passed, 8 skipped, 1 failed in 36.3 m (S.3: 36m18s). The failure,
+  `item-list-state-restore.spec.ts:470`, was `read ECONNRESET` in its seed (a connection
+  error, not an assertion), and the file passed alone twice (4 / 4). Whether the failing set
+  moves between full runs was not checked. 220 tests are collected.
+- **Speed:** `household-ownership.spec.ts` 113.8 s (S.1 394.8 s, S.3 127.8 s).
+- **Mutations:** D6 removed: `cleanup-endpoint` test 3 red, plus 1 unit test. "ANY member
+  listed": `cleanup-endpoint.spec.ts:545` and `household-member-cleanup.spec.ts:162` red.
+  Failure injection after the owner's deletion, in test 3 and in test 7: the next test was
+  green, and its one cleanup deleted 2 households. The same injection with D6 removed: the
+  next test was still green, but the cleanup deleted only 1 household.
 
 ## Task S.5 — PR A docs, the gate, the numbers
 
@@ -768,6 +799,12 @@ Otherwise the run gets killed, as on 2026-10-31.
 | S.3 mutation row 3 | "the `allE2eUsers` unit test that seeds `e2e-test-user`" | a unit test cannot run the `LIKE`. The test reads `E2E_USER_ID` and `E2E_SECOND_USER_ID` from `e2e/constants.ts` and checks that both start with the prefix in the SQL |
 | *Expected times* | cloud about 45–50 min after PR A | 36m18s after S.2 and S.3, before S.4 |
 | S.5 (to do) | — | `e2e/CLAUDE.md` still says "no `globalSetup`" and "both hooks", and `cloudTeardown.ts`'s `CLEANUP_MODEL_KEYS` comment still names the route's `$transaction` |
+| S.4 mutation row 3 | a throw after the transfer offer in test 1 proves that dropping `rescueOrphans` is safe | in test 1 OWNER still owns the household, so the owner rule alone cleans it. The proof needs a throw AFTER the owner's account is deleted (test 3 or 7), and the cleanup's household count. With D6 removed, the next test is still green and the household with no owner stays behind |
+| S.4 *Proof (speed)* | about 20 s less per test | about 1.6 s per test against S.3 (127.8 → 113.8 s for 9 tests). The 20 s was against S.1, and S.2 and S.3 had already taken it |
+| D6 | a household is deleted when every one of its members is in the list | that is also true for a household with no member. Built as "a listed member, and no member outside the list"; memberless households are left to `e2e_cleanup_all` |
+| S.4 step 5 | the specs that clean several users | 16 files. 4 of them also cleaned the build-time user in a separate call, now in the same list |
+| S.1 / D14, a run with `--reporter` | `PLAYWRIGHT_JSON_OUTPUT_FILE` gives the JSON report | only when no `--reporter` is passed on the command line: `--reporter=line` replaces the config's reporters, so no JSON file is written |
+| *Expected times* | — | cloud 36.3 m after S.4, the same as after S.3 (36m18s). S.4 is not a measurable gain for the whole project |
 
 ## Status
 
