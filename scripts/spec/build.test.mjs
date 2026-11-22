@@ -120,6 +120,29 @@ describe('build.mjs', () => {
     assert.match(landing, /✅ 1 passed/)
   })
 
+  it('publishes the cloud-neon report as its own card (E2E speed plan, S.8)', () => {
+    playwrightReport('cloud', CLEAN_SPEC)
+    playwrightReport('cloud-neon', CLEAN_SPEC)
+    vitestReport()
+    const { code, output } = build()
+    assert.equal(code, 0, output)
+    assert.ok(existsSync(join(root, 'spec-dist/cloud/index.html')))
+    assert.ok(existsSync(join(root, 'spec-dist/cloud-neon/index.html')))
+    const landing = read('spec-dist/index.html')
+    assert.match(landing, /href="cloud\/"/)
+    assert.match(landing, /href="cloud-neon\/"/)
+    assert.doesNotMatch(output, /no Playwright report for "cloud-neon"/)
+  })
+
+  it('marks a missing cloud-neon report "Not run"', () => {
+    playwrightReport('cloud', CLEAN_SPEC)
+    vitestReport()
+    const { code, output } = build()
+    assert.equal(code, 0, output)
+    assert.match(output, /no Playwright report for "cloud-neon"/)
+    assert.ok(!existsSync(join(root, 'spec-dist/cloud-neon')))
+  })
+
   it('stops when a Playwright report zip holds a secret, and writes nothing', () => {
     playwrightReport(
       'cloud',
