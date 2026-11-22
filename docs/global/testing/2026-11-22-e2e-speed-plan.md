@@ -770,7 +770,7 @@ script) and `ca6574a6` (the docs), on `chore/e2e-speed-b`.
 **Files:** `e2e/playwright.config.ts`, `e2e/neonSpecs.ts` (new), `e2e/global-setup.ts`,
 `e2e/run-all.sh`, `package.json`, `scripts/spec/build.mjs`, `build.test.mjs`.
 
-- [ ] **Step 1: the list.** `e2e/neonSpecs.ts` exports `NEON_SPECS`, one entry per line
+- [x] **Step 1: the list.** `e2e/neonSpecs.ts` exports `NEON_SPECS`, one entry per line
   with its reason (the list of owner question **P8**). The core list, 8 files, 38 tests
   (counts from `--list` on 2026-11-22):
 
@@ -787,23 +787,23 @@ script) and `ca6574a6` (the docs), on `chore/e2e-speed-b`.
 
   Optional (P8): `location-scoped-writes.spec.ts` (7) and `household-switch.spec.ts` (6),
   which would make 10 files and 51 tests.
-- [ ] **Step 2: the switch.** The config reads `E2E_DATABASE` (default from P7). The API
+- [x] **Step 2: the switch.** The config reads `E2E_DATABASE` (default from P7). The API
   server's `command` gets `E2E_DATABASE=<value>`. With `neon` the project list is `local`,
   `cloud-neon`, `pwa`; else `local`, `cloud`, `pwa` (D11). `cloud-neon` has the same `use`
   as `cloud` and `testMatch: NEON_SPECS`, or the whole cloud list when
   `E2E_NEON_FULL=1`. The config throws when a `NEON_SPECS` entry is not in the cloud list
   (D13). `selectedProjects()` knows `cloud-neon`.
-- [ ] **Step 3: `globalSetup`** first calls `GET /e2e/database` and throws when `kind` is not
+- [x] **Step 3: `globalSetup`** first calls `GET /e2e/database` and throws when `kind` is not
   the expected one ("this run expected the Neon test branch but the server uses the local
   database"), or when `applied` is less than the number of migration folders ("the local E2E
   database is behind: run `pnpm --filter server e2e:db:migrate`"). Then the S.3 cleanup.
-- [ ] **Step 4: `run-all.sh`.** `PROJECTS=(local cloud cloud-neon pwa)`. The `cloud-neon`
+- [x] **Step 4: `run-all.sh`.** `PROJECTS=(local cloud cloud-neon pwa)`. The `cloud-neon`
   run gets `E2E_DATABASE=neon`; the others `E2E_DATABASE=local`. The summary has one row
   each, and the line under the table says which database each cloud row used. A flag
   `--full-neon` (or `pnpm test:e2e:all:neon`) runs the whole cloud list on Neon instead, for
   a checkpoint (P10). Where `cloud-neon` runs follows owner question **P6**.
-- [ ] **Step 5:** `scripts/spec/build.mjs` gets the `cloud-neon` report folder, with a test.
-- [ ] **Step 6:** `--list` checks, recorded in the *Done* note:
+- [x] **Step 5:** `scripts/spec/build.mjs` gets the `cloud-neon` report folder, with a test.
+- [x] **Step 6:** `--list` checks, recorded in the *Done* note:
   `pnpm exec playwright test --config=e2e/playwright.config.ts --project=cloud --list`
   (expect 218), and the same with `E2E_DATABASE=neon --project=cloud-neon` (expect 38, or
   51).
@@ -816,6 +816,49 @@ script) and `ca6574a6` (the docs), on `chore/e2e-speed-b`.
 | the API server's command loses `E2E_DATABASE` | `globalSetup`'s `kind` check, on the first `cloud-neon` run |
 | one migration folder added (an empty folder, then deleted) | `globalSetup`'s migrations check on the `cloud` run |
 | `run-all.sh` runs `cloud-neon` without `E2E_DATABASE=neon` | `globalSetup`'s `kind` check |
+
+**Done 2026-11-23** in `02fa7bd7` (the switch, `cloud-neon`, `e2e/neonSpecs.ts`), `fe2f6fc0`
+(`globalSetup` database check), `5f5dcc2c` (`run-all.sh`, `test:e2e:all:neon`) and `f6a03174`
+(spec site), on `chore/e2e-speed-b`.
+
+- **The switch:** the config reads `E2E_DATABASE` (`e2e/helpers/e2eDatabase.ts`, the
+  server's rule: unset or empty is `local`, P7-A; an unknown value throws). With `neon` the
+  cloud project is named `cloud-neon`, else `cloud`; only one exists (D11). The cloud list
+  is `CLOUD_SPECS`; `cloud-neon` takes `NEON_SPECS`, or all of `CLOUD_SPECS` with
+  `E2E_NEON_FULL=1`. The config throws when a `NEON_SPECS` entry is not in `CLOUD_SPECS`
+  (D13). `--project=cloud-neon` without `neon`, and `--project=cloud` with it, throw a
+  message that gives the command (`requestedProjects()` in `selectedProjects.ts`). The API
+  server command gets `E2E_DATABASE=<value>`.
+- **`globalSetup`** calls `GET /e2e/database` first, for `cloud` and `cloud-neon`. It throws
+  when `kind` is not the expected one, or when fewer migrations are applied than there are
+  migration folders (directories only), or when the newest applied name sorts before the
+  newest folder. More rows than folders is allowed (the shared Neon branch). Then the S.3
+  cleanup.
+- **`run-all.sh`:** rows `local`, `cloud` (`E2E_DATABASE=local`), `cloud-neon`
+  (`E2E_DATABASE=neon`), `pwa`, and a line under the table that says which database each
+  cloud row used. `--full-neon` (`pnpm test:e2e:all:neon`, P10-A) runs `local`, `cloud-neon`
+  with the whole list, and `pwa`.
+- **Spec site:** `build.mjs` publishes `playwright-report/cloud-neon`; 2 new tests.
+- **`--list`:** `--project=cloud` 220 tests in 40 files; `E2E_DATABASE=neon
+  --project=cloud-neon` **40 in 8 files** (`cleanup-endpoint.spec.ts` has 3 tests since
+  S.4); with `E2E_NEON_FULL=1`, 220; `local` 190, `pwa` 73.
+- **Gate without E2E:** all green. `pnpm test`: web 3899 / 378, server 2934 / 91,
+  `scripts/spec` 80 (was 78). esbuild 279.7 KiB. TS6385: 0.
+- **Mutations:** misspelled entry: config throws at load. Migration folder added:
+  `globalSetup` stops the `cloud` run ("21 migrations applied, 22 migration folders").
+  `cloud-neon` row without `neon`: the config stops it, `cloud-neon FAIL(1)`. Server command
+  with the wrong value (`local`) on a neon run: `globalSetup` stops it. Server command
+  WITHOUT `E2E_DATABASE`: green, the server inherits the shell value.
+- **First runs:** `cloud` on the local database with `cleanup-endpoint`,
+  `settings/locations`, `location-people`, `household-invites`: 27 passed, 2 skipped, 43.7 s
+  (the same files on Neon at S.5: 379.8 s). `cloud-neon` with `cleanup-endpoint`: 3 passed,
+  31.8 s (S.5: 38.5 s).
+- **The whole `cloud` project on the local database** (2026-11-23 01:57 CST, load 2.78 to
+  3.79, inactive memory above 6.6 GB): **212 passed, 8 skipped, 0 failed, 235.0 s
+  (3m55s)**, against S.5's 2435.0 s on Neon. No test failed on local Postgres. In "two
+  accepts at once" the loser got `OFFER_GONE` (it waited at the lock), as on Neon at S.5.
+  Slowest files (s): `location-switcher` 17.9, `household-invites` 17.2,
+  `settings/import-export-cloud` 17.2, `settings/tags` 16.9, `item-management` 14.6.
 
 ## Task S.9 — PR B docs, the gate, the numbers
 
@@ -934,6 +977,13 @@ Otherwise the run gets killed, as on 2026-10-31.
 | S.7 step 4.2 | `createdb --template=template0 …` | the command that worked had `-h localhost` (see *Parts 1 and 2*). `e2e/CLAUDE.md` gives that form |
 | S.6 / D10 (missing) | — | `databaseIdentity` compares `host + path`, and `URL.host` keeps an explicit port. So `localhost:5432/p1i_e2e` and `localhost/p1i_e2e` count as two databases, and a same-database paste that differs only by the default port passes. Also true for `verify-migration`'s guard |
 | S.7 (missing) | — | `biome check` ignores `apps/server/`, so no linter checks the server files; the gate's `pnpm check` does not cover them |
+| S.8 step 1, step 6 | `cloud-neon` is 38 tests; `cloud` is 218 | 40 and 220: S.4 added 2 tests to `cleanup-endpoint.spec.ts` (3, not 1) |
+| S.8 mutation row 2 | the API server command without `E2E_DATABASE` turns `globalSetup` red | it stays green: Playwright's `webServer` passes `process.env` to the server, so the server inherits the shell value. The kind check goes red only when the server gets a different value (measured with `E2E_DATABASE=local` in the command on a neon run) |
+| S.8 mutation row 4 | `run-all.sh` without `E2E_DATABASE=neon` for `cloud-neon` is caught by `globalSetup`'s kind check | the config stops it first: without `neon` there is no `cloud-neon` project, and the config throws a message naming the fix |
+| root `CLAUDE.md`, H6b and H7b counts | migration folders: `ls apps/server/prisma/migrations \| grep -c _`; 22 after H7b | that command counts `migration_lock.toml` too. There are 21 folders. `globalSetup` counts directories only |
+| root `CLAUDE.md` and `e2e/CLAUDE.md`, the cloud count command (S.9) | `awk "/name: 'cloud'/,/name: 'pwa'/" e2e/playwright.config.ts \| grep -c "spec\.ts'"` | it prints 0 since S.8: the list is `const CLOUD_SPECS`. Use `awk '/^const CLOUD_SPECS = \[/,/^\]/' e2e/playwright.config.ts \| grep -c "spec\.ts'"` (40) |
+| *Known gaps*, `household-ownership.spec.ts` test 6 | on the local database the loser almost never waits at the lock | in the first full local run it got `OFFER_GONE` (it waited). One run only |
+| *Expected times* | `cloud` about 10–15 min after PR B | 3m55s (235.0 s), one run |
 
 ## Status
 
