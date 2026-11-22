@@ -12,10 +12,12 @@
   // `tsc --noEmit` checks the files under `src`, this checks the `.ts` files
   // under `scripts`, and nothing is checked twice. (`scripts/build.mjs` and
   // `scripts/check-start.mjs` are plain JavaScript, so this pass does not
-  // check them: `allowJs` is off.) That is only safe because
-  // `scripts/` imports nothing from `src` — today only `@prisma/client`,
-  // `vitest`, node builtins and its own sibling modules. **If a script ever
-  // imports from `src`, TypeScript will pull those files into this program and
+  // check them: `allowJs` is off.) That holds only while `scripts/` imports
+  // (almost) nothing from `src` — `@prisma/client`, `vitest`, node builtins,
+  // its own sibling modules, and since E2E speed plan task S.6 ONE `src` file:
+  // `scripts/databaseIsolation.ts` re-exports `src/lib/databaseUrl.ts`, which
+  // imports nothing. So that one file is checked twice. **If a script imports
+  // more from `src`, TypeScript will pull those files into this program and
   // check them again here.** That is correct but no longer free, so check what
   // it costs before adding such an import.
   //
