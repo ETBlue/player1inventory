@@ -919,6 +919,14 @@ the database section), `aa327e69` (runbook section 15), `55f1426f` (the times) a
 
 Not a PR. After PR B is merged, look at three gates' JSON reports.
 
+**Done 2026-11-23, decision: no parallel workers.** P9-A plans workers only when the whole
+per-PR gate is over 30 minutes in two of three runs. The two S.9 gates took 21m44s and
+21m24s, both under 30 minutes, so a third run cannot change the answer, and none was run.
+Those two runs were on `chore/e2e-speed-b` at `aa327e69`; the merge into `develop` (#397,
+`e76d23c1`) added only docs commits, so the code under test is the same. The memory and
+`ps` measurements in the table above were not taken: they matter only for planning
+workers. If the gate grows past 30 minutes again, start S.10 again with three new runs.
+
 | Measure | How |
 |---|---|
 | each project's time | `e2e-results/*.json`, three gates |
@@ -1039,12 +1047,14 @@ owner questions are answered.
 **PR A built 2026-11-23** on `chore/e2e-speed` (tasks S.1–S.5), merged into `develop` (2026-11-23, #396, merge `197790f4`). The whole gate
 went from 69m26s to 45m52s, all green, and `cloud` went from 64m08s to 40m35s.
 
-**PR B built 2026-11-23** on `chore/e2e-speed-b` (tasks S.6–S.9), not merged. The `cloud`
+**PR B built 2026-11-23** on `chore/e2e-speed-b` (tasks S.6–S.9). The `cloud`
 project runs on a local Postgres 17, a `cloud-neon` row runs 8 spec files on Neon in every
 gate, and `pnpm test:e2e:all:neon` runs the whole cloud list on Neon before each checkpoint
 (H4 runbook section 15). The whole gate went from 45m52s to 21m44s and 21m24s (two runs),
 all green; `cloud` from 40m35s to about 4 minutes. The checkpoint gate took 44m33s, all
-green. Next: open PR B against `develop`; after it merges, task S.10.
+green. Merged into `develop` (2026-11-23, #397, merge `e76d23c1`).
+
+**S.10 done 2026-11-23:** no parallel workers (P9-A; see task S.10). **The plan is done.**
 
 ---
 
