@@ -341,7 +341,7 @@ that really set up that role.
 > | cloud spec files | **39 of 43** in `e2e/tests/`; the `cloud` project collects **210** tests |
 >
 > **Personal location order and the four sorts are built in H7b** (on
-> `feature/households-h7b`, from `develop` at `bf71f485`; **not merged, not deployed**; plan
+> `feature/households-h7b`, from `develop` at `bf71f485`; **merged into `develop` (2026-11-22, #395, merge `41bbbe1a`), not deployed**; plan
 > `docs/global/permissions/2026-11-21-households-plan-h7.md`, tasks M.1 to M.6; deploy notes
 > in section 14 of the H4 runbook). **One additive migration with one backfill**,
 > `20261122000000_add_location_preferences`. It deploys with the server, and the **server
