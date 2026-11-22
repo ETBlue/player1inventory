@@ -1017,12 +1017,15 @@ with or without their `deletedAt` filter. The spec marks GHOST deleted while GHO
 household, and THEN GHOST joins through a real invite. The E2E server checks no Clerk
 session, so a deleted account can still send requests here.
 
-**The cleanup trap.** `/e2e/cleanup` deletes the households a user OWNS. A household whose
-owner's account was deleted has no owner row until someone accepts, so no cleanup deletes it.
-Each test ends with an accept, a delete, or a live owner (the table is in the spec header).
-`rescueOrphans` runs before the cleanups in both hooks: each spec user who can hold an offer
-(MIA, BEN, MAX) accepts any open offer, and GHOST's deletion is sent again (a household where GHOST is the only member left is
-deleted by it). That covers a test that fails part way, and every mutation run below.
+**The cleanup trap.** A household whose owner's account was deleted has no owner row until
+someone accepts the hand-over, so an owner rule alone cannot delete it. Since E2E speed plan
+task S.4, `beforeEach` makes ONE cleanup call with every user of the spec, and
+`/e2e/cleanup` also deletes a household whose members are ALL in the list (decision D6). So
+a test that fails part way needs no rescue. `rescueOrphans` (accept any open offer, send
+GHOST's deletion again) and the rule "each test ends with an owner" are gone. Proved by
+failure injection in tests 3 and 7: the next test's one call deleted the household with no
+owner. With D6 removed the household stayed and the next test still passed, so read the
+cleanup's counts, not the next test's result.
 
 **A tab whose live update is checked is opened with `openLive`.** A tab's FIRST socket
 connect refetches nothing (`connects > 1` in `apps/web/src/apollo/liveUpdates.ts`), so an
