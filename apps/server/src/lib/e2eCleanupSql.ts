@@ -68,17 +68,19 @@
 // the same as before. The whole function is one statement of the caller, so
 // it is one transaction: if any delete fails, nothing is deleted.
 //
-// It takes a LIST of users (`user_ids text[]`). The route sends one today;
-// task S.4 sends several. `x = ANY(user_ids)` is `x = <the one id>` for a
+// It takes a LIST of users (`user_ids text[]`): one from the
+// `x-e2e-user-id` header, or several from a `{ "userIds": [...] }` body
+// (task S.4, decision D5). `x = ANY(user_ids)` is `x = <the one id>` for a
 // list of one.
 //
 // ── THREE FUNCTIONS (since task S.3) ──
 //
-// | Function              | Who calls it                          | Chooses                        |
-// |-----------------------|---------------------------------------|--------------------------------|
-// | `e2e_cleanup_rows`    | the two below                         | nothing: it runs the 22 deletes |
-// | `e2e_cleanup`         | the route, `x-e2e-user-id`            | the households the users own   |
-// | `e2e_cleanup_all`     | the route, `{ "allE2eUsers": true }`  | every E2E user and household   |
+// | Function           | Who calls it                               | Chooses                              |
+// |--------------------|--------------------------------------------|--------------------------------------|
+// | `e2e_cleanup_rows` | the two below                              | nothing: it runs the 22 deletes      |
+// | `e2e_cleanup`      | the route, `x-e2e-user-id` or `userIds`    | owned by a listed user, or all       |
+// |                    |                                            | members listed (decision D6)         |
+// | `e2e_cleanup_all`  | the route, `{ "allE2eUsers": true }`       | every E2E user and household         |
 //
 // The 22 deletes are written once, in `e2e_cleanup_rows`, so the two entry
 // points cannot drift apart. A function that calls another is still ONE
@@ -309,9 +311,9 @@ $e2e_cleanup_rows$;
 `
 
 /**
- * `e2e_cleanup(user_ids)`: the route's one-user (and, from task S.4, several
- * users) form. It reads the households a listed user owns, then calls
- * `e2e_cleanup_rows`.
+ * `e2e_cleanup(user_ids)`: the route's form for one user or several (task
+ * S.4). It reads the households a listed user owns, and the households whose
+ * members are all listed (decision D6), then calls `e2e_cleanup_rows`.
  */
 export const E2E_CLEANUP_FUNCTION_SQL = `
 CREATE OR REPLACE FUNCTION e2e_cleanup(user_ids text[]) RETURNS jsonb
@@ -327,16 +329,37 @@ BEGIN
     RAISE EXCEPTION 'e2e_cleanup: no user ids';
   END IF;
 
-  -- The households a listed user OWNS. Read by the "HouseholdMember" row,
-  -- which is the source of truth for rights (decision H15), not by
-  -- "Household"."ownerId", which only mirrors it. Read in the same
-  -- transaction as the deletes, so no household can start to be owned in
-  -- between (until task S.2 this read ran before the transaction).
-  -- COALESCE, so a user who owns nothing gets an empty list, which matches
-  -- no row. It is never NULL.
-  SELECT COALESCE(array_agg(DISTINCT "householdId"), '{}'::text[]) INTO owned
-  FROM "HouseholdMember"
-  WHERE "userId" = ANY(user_ids) AND "role" = 'owner';
+  -- The households to delete, two rules (E2E speed plan, decision D6, owner
+  -- answer P5-A):
+  --
+  -- 1. A listed user OWNS it. Read by the "HouseholdMember" row, which is
+  --    the source of truth for rights (decision H15), not by
+  --    "Household"."ownerId", which only mirrors it.
+  -- 2. Every member of it is listed. A test that fails half way can leave a
+  --    household with no owner (an owner's account deleted, and the
+  --    hand-over offer never accepted). No owner rule finds it, so one call
+  --    with every user of the spec deletes it. A household with ANY member
+  --    outside the list is never taken: a member's own cleanup still leaves
+  --    the owner's household alone. The rule starts from a listed user's
+  --    member row, so a household with no member at all is never taken
+  --    here; only e2e_cleanup_all takes those.
+  --
+  -- Read in the same transaction as the deletes, so no household can start
+  -- to be owned in between (until task S.2 this read ran before the
+  -- transaction). COALESCE, so a user who owns nothing gets an empty list,
+  -- which matches no row. It is never NULL.
+  SELECT COALESCE(array_agg(DISTINCT "id"), '{}'::text[]) INTO owned
+  FROM (
+    SELECT "householdId" AS "id" FROM "HouseholdMember"
+    WHERE "userId" = ANY(user_ids) AND "role" = 'owner'
+    UNION
+    SELECT m."householdId" FROM "HouseholdMember" m
+    WHERE m."userId" = ANY(user_ids)
+    AND NOT EXISTS (
+      SELECT 1 FROM "HouseholdMember" o
+      WHERE o."householdId" = m."householdId" AND NOT (o."userId" = ANY(user_ids))
+    )
+  ) AS households;
 
   RETURN e2e_cleanup_rows(user_ids, owned);
 END;

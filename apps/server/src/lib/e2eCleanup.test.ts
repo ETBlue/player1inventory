@@ -335,6 +335,60 @@ describe('e2eCleanupHandler', () => {
   })
 })
 
+describe('the userIds form (E2E speed plan, task S.4)', () => {
+  it('sends several users as ONE bound array, and forgets each after the query', async () => {
+    // When a spec cleans two users in one call
+    const res = fakeResponse()
+    await e2eCleanupHandler(
+      fakeRequest(undefined, { userIds: ['e2e-a', 'e2e-b'] }),
+      res as unknown as Response,
+    )
+
+    // Then the database sees one query, with both ids as its one value
+    const query = sentQuery()
+    expect(query.text).toBe('SELECT e2e_cleanup($1::text[]) AS deleted')
+    expect(query.values).toEqual([['e2e-a', 'e2e-b']])
+    expect(query.strings.join('')).not.toContain('e2e-a')
+    expect(prisma.$transaction).not.toHaveBeenCalled()
+    // And both users are forgotten, after the query
+    expect(events).toEqual(['query', 'resolved', 'forget:e2e-a', 'forget:e2e-b'])
+    expect(res.statusCode).toBe(200)
+    expect(res.body).toEqual({
+      ok: true,
+      deleted: Object.fromEntries(CLEANUP_MODEL_KEYS.map((key, index) => [key, index + 1])),
+    })
+  })
+
+  it('sends a repeated id once', async () => {
+    await e2eCleanupHandler(
+      fakeRequest(undefined, { userIds: ['e2e-a', 'e2e-b', 'e2e-a'] }),
+      fakeResponse() as unknown as Response,
+    )
+    expect(sentQuery().values).toEqual([['e2e-a', 'e2e-b']])
+    expect(events).toEqual(['query', 'resolved', 'forget:e2e-a', 'forget:e2e-b'])
+  })
+
+  it('answers 400, and queries nothing, for a bad userIds body', async () => {
+    const cases: [string | undefined, unknown][] = [
+      // with the header too: which one is meant?
+      ['e2e-a', { userIds: ['e2e-b'] }],
+      // empty, not a list, not strings, an empty string
+      [undefined, { userIds: [] }],
+      [undefined, { userIds: 'e2e-a' }],
+      [undefined, { userIds: ['e2e-a', 3] }],
+      [undefined, { userIds: ['e2e-a', ''] }],
+      // another key next to it
+      [undefined, { userIds: ['e2e-a'], extra: true }],
+    ]
+    for (const [header, body] of cases) {
+      const res = fakeResponse()
+      await e2eCleanupHandler(fakeRequest(header, body), res as unknown as Response)
+      expect(res.statusCode, JSON.stringify(body)).toBe(400)
+    }
+    expect(events).toEqual([])
+  })
+})
+
 describe('the allE2eUsers form (E2E speed plan, task S.3)', () => {
   it('sends ONE query to e2e_cleanup_all(), with no bound value, and answers the counts and the ids', async () => {
     // When global-setup asks for every E2E user
@@ -501,12 +555,16 @@ describe('the SQL function text (E2E_CLEANUP_FUNCTION_SQL)', () => {
     expect(sql.match(/result :=/g)).toBeNull()
   })
 
-  it('reads the owned households by owner rows of the listed users only', () => {
-    // A household a user only belongs to is never deleted: `owned` holds only
-    // households where a listed user has the `owner` role.
+  it('reads the owned households: owned by a listed user, or with every member listed (D6)', () => {
+    // A household a user only belongs to is never deleted while it has a
+    // member outside the list. `owned` holds the households where a listed
+    // user has the `owner` role, and (decision D6, owner answer P5-A) the
+    // households whose members are ALL listed. The second half starts from a
+    // listed user's member row, so a household with no member at all is
+    // never taken here (only `e2e_cleanup_all` takes those).
     const sql = withoutComments(E2E_CLEANUP_FUNCTION_SQL).replace(/\s+/g, ' ')
     expect(sql).toContain(
-      `SELECT COALESCE(array_agg(DISTINCT "householdId"), '{}'::text[]) INTO owned FROM "HouseholdMember" WHERE "userId" = ANY(user_ids) AND "role" = 'owner';`,
+      `SELECT COALESCE(array_agg(DISTINCT "id"), '{}'::text[]) INTO owned FROM ( SELECT "householdId" AS "id" FROM "HouseholdMember" WHERE "userId" = ANY(user_ids) AND "role" = 'owner' UNION SELECT m."householdId" FROM "HouseholdMember" m WHERE m."userId" = ANY(user_ids) AND NOT EXISTS ( SELECT 1 FROM "HouseholdMember" o WHERE o."householdId" = m."householdId" AND NOT (o."userId" = ANY(user_ids)) ) ) AS households;`,
     )
     // And `owned` is written nowhere else
     expect(sql.match(/INTO owned/g)).toHaveLength(1)

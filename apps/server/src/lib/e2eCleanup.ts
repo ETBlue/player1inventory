@@ -24,6 +24,16 @@ import { forgetSeenToday } from './userRow.js'
 // order of the deletes in the SQL text, and that `forgetSeenToday` runs after
 // the query. `purge-coverage.test.ts` pins the WHERE of each statement.
 //
+// ── SEVERAL USERS AT ONCE (E2E speed plan, task S.4) ──
+//
+// A body `{ "userIds": ["a", "b"] }`, with no header, cleans several users in
+// the same ONE query: the ids go to `e2e_cleanup` as one bound array. The
+// header form still works for one user. With several users, a household is
+// also deleted when EVERY one of its members is in the list (decision D6,
+// owner answer P5-A), so one call with all of a spec's users deletes a
+// household a failed test left with no owner. A household with any member
+// outside the list stays.
+//
 // ── EVERY E2E USER AT ONCE (E2E speed plan, task S.3) ──
 //
 // A body `{ "allE2eUsers": true }`, with no header, cleans every user whose
@@ -36,7 +46,8 @@ import { forgetSeenToday } from './userRow.js'
 // ── WHAT IT DELETES (households H3a, task 3.10) ──
 //
 // 1. Every household the user OWNS (a `HouseholdMember` row with role
-//    `owner`), with everything in it: its catalog, its locations and what is
+//    `owner`), and since task S.4 every household whose members are ALL in
+//    the list, with everything in it: its catalog, its locations and what is
 //    in them, every member's role rows in it, and the household row.
 // 2. The user's OWN role rows in households they do not own: their
 //    `HouseholdMember` row there, and their `LocationMember` rows. Both have
@@ -70,11 +81,11 @@ import { forgetSeenToday } from './userRow.js'
 // reason for each statement, and for its place in the order, is written next
 // to it there.
 //
-// **It never deletes a household the user only belongs to.** Two-user specs
-// run this route once for each user. If the first call emptied a household
-// the user was only a member of, it would delete the OTHER user's data
-// before that user's own cleanup ran, and the other user's test would see
-// it. Only the membership rows go (point 2). Rows the user wrote in such a
+// **It never deletes a household the user only belongs to, while that
+// household has a member outside the list.** A spec may clean one user at a
+// time. If a call emptied a household the user was only a member of, it
+// would delete the OTHER user's data before that user's own cleanup ran,
+// and the other user's test would see it. Only the membership rows go (point 2). Rows the user wrote in such a
 // household (logs, carts) stay with it: "no path deletes rows because of who
 // created them" (design *Purge*).
 
@@ -182,11 +193,31 @@ export async function e2eCleanupHandler(req: Request, res: Response): Promise<vo
     return
   }
 
-  if (!userId) {
-    res.status(400).json({ error: 'Missing x-e2e-user-id header' })
+  // `{ "userIds": [...] }`: several users in one call (task S.4, decision
+  // D5). Only on its own: with the header or any other key it is a 400, so
+  // a caller cannot mean one set of users and get another. Every id is a
+  // string that is not empty; a repeated id is sent once.
+  let userIds: string[]
+  if (bodyKeys.includes('userIds')) {
+    const list = (body as Record<string, unknown>).userIds
+    const valid =
+      Array.isArray(list) &&
+      list.length > 0 &&
+      list.every((id) => typeof id === 'string' && id.length > 0)
+    if (!valid || bodyKeys.length !== 1 || userId !== undefined) {
+      res.status(400).json({
+        error:
+          'userIds must be a list of user ids that is not empty, alone, and without the x-e2e-user-id header',
+      })
+      return
+    }
+    userIds = [...new Set(list as string[])]
+  } else if (userId) {
+    userIds = [userId]
+  } else {
+    res.status(400).json({ error: 'Missing x-e2e-user-id header or userIds body' })
     return
   }
-  const userIds = [userId]
 
   // ONE query. The ids are a bound value (`$1`), never text in the SQL. The
   // function is one statement, so it is one transaction: every delete
