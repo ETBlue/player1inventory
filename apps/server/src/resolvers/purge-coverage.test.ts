@@ -5,8 +5,10 @@
  * WHY THIS FILE EXISTS
  *
  * `clearAllData` (import.resolver.ts) and the E2E-only `DELETE /e2e/cleanup`
- * endpoint (lib/e2eCleanup.ts) each hand-maintain a list of `deleteMany`
- * calls. Since households H6 task J.4 the first list is the body of
+ * endpoint each hand-maintain a list of deletes: `deleteMany` calls for the
+ * first, and, since the E2E speed plan task S.2, `DELETE FROM` statements in
+ * the SQL function `E2E_CLEANUP_FUNCTION_SQL` (lib/e2eCleanupSql.ts) for the
+ * second. Since households H6 task J.4 the first list is the body of
  * `deleteHouseholdData` (lib/household.ts), which `clearAllData` and
  * `deleteHousehold` both call, so that path is labelled after the helper. Nothing links those lists to `prisma/schema.prisma`, so adding a
  * model is an edit in two places that no compiler checks. When `Shelf` was
@@ -28,8 +30,12 @@
  * 3. **Every call uses the path's client.** `clearAllData` runs an
  *    interactive transaction, so each call must be on `tx`. A
  *    `prisma.<model>.deleteMany` inside the callback would run OUTSIDE the
- *    transaction and would not be rolled back. `/e2e/cleanup` uses the array
- *    form, so each call must be on `prisma`.
+ *    transaction and would not be rolled back. `/e2e/cleanup` has no client
+ *    calls at all since task S.2: its deletes are SQL statements inside one
+ *    function, which is one statement of the caller and so one transaction.
+ *    For it the guard checks that `lib/e2eCleanup.ts` holds no `deleteMany`
+ *    and no `$transaction`, so a delete cannot move back out of the SQL
+ *    unseen.
  *
  * `purgeUserData` (purge.resolver.ts) was the third path until task 3.10
  * removed it: it had no web caller, and it deleted by `userId`, which "no path
@@ -47,6 +53,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { E2E_CLEANUP_FUNCTION_SQL } from '../lib/e2eCleanupSql.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -217,76 +224,122 @@ const cleanupSource = read('../lib/e2eCleanup.ts')
 /** The 14 data models both paths delete through the scope, sorted. */
 const DATA_MODELS = Object.keys(MODEL_PATHS).sort()
 
-/** `/e2e/cleanup`'s scope: the households the user owns. */
-const OWNED_SCOPE = '{ householdId: owned }'
+// ─── The SQL path: `/e2e/cleanup` (E2E speed plan, task S.2) ────────────────
+//
+// Since task S.2 the route's 22 deletes are `DELETE FROM` statements in one
+// PL/pgSQL function, `E2E_CLEANUP_FUNCTION_SQL` (lib/e2eCleanupSql.ts). The
+// same three checks apply to its text: every schema model is deleted, and
+// every `WHERE` is the one allowed SQL form for its model.
+//
+// The allowed forms are BUILT from `MODEL_PATHS`, the same map the
+// `deleteHouseholdData` path uses, so the two paths cannot drift apart. Each
+// parent in a chain becomes `"<fk>" IN (SELECT "id" FROM "<Table>" WHERE …)`,
+// and the chain ends in the SQL scope, `"householdId" = ANY(owned)`. `owned`
+// is the function's list of households a listed user owns. Until task S.2
+// these were the Prisma filters `{ location: { householdId: owned } }` and so
+// on; the SQL forms say the same thing.
+
+/** For each parent in `MODEL_PATHS`: the foreign key column and the parent table. */
+const SQL_RELATIONS: Readonly<Record<string, { column: string; table: string }>> = {
+  location: { column: 'locationId', table: 'Location' },
+  cart: { column: 'cartId', table: 'Cart' },
+  item: { column: 'itemId', table: 'Item' },
+  recipe: { column: 'recipeId', table: 'Recipe' },
+}
+
+/** The SQL scope: the row's own household is one of the owned households. */
+const SQL_OWNED_SCOPE = '"householdId" = ANY(owned)'
+
+/** Builds the SQL `WHERE` text for one parent chain, in the source's spacing. */
+function sqlFilterFor(path: readonly string[]): string {
+  return [...path].reverse().reduce((acc, parent) => {
+    const relation = SQL_RELATIONS[parent]
+    if (!relation) throw new Error(`no SQL relation for parent: ${parent}`)
+    return `"${relation.column}" IN (SELECT "id" FROM "${relation.table}" WHERE ${acc})`
+  }, SQL_OWNED_SCOPE)
+}
 
 /**
  * `/e2e/cleanup`'s eight filters that are not the scope. Each is allowed on
- * its one model only.
+ * its one model only. `user_ids` is the function's list of users.
  *
  * - `locationMember` and `householdMember`: every role row in the owned
- *   households, and the user's OWN role rows anywhere else. Both have a
+ *   households, and the users' OWN role rows anywhere else. Both have a
  *   RESTRICT foreign key to `User`, so the `User` row cannot go while one
- *   exists. The `{ userId }` half is allowed here and nowhere else: it picks
- *   the user's own membership, not rows the user wrote.
+ *   exists. The `"userId" = ANY(user_ids)` half is allowed here and nowhere
+ *   else: it picks the user's own membership, not rows the user wrote.
  * - `locationPreference` (households H7b, task M.1, decision T75): every
- *   preference row on the owned households' locations, and the user's OWN
+ *   preference row on the owned households' locations, and the users' OWN
  *   rows on any other location. The same shape as `locationMember`. Both
- *   foreign keys are ON DELETE CASCADE, so the `location` and `user` deletes
- *   would remove these rows anyway; the route deletes them first so the count
- *   shows them. The `{ userId }` half picks the person's own settings, not
- *   rows the user wrote.
+ *   foreign keys are ON DELETE CASCADE, so the `Location` and `User` deletes
+ *   would remove these rows anyway; the function deletes them first so the
+ *   count shows them.
  * - `householdInvite` (households H5b, task G.6): every invite of the owned
- *   households, and the invites the user MADE anywhere else.
- *   `createdById` is RESTRICT, so the `User` row cannot go while such an
- *   invite exists. The `{ createdById: userId }` half is allowed here and
- *   nowhere else, for the same reason as the `{ userId }` half above.
+ *   households, and the invites the users MADE anywhere else. `createdById`
+ *   is RESTRICT, so the `User` row cannot go while such an invite exists.
  * - `householdActivity` (households H6, task J.1): the activity rows of the
  *   owned households. The scope on the row itself, but listed here and not
  *   in `MODEL_PATHS`, because `clearAllData` must keep the log.
  * - `ownershipOffer` (households H6b, task K.1, decision T58): every offer
- *   of the owned households, and every offer TO the user anywhere else.
- *   `toUserId` is ON DELETE CASCADE, so the `User` delete would remove the
- *   second half anyway; the route deletes them first so the count shows them.
- *   The `{ toUserId: userId }` half is allowed here and nowhere else.
- *   `fromUserId` has no foreign key, so an offer the user MADE elsewhere stays.
+ *   of the owned households, and every offer TO a listed user anywhere else.
+ *   `fromUserId` has no foreign key, so an offer the user MADE elsewhere
+ *   stays.
  * - `household`: the owned households themselves, by their `id`.
- * - `user`: the User row. Its key is `id`, because the row IS the user. The
- *   same filter on any other model would compare that model's id with a user
- *   id and match nothing.
+ * - `user`: the User rows. Their key is `id`, because the row IS the user.
  */
-const CLEANUP_EXCEPTIONS: readonly FilterException[] = [
-  {
-    model: 'locationMember',
-    arg: '{ where: { OR: [{ userId }, { location: { householdId: owned } }] } }',
-  },
-  {
-    model: 'householdMember',
-    arg: '{ where: { OR: [{ userId }, { householdId: owned }] } }',
-  },
-  // Not in `MODEL_PATHS`: `deleteHouseholdData` keeps the preference rows
-  // (they go with their location by cascade), so the form is allowed on this
-  // path only (households H7b, task M.1).
-  {
-    model: 'locationPreference',
-    arg: '{ where: { OR: [{ userId }, { location: { householdId: owned } }] } }',
-  },
-  {
-    model: 'householdInvite',
-    arg: '{ where: { OR: [{ householdId: owned }, { createdById: userId }] } }',
-  },
-  // Every activity row of the owned households (households H6, task J.1).
-  // Not in `MODEL_PATHS`: `clearAllData` keeps the log (see its `kept`), so
-  // the form is allowed on this path only.
-  { model: 'householdActivity', arg: '{ where: { householdId: owned } }' },
-  // Not in `MODEL_PATHS` either: `deleteHouseholdData` keeps the offers.
-  {
-    model: 'ownershipOffer',
-    arg: '{ where: { OR: [{ householdId: owned }, { toUserId: userId }] } }',
-  },
-  { model: 'household', arg: '{ where: { id: owned } }' },
-  { model: 'user', arg: '{ where: { id: userId } }' },
-]
+const SQL_CLEANUP_EXCEPTIONS: Readonly<Record<string, string>> = {
+  locationMember: `"userId" = ANY(user_ids) OR ${sqlFilterFor(['location'])}`,
+  locationPreference: `"userId" = ANY(user_ids) OR ${sqlFilterFor(['location'])}`,
+  householdInvite: `${SQL_OWNED_SCOPE} OR "createdById" = ANY(user_ids)`,
+  householdActivity: SQL_OWNED_SCOPE,
+  ownershipOffer: `${SQL_OWNED_SCOPE} OR "toUserId" = ANY(user_ids)`,
+  householdMember: `"userId" = ANY(user_ids) OR ${SQL_OWNED_SCOPE}`,
+  household: '"id" = ANY(owned)',
+  user: '"id" = ANY(user_ids)',
+}
+
+interface SqlDelete {
+  /** The Prisma client name of the table: `"InventoryLog"` → `inventoryLog`. */
+  model: string
+  /** The `WHERE` text, with every run of whitespace turned into one space. */
+  where: string
+}
+
+/** The SQL text with every `--` comment removed. No SQL string here holds `--`. */
+function sqlWithoutComments(sql: string): string {
+  return sql.replace(/--[^\n]*/g, '')
+}
+
+/**
+ * Every `DELETE FROM "<Table>" WHERE …;` in `sql`. A `DELETE` in any other
+ * shape (no `WHERE`, an unquoted table) is not returned, and
+ * `sqlDeleteCount` still counts it, so a test that compares the two fails.
+ */
+function sqlDeletes(sql: string): SqlDelete[] {
+  return [...sqlWithoutComments(sql).matchAll(/DELETE FROM "(\w+)"\s+WHERE\s([^;]*);/g)].map(
+    (m) => ({ model: clientProperty(m[1] ?? ''), where: (m[2] ?? '').replace(/\s+/g, ' ').trim() }),
+  )
+}
+
+/** How many `DELETE` keywords the text holds, in any shape. */
+function sqlDeleteCount(sql: string): number {
+  return (sqlWithoutComments(sql).match(/\bDELETE\b/gi) ?? []).length
+}
+
+/** The deletes whose `WHERE` is not the allowed form for their model, as `model: where`. */
+function badSqlFilters(deletes: SqlDelete[]): string[] {
+  return deletes
+    .filter(({ model, where }) => {
+      const path = MODEL_PATHS[model]
+      if (path && where === sqlFilterFor(path)) return false
+      if (SQL_CLEANUP_EXCEPTIONS[model] === where) return false
+      return true
+    })
+    .map(({ model, where }) => `${model}: ${where}`)
+}
+
+/** Every model `/e2e/cleanup` deletes: all 22 schema models, nothing kept. */
+const CLEANUP_MODELS = [...DATA_MODELS, ...Object.keys(SQL_CLEANUP_EXCEPTIONS)].sort()
 
 interface PurgePath extends FilterRules {
   label: string
@@ -344,32 +397,6 @@ const PURGE_PATHS: readonly PurgePath[] = [
     scope: '{ householdId }',
     exceptions: [],
   },
-  // The E2E-only DELETE /e2e/cleanup endpoint. It is not a resolver, so no
-  // resolver test reads it. Its handler moved from index.ts to
-  // lib/e2eCleanup.ts in households task 2.6.
-  {
-    label: 'e2eCleanup',
-    purgeSource: cleanupSource,
-    client: 'prisma',
-    models: [
-      ...DATA_MODELS,
-      'household',
-      'householdActivity',
-      'householdInvite',
-      'householdMember',
-      'locationMember',
-      'locationPreference',
-      'ownershipOffer',
-      'user',
-    ].sort(),
-    // Nothing is kept: the route deletes every model. `householdInvite` was
-    // kept from H5b task G.1 until task G.6 added its deleteMany. An invite
-    // the user made in ANOTHER household would block the `user` delete
-    // (createdById is RESTRICT), so the route must delete it.
-    kept: [],
-    scope: OWNED_SCOPE,
-    exceptions: CLEANUP_EXCEPTIONS,
-  },
 ]
 
 /** The rules of one path, by label. Throws if the label is unknown. */
@@ -412,8 +439,22 @@ describe('purge coverage against prisma/schema.prisma', () => {
   })
 
   it('knows about both purge paths', () => {
-    expect(PURGE_PATHS.map((p) => p.label)).toEqual(['deleteHouseholdData', 'e2eCleanup'])
+    // The Prisma path, read from TypeScript, and the SQL path, read from the
+    // function text (since the E2E speed plan, task S.2).
+    expect(PURGE_PATHS.map((p) => p.label)).toEqual(['deleteHouseholdData'])
     for (const path of PURGE_PATHS) expect(path.purgeSource.length).toBeGreaterThan(0)
+    expect(E2E_CLEANUP_FUNCTION_SQL.length).toBeGreaterThan(0)
+  })
+
+  it('e2eCleanup (SQL) deletes every schema model, and keeps none', () => {
+    // Given which tables the function deletes from
+    const deleted = sqlDeletes(E2E_CLEANUP_FUNCTION_SQL).map((d) => d.model)
+
+    // Then they are exactly the schema's models, each once. A new model
+    // fails here until the function deletes it. Nothing is kept: an invite
+    // or a role row left behind would block the `User` delete.
+    expect([...deleted].sort()).toEqual(SCHEMA_MODELS)
+    expect(CLEANUP_MODELS).toEqual(SCHEMA_MODELS)
   })
 
   for (const path of PURGE_PATHS) {
@@ -444,12 +485,27 @@ describe('purge coverage against prisma/schema.prisma', () => {
     expect(rulesOf('deleteHouseholdData').purgeSource).not.toMatch(DELETES_USER_ROW)
   })
 
-  it('e2eCleanup does delete the User row', () => {
-    // The positive control for the test above: the pattern it looks for
-    // matches the call the cleanup really uses. If it did not, the
-    // `not.toMatch` check would pass for any source.
-    expect(cleanupSource).toMatch(DELETES_USER_ROW)
-    expect(cleanupSource).toContain('prisma.user.deleteMany(')
+  it('the pattern finds a User row delete when there is one', () => {
+    // The positive control for the test above. Since task S.2 no source in
+    // this repo deletes the User row with Prisma (the cleanup does it in
+    // SQL), so the pattern is checked on two made-up lines. If it matched
+    // neither, the `not.toMatch` check would pass for any source.
+    expect('await tx.user.deleteMany({ where: { id } })').toMatch(DELETES_USER_ROW)
+    expect('await prisma.user.delete({ where: { id } })').toMatch(DELETES_USER_ROW)
+  })
+
+  it('e2eCleanup does delete the User row, in SQL', () => {
+    expect(sqlDeletes(E2E_CLEANUP_FUNCTION_SQL).map((d) => d.model)).toContain('user')
+  })
+
+  it('the e2eCleanup handler deletes nothing itself: no deleteMany, no $transaction', () => {
+    // Every delete of the route is in the SQL function. A `deleteMany` or a
+    // `$transaction` back in the handler would be a delete this guard does
+    // not read, and one round trip more per statement.
+    expect(cleanupSource).not.toMatch(/\.deleteMany\(/)
+    expect(cleanupSource).not.toMatch(/\$transaction\(/)
+    // Positive control: the handler is the file that calls the function.
+    expect(cleanupSource).toContain('SELECT e2e_cleanup(')
   })
 })
 
@@ -481,9 +537,6 @@ describe('purge filter form (issue #320)', () => {
     expect(filterFor('{ householdId }', MODEL_PATHS.tag ?? [])).toBe(
       '{ where: { householdId } }',
     )
-    expect(filterFor(OWNED_SCOPE, MODEL_PATHS.itemStock ?? [])).toBe(
-      '{ where: { location: { householdId: owned } } }',
-    )
     expect(DATA_MODELS).toHaveLength(14)
   })
 
@@ -511,7 +564,7 @@ describe('purge filter form (issue #320)', () => {
     ])
   })
 
-  it('refuses the old scope, { userId }, on every data model in both paths', () => {
+  it('refuses the old scope, { userId }, on every data model of deleteHouseholdData', () => {
     // Before task 3.10 every purge filter ended in `{ userId }`. That deletes
     // rows by who CREATED them, which design *Purge* forbids. It must fail
     // now, on the row itself and through every parent chain.
@@ -529,20 +582,10 @@ describe('purge filter form (issue #320)', () => {
     ).toEqual(['item: { where: { userId } }'])
   })
 
-  it('allows an exception only on its model, and only in its path', () => {
-    const userRow = 'prisma.user.deleteMany({ where: { id: userId } })'
-    const otherModel = 'prisma.tag.deleteMany({ where: { id: userId } })'
-    const memberByUser = 'prisma.tag.deleteMany({ where: { OR: [{ userId }, { householdId: owned }] } })'
-
-    expect(badFilters(deleteManyCalls(userRow), rulesOf('e2eCleanup'))).toEqual([])
+  it('allows no exception on the deleteHouseholdData path', () => {
+    const userRow = 'tx.user.deleteMany({ where: { id: userId } })'
     expect(badFilters(deleteManyCalls(userRow), rulesOf('deleteHouseholdData'))).toEqual([
       'user: { where: { id: userId } }',
-    ])
-    expect(badFilters(deleteManyCalls(otherModel), rulesOf('e2eCleanup'))).toEqual([
-      'tag: { where: { id: userId } }',
-    ])
-    expect(badFilters(deleteManyCalls(memberByUser), rulesOf('e2eCleanup'))).toEqual([
-      'tag: { where: { OR: [{ userId }, { householdId: owned }] } }',
     ])
   })
 
@@ -593,5 +636,76 @@ describe('purge filter form (issue #320)', () => {
     const body = bodyAfter(read('./household.resolver.ts'), 'deleteHousehold: async')
     expect(deleteManyCalls(body).map((c) => c.model)).toEqual(['household'])
     expect(body).toContain('await deleteHouseholdData(tx, householdId)')
+  })
+})
+
+describe('e2eCleanup SQL filter form (E2E speed plan, task S.2)', () => {
+  it('scopes every DELETE to the owned households, or to the listed users where allowed', () => {
+    // Given every DELETE statement of the function
+    const deletes = sqlDeletes(E2E_CLEANUP_FUNCTION_SQL)
+
+    // Then each is in the shape the parser reads, so none is missed. A DELETE
+    // with no WHERE, or on an unquoted table, makes the two counts differ.
+    expect(deletes).toHaveLength(22)
+    expect(sqlDeleteCount(E2E_CLEANUP_FUNCTION_SQL)).toBe(22)
+
+    // And they are the expected models, each once
+    expect(deletes.map((d) => d.model).sort()).toEqual(CLEANUP_MODELS)
+
+    // And each WHERE is the allowed form for its model
+    expect(badSqlFilters(deletes)).toEqual([])
+  })
+
+  it('builds the allowed SQL forms from MODEL_PATHS', () => {
+    // A check on the builder, so a mistake in it cannot widen the list.
+    expect(sqlFilterFor(MODEL_PATHS.cartItem ?? [])).toBe(
+      '"cartId" IN (SELECT "id" FROM "Cart" WHERE "locationId" IN (SELECT "id" FROM "Location" WHERE "householdId" = ANY(owned)))',
+    )
+    expect(sqlFilterFor(MODEL_PATHS.tag ?? [])).toBe('"householdId" = ANY(owned)')
+    expect(sqlFilterFor(MODEL_PATHS.recipeItem ?? [])).toBe(
+      '"recipeId" IN (SELECT "id" FROM "Recipe" WHERE "householdId" = ANY(owned))',
+    )
+  })
+
+  // The checker itself, on made-up SQL. The real text holds only good
+  // filters, so without these nothing shows that a bad one is caught.
+  it('refuses a filter that names no scope, the users instead of the households, or the wrong parent', () => {
+    const sql = [
+      'DELETE FROM "Tag" WHERE TRUE;',
+      'DELETE FROM "Location" WHERE "householdId" = ANY(user_ids);',
+      'DELETE FROM "Item" WHERE "userId" = ANY(user_ids);',
+      'DELETE FROM "ItemStock" WHERE "itemId" IN (SELECT "id" FROM "Item" WHERE "householdId" = ANY(owned));',
+      'DELETE FROM "RecipeItem" WHERE "itemId" IN (SELECT "id" FROM "Item" WHERE "householdId" = ANY(owned));',
+      'DELETE FROM "Household" WHERE "id" = ANY(user_ids) OR "id" = ANY(owned);',
+    ].join('\n')
+
+    expect(badSqlFilters(sqlDeletes(sql))).toEqual([
+      'tag: TRUE',
+      'location: "householdId" = ANY(user_ids)',
+      'item: "userId" = ANY(user_ids)',
+      'itemStock: "itemId" IN (SELECT "id" FROM "Item" WHERE "householdId" = ANY(owned))',
+      'recipeItem: "itemId" IN (SELECT "id" FROM "Item" WHERE "householdId" = ANY(owned))',
+      'household: "id" = ANY(user_ids) OR "id" = ANY(owned)',
+    ])
+  })
+
+  it('allows an exception only on its model', () => {
+    const userRow = 'DELETE FROM "User" WHERE "id" = ANY(user_ids);'
+    const otherModel = 'DELETE FROM "Tag" WHERE "id" = ANY(user_ids);'
+    expect(badSqlFilters(sqlDeletes(userRow))).toEqual([])
+    expect(badSqlFilters(sqlDeletes(otherModel))).toEqual(['tag: "id" = ANY(user_ids)'])
+  })
+
+  it('counts a DELETE it cannot read, so it cannot hide', () => {
+    // No WHERE: the parser does not return it, but the count sees it
+    const sql = 'DELETE FROM "Tag";\nDELETE FROM "Item" WHERE "householdId" = ANY(owned);'
+    expect(sqlDeletes(sql)).toHaveLength(1)
+    expect(sqlDeleteCount(sql)).toBe(2)
+  })
+
+  it('ignores a DELETE that is only in a comment', () => {
+    const sql = '-- DELETE FROM "Tag" WHERE TRUE;\nDELETE FROM "Item" WHERE "householdId" = ANY(owned);'
+    expect(sqlDeletes(sql).map((d) => d.model)).toEqual(['item'])
+    expect(sqlDeleteCount(sql)).toBe(1)
   })
 })

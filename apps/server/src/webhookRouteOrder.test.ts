@@ -154,6 +154,27 @@ describe('index.ts mounts the E2E-only routes', () => {
     expect(found).toEqual([{ receiver: 'app', method, path, handler, insideE2eBlock: true }])
   })
 
+  it('creates the e2e_cleanup SQL function once, inside the block (E2E speed plan, task S.2)', () => {
+    // A production server must never create it (decision D4). Every call of
+    // `installE2eCleanupFunction` in index.ts, at any depth.
+    const [block] = e2eBlocks()
+    const body = block?.thenStatement
+    const calls: boolean[] = []
+    const visit = (node: ts.Node) => {
+      if (
+        ts.isCallExpression(node) &&
+        node.expression.getText(SOURCE) === 'installE2eCleanupFunction'
+      ) {
+        calls.push(
+          body !== undefined && node.getStart(SOURCE) >= body.getStart(SOURCE) && node.end <= body.end,
+        )
+      }
+      ts.forEachChild(node, visit)
+    }
+    visit(SOURCE)
+    expect(calls).toEqual([true])
+  })
+
   it('mounts every /e2e route inside the block', () => {
     // `/e2e` itself counts too: `app.use('/e2e', router)` mounts every route
     // of that router under it.

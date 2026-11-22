@@ -7,7 +7,7 @@ import { ApolloServer } from '@apollo/server'
 import { expressMiddleware } from '@as-integrations/express5'
 import { DEFAULT_CLIENT_ORIGIN, DEFAULT_PORT, GRAPHQL_PATH } from './constants.js'
 import { clerkWebhookHandler } from './lib/clerkWebhook.js'
-import { e2eCleanupHandler } from './lib/e2eCleanup.js'
+import { e2eCleanupHandler, errorCodeOf, installE2eCleanupFunction } from './lib/e2eCleanup.js'
 import { e2eAddHouseholdMemberHandler } from './lib/e2eHouseholds.js'
 import {
   e2eCreateUserHandler,
@@ -55,6 +55,17 @@ if (E2E_TEST_MODE) {
   // Delete all data owned by the test user, its User row included, so each
   // test starts clean (lib/e2eCleanup.ts).
   app.delete('/e2e/cleanup', e2eCleanupHandler)
+
+  // The route calls one SQL function, `e2e_cleanup` (lib/e2eCleanupSql.ts).
+  // Create it now, before the server listens, so the first cleanup finds it.
+  // Only here: a production server never creates it. On failure, log the
+  // error's codes only (its message can hold the database host) and stop.
+  try {
+    await installE2eCleanupFunction()
+  } catch (err) {
+    console.error(`E2E: could not create the e2e_cleanup SQL function: ${errorCodeOf(err)}`)
+    process.exit(1)
+  }
 
   // Create a User row, fake Clerk's user.deleted event, and read a row back
   // (lib/e2eUsers.ts). No signature is checked, and no test signing secret
