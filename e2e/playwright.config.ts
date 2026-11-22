@@ -155,13 +155,26 @@ const webServer = [
   ...new Set(selectedProjects().flatMap((name) => SERVERS_BY_PROJECT[name])),
 ]
 
+// A JSON report next to the HTML one, only when `PLAYWRIGHT_JSON_OUTPUT_FILE` is
+// set. `e2e/run-all.sh` sets it to `e2e-results/<project>.json`, and
+// `scripts/spec/e2e-times.mjs` prints the time of every test from it.
+//
+// The console summary ("170 passed (3.8m)") that run-all.sh reads still
+// prints: neither `html` nor `json` with an output file writes to the terminal,
+// so Playwright adds its `line` reporter in front of them (`createReporters` in
+// playwright/lib/runner/reporters.js, Playwright 1.58). The JSON reporter
+// reads the file name from the variable itself.
+const reporter: 'html' | [string][] = process.env.PLAYWRIGHT_JSON_OUTPUT_FILE
+  ? [['html'], ['json']]
+  : 'html'
+
 export default defineConfig({
   testDir: './tests',
   fullyParallel: false, // cloud tests share one real database — run all tests serially
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: 1,
-  reporter: 'html',
+  reporter,
   // Shared by all three projects. Playwright 1.58 merges this top-level `use`
   // with each project's own `use` key by key (`mergeObjects` in
   // playwright/lib/util.js), and a project key wins. No project sets
