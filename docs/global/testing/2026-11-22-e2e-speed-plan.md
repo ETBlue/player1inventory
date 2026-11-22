@@ -661,6 +661,17 @@ commands in step 4.
 - [ ] **Step 3:** `.env.example`: `E2E_LOCAL_DATABASE_URL=""` with a comment: a local
   database only, created with Neon's major version and collation, migrated with
   `pnpm --filter server e2e:db:migrate` after every new migration.
+**Parts 1 and 2 done 2026-11-23** by the main session, with the owner's consent ("install
+local postgres 17 for me please"): `brew install postgresql@17` gave **PostgreSQL 17.12
+(Homebrew)**, the same minor version as Neon; `brew services start postgresql@17`; it
+listens on `localhost` only. `createdb -h localhost --template=template0
+--locale-provider=builtin --builtin-locale=C.UTF-8 --locale=C p1i_e2e` and `ALTER DATABASE
+p1i_e2e SET timezone TO 'UTC'` worked. The P2 query gives `C | C | b | C.UTF-8`: the same
+provider and locale as Neon (`datcollate` and `datctype` are `C`, not `C.UTF-8`; the
+builtin provider does not use them for sorting). Homebrew's own `initdb` used
+`en_US.UTF-8` for the cluster, which does not matter, because `p1i_e2e` sets its own.
+Parts 3 and 4 (the URL in `apps/server/.env`, the migration) are still owed.
+
 - [ ] **Step 4 (owner):** with the answers to P1 and P2:
   1. install Postgres 17 (Homebrew `postgresql@17` and `brew services start postgresql@17`,
      owner answer P1-A);
@@ -852,7 +863,7 @@ both run **PostgreSQL 17.12** with the builtin locale provider and `C.UTF-8` (re
 owner; table under P2). The local database matches: Postgres 17, builtin, `C.UTF-8`. All
 owner questions are answered.
 
-**PR A built 2026-11-23** on `chore/e2e-speed` (tasks S.1–S.5), not merged. The whole gate
+**PR A built 2026-11-23** on `chore/e2e-speed` (tasks S.1–S.5), merged into `develop` (2026-11-23, #396, merge `197790f4`). The whole gate
 went from 69m26s to 45m52s, all green, and `cloud` went from 64m08s to 40m35s. Next: open
 PR A against `develop`, then PR B (tasks S.6–S.9).
 Nothing built.
