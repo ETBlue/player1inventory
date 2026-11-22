@@ -704,7 +704,16 @@ builtin provider does not use them for sorting). Homebrew's own `initdb` used
 `en_US.UTF-8` for the cluster, which does not matter, because `p1i_e2e` sets its own.
 Parts 3 and 4 (the URL in `apps/server/.env`, the migration) are still owed.
 
-- [ ] **Step 4 (owner):** with the answers to P1 and P2:
+**Parts 3 and 4 done 2026-11-23** by the main session (the owner asked it to set up the local
+Postgres): `E2E_LOCAL_DATABASE_URL` added to the worktree's `apps/server/.env` (a `localhost`
+URL with the Mac user name, no password; the file is git-ignored). `e2e:db:status` first
+named `p1i_e2e` at `localhost:5432` and listed the pending migrations (exit 1, as Prisma does
+for pending migrations). `e2e:db:migrate`: "All migrations have been successfully applied."
+`e2e:db:status` then: "21 migrations found … Database schema is up to date!".
+`_prisma_migrations` holds 21 finished rows; `SHOW timezone` is `UTC`. No Prisma consent
+prompt appeared (`migrate deploy` is not one of the guarded commands).
+
+- [x] **Step 4 (owner):** with the answers to P1 and P2:
   1. install Postgres 17 (Homebrew `postgresql@17` and `brew services start postgresql@17`,
      owner answer P1-A);
   2. create the database with Neon's locale provider and `timezone = 'UTC'`:
