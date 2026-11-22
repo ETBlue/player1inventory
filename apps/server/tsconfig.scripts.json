@@ -15,8 +15,9 @@
   // check them: `allowJs` is off.) That holds only while `scripts/` imports
   // (almost) nothing from `src` — `@prisma/client`, `vitest`, node builtins,
   // its own sibling modules, and since E2E speed plan task S.6 ONE `src` file:
-  // `scripts/databaseIsolation.ts` re-exports `src/lib/databaseUrl.ts`, which
-  // imports nothing. So that one file is checked twice. **If a script imports
+  // `src/lib/databaseUrl.ts`, which imports nothing. `scripts/databaseIsolation.ts`
+  // re-exports it, and since task S.7 `scripts/e2eLocalDb.ts` imports it too.
+  // So that one file is checked twice. **If a script imports
   // more from `src`, TypeScript will pull those files into this program and
   // check them again here.** That is correct but no longer free, so check what
   // it costs before adding such an import.

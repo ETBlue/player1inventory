@@ -10,6 +10,8 @@
     "build": "prisma generate && tsc --noEmit && tsc -p tsconfig.scripts.json && node scripts/build.mjs && node scripts/check-start.mjs",
     "typecheck": "prisma generate && tsc --noEmit && tsc -p tsconfig.scripts.json",
     "verify:migration": "tsx scripts/verify-migration.ts",
+    "e2e:db:migrate": "tsx scripts/e2eLocalDb.ts migrate",
+    "e2e:db:status": "tsx scripts/e2eLocalDb.ts status",
     "start": "node dist/index.js",
     "test": "vitest run",
     "postinstall": "prisma generate"
