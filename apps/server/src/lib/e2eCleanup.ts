@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client'
 import type { Request, Response } from 'express'
-import { E2E_CLEANUP_FUNCTION_SQL } from './e2eCleanupSql.js'
+import { E2E_CLEANUP_INSTALL_SQL } from './e2eCleanupSql.js'
 import { prisma } from './prisma.js'
 import { forgetSeenToday } from './userRow.js'
 
@@ -23,6 +23,15 @@ import { forgetSeenToday } from './userRow.js'
 // `e2eCleanup.test.ts` pins the one query, the bound user ids, the counts, the
 // order of the deletes in the SQL text, and that `forgetSeenToday` runs after
 // the query. `purge-coverage.test.ts` pins the WHERE of each statement.
+//
+// ── EVERY E2E USER AT ONCE (E2E speed plan, task S.3) ──
+//
+// A body `{ "allE2eUsers": true }`, with no header, cleans every user whose
+// id starts with `e2e-` and every household with no member outside them, in
+// ONE query to `e2e_cleanup_all()`. `e2e/global-setup.ts` calls it once
+// before a cloud run, to delete what a killed run left behind. The answer
+// adds `userIds`, the users it deleted; each one is forgotten by
+// `forgetSeenToday`.
 //
 // ── WHAT IT DELETES (households H3a, task 3.10) ──
 //
@@ -106,12 +115,13 @@ export const CLEANUP_MODEL_KEYS = [
 export type CleanupModelKey = (typeof CLEANUP_MODEL_KEYS)[number]
 
 /**
- * Creates or replaces the `e2e_cleanup` SQL function. The E2E server calls it
- * once at start, before it listens (decision D4). It throws on any failure;
- * `index.ts` then logs `errorCodeOf(err)` and stops.
+ * Creates or replaces the three cleanup SQL functions (`e2e_cleanup_rows`,
+ * `e2e_cleanup`, `e2e_cleanup_all`), one statement each. The E2E server calls
+ * it once at start, before it listens (decision D4). It throws on any
+ * failure; `index.ts` then logs `errorCodeOf(err)` and stops.
  */
 export async function installE2eCleanupFunction(): Promise<void> {
-  await prisma.$executeRawUnsafe(E2E_CLEANUP_FUNCTION_SQL)
+  for (const sql of E2E_CLEANUP_INSTALL_SQL) await prisma.$executeRawUnsafe(sql)
 }
 
 /**
@@ -152,7 +162,26 @@ function countsFrom(
 }
 
 export async function e2eCleanupHandler(req: Request, res: Response): Promise<void> {
+  const body: unknown = req.body
+  const bodyKeys =
+    typeof body === 'object' && body !== null && !Array.isArray(body) ? Object.keys(body) : []
   const userId = req.headers['x-e2e-user-id'] as string | undefined
+
+  // `{ "allE2eUsers": true }`: every E2E user at once (task S.3, decision D8).
+  // Only on its own: with a header or any other key it is a 400, so a caller
+  // cannot mean one user and clean them all.
+  if (bodyKeys.includes('allE2eUsers')) {
+    const flag = (body as Record<string, unknown>).allE2eUsers
+    if (flag !== true || bodyKeys.length !== 1 || userId !== undefined) {
+      res.status(400).json({
+        error: 'allE2eUsers must be true, alone, and without the x-e2e-user-id header',
+      })
+      return
+    }
+    await cleanupAllE2eUsers(res)
+    return
+  }
+
   if (!userId) {
     res.status(400).json({ error: 'Missing x-e2e-user-id header' })
     return
@@ -187,4 +216,36 @@ export async function e2eCleanupHandler(req: Request, res: Response): Promise<vo
     return
   }
   res.json({ ok: true, deleted: counts.deleted })
+}
+
+/**
+ * `DELETE /e2e/cleanup` with `{ "allE2eUsers": true }`, for
+ * `e2e/global-setup.ts`: ONE query to `e2e_cleanup_all()`, which deletes
+ * every user whose id starts with `e2e-` and every household with no member
+ * outside them (lib/e2eCleanupSql.ts). It answers the same 22 counts as the
+ * one-user form, plus `userIds`, the ids it deleted.
+ */
+async function cleanupAllE2eUsers(res: Response): Promise<void> {
+  const rows = await prisma.$queryRaw<{ result: unknown }[]>(
+    Prisma.sql`SELECT e2e_cleanup_all() AS result`,
+  )
+  const result = rows[0]?.result
+  const { deleted, userIds } =
+    typeof result === 'object' && result !== null
+      ? (result as { deleted?: unknown; userIds?: unknown })
+      : { deleted: undefined, userIds: undefined }
+
+  if (!Array.isArray(userIds) || !userIds.every((id) => typeof id === 'string')) {
+    res.status(500).json({ error: 'e2e_cleanup_all answered no list of user ids' })
+    return
+  }
+  // After the query, for the same reason as in the one-user form above.
+  for (const id of userIds) forgetSeenToday(id)
+
+  const counts = countsFrom(deleted)
+  if ('badKey' in counts) {
+    res.status(500).json({ error: `e2e_cleanup_all answered a bad count: ${counts.badKey}` })
+    return
+  }
+  res.json({ ok: true, deleted: counts.deleted, userIds })
 }

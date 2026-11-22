@@ -7,7 +7,7 @@
  * `clearAllData` (import.resolver.ts) and the E2E-only `DELETE /e2e/cleanup`
  * endpoint each hand-maintain a list of deletes: `deleteMany` calls for the
  * first, and, since the E2E speed plan task S.2, `DELETE FROM` statements in
- * the SQL function `E2E_CLEANUP_FUNCTION_SQL` (lib/e2eCleanupSql.ts) for the
+ * the SQL functions of `E2E_CLEANUP_INSTALL_SQL` (lib/e2eCleanupSql.ts) for the
  * second. Since households H6 task J.4 the first list is the body of
  * `deleteHouseholdData` (lib/household.ts), which `clearAllData` and
  * `deleteHousehold` both call, so that path is labelled after the helper. Nothing links those lists to `prisma/schema.prisma`, so adding a
@@ -53,9 +53,15 @@ import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { E2E_CLEANUP_FUNCTION_SQL } from '../lib/e2eCleanupSql.js'
+import { E2E_CLEANUP_INSTALL_SQL } from '../lib/e2eCleanupSql.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
+
+// The whole SQL the E2E server installs: `e2e_cleanup_rows` (the 22 deletes),
+// `e2e_cleanup` and `e2e_cleanup_all` (since task S.3; they choose the users
+// and households and call the first). Read together, so a DELETE added to
+// either entry function is seen and counted too.
+const E2E_CLEANUP_FUNCTION_SQL = E2E_CLEANUP_INSTALL_SQL.join('\n')
 
 function read(relativePath: string): string {
   return readFileSync(resolve(HERE, relativePath), 'utf8')

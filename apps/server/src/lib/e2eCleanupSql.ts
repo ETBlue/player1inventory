@@ -71,32 +71,37 @@
 // It takes a LIST of users (`user_ids text[]`). The route sends one today;
 // task S.4 sends several. `x = ANY(user_ids)` is `x = <the one id>` for a
 // list of one.
+//
+// ── THREE FUNCTIONS (since task S.3) ──
+//
+// | Function              | Who calls it                          | Chooses                        |
+// |-----------------------|---------------------------------------|--------------------------------|
+// | `e2e_cleanup_rows`    | the two below                         | nothing: it runs the 22 deletes |
+// | `e2e_cleanup`         | the route, `x-e2e-user-id`            | the households the users own   |
+// | `e2e_cleanup_all`     | the route, `{ "allE2eUsers": true }`  | every E2E user and household   |
+//
+// The 22 deletes are written once, in `e2e_cleanup_rows`, so the two entry
+// points cannot drift apart. A function that calls another is still ONE
+// statement of the caller, so still one transaction and one round trip.
 
-export const E2E_CLEANUP_FUNCTION_SQL = `
-CREATE OR REPLACE FUNCTION e2e_cleanup(user_ids text[]) RETURNS jsonb
+/**
+ * `e2e_cleanup_rows(user_ids, owned)`: the 22 deletes. It deletes the
+ * households in `owned` with everything in them, and the listed users' own
+ * rows elsewhere, then the users. It decides nothing: the two functions below
+ * choose `user_ids` and `owned` and call it.
+ */
+export const E2E_CLEANUP_ROWS_SQL = `
+CREATE OR REPLACE FUNCTION e2e_cleanup_rows(user_ids text[], owned text[]) RETURNS jsonb
 LANGUAGE plpgsql
-AS $e2e_cleanup$
+AS $e2e_cleanup_rows$
 DECLARE
-  owned text[];
   result jsonb := '{}'::jsonb;
 BEGIN
-  -- An empty list would delete no user but still run every statement. A
-  -- NULL list would make every "= ANY(user_ids)" unknown. Both mean the
-  -- caller forgot the users, so refuse.
-  IF user_ids IS NULL OR cardinality(user_ids) = 0 THEN
-    RAISE EXCEPTION 'e2e_cleanup: no user ids';
+  -- NULL lists would make every "= ANY(...)" unknown, so a delete would
+  -- match nothing and the counts would lie. Both callers pass a list.
+  IF user_ids IS NULL OR owned IS NULL THEN
+    RAISE EXCEPTION 'e2e_cleanup_rows: a list is NULL';
   END IF;
-
-  -- The households a listed user OWNS. Read by the "HouseholdMember" row,
-  -- which is the source of truth for rights (decision H15), not by
-  -- "Household"."ownerId", which only mirrors it. Read in the same
-  -- transaction as the deletes, so no household can start to be owned in
-  -- between (until task S.2 this read ran before the transaction).
-  -- COALESCE, so a user who owns nothing gets an empty list, which matches
-  -- no row. It is never NULL.
-  SELECT COALESCE(array_agg(DISTINCT "householdId"), '{}'::text[]) INTO owned
-  FROM "HouseholdMember"
-  WHERE "userId" = ANY(user_ids) AND "role" = 'owner';
 
   -- ORDER MATTERS FOR THE COUNTS, not only for the deletes. Every child is
   -- deleted before its parent, so each count is the number of rows this
@@ -300,5 +305,104 @@ BEGIN
 
   RETURN result;
 END;
+$e2e_cleanup_rows$;
+`
+
+/**
+ * `e2e_cleanup(user_ids)`: the route's one-user (and, from task S.4, several
+ * users) form. It reads the households a listed user owns, then calls
+ * `e2e_cleanup_rows`.
+ */
+export const E2E_CLEANUP_FUNCTION_SQL = `
+CREATE OR REPLACE FUNCTION e2e_cleanup(user_ids text[]) RETURNS jsonb
+LANGUAGE plpgsql
+AS $e2e_cleanup$
+DECLARE
+  owned text[];
+BEGIN
+  -- An empty list would delete no user but still run every statement. A
+  -- NULL list would make every "= ANY(user_ids)" unknown. Both mean the
+  -- caller forgot the users, so refuse.
+  IF user_ids IS NULL OR cardinality(user_ids) = 0 THEN
+    RAISE EXCEPTION 'e2e_cleanup: no user ids';
+  END IF;
+
+  -- The households a listed user OWNS. Read by the "HouseholdMember" row,
+  -- which is the source of truth for rights (decision H15), not by
+  -- "Household"."ownerId", which only mirrors it. Read in the same
+  -- transaction as the deletes, so no household can start to be owned in
+  -- between (until task S.2 this read ran before the transaction).
+  -- COALESCE, so a user who owns nothing gets an empty list, which matches
+  -- no row. It is never NULL.
+  SELECT COALESCE(array_agg(DISTINCT "householdId"), '{}'::text[]) INTO owned
+  FROM "HouseholdMember"
+  WHERE "userId" = ANY(user_ids) AND "role" = 'owner';
+
+  RETURN e2e_cleanup_rows(user_ids, owned);
+END;
 $e2e_cleanup$;
 `
+
+/**
+ * `e2e_cleanup_all()`: every E2E user and every E2E household, for
+ * `e2e/global-setup.ts` (E2E speed plan, task S.3, decision D8). It answers
+ * `{ "deleted": <the 22 counts>, "userIds": [<the ids it deleted>] }`, so the
+ * route can call `forgetSeenToday` for each one.
+ *
+ * - The users: every "User" row whose id starts with `e2e-`. Every E2E user
+ *   id does: `E2E_USER_ID` is `e2e-test-user`, and every other id is built
+ *   from `E2E_SECOND_USER_ID`, `e2e-test-user-2` (`e2e/constants.ts`).
+ *   `e2eCleanup.test.ts` reads both constants and checks them against the
+ *   prefix written here.
+ * - The households: those an E2E user owns (the same rule as
+ *   `e2e_cleanup`), and every household with no member who is NOT an E2E
+ *   user. That second rule also takes a household with no member at all, and
+ *   one whose owner's account was deleted and that only E2E users are left
+ *   in: a killed run can leave both, and no owner rule finds them.
+ *
+ * A household with any member who is not an E2E user is never taken by the
+ * second rule. The test database holds only E2E data, so there should be
+ * none; the rule keeps the cleanup inside E2E rows if one ever appears.
+ */
+export const E2E_CLEANUP_ALL_FUNCTION_SQL = `
+CREATE OR REPLACE FUNCTION e2e_cleanup_all() RETURNS jsonb
+LANGUAGE plpgsql
+AS $e2e_cleanup_all$
+DECLARE
+  user_ids text[];
+  owned text[];
+BEGIN
+  SELECT COALESCE(array_agg("id"), '{}'::text[]) INTO user_ids
+  FROM "User"
+  WHERE "id" LIKE 'e2e-%';
+
+  SELECT COALESCE(array_agg(DISTINCT "id"), '{}'::text[]) INTO owned
+  FROM (
+    SELECT "householdId" AS "id" FROM "HouseholdMember"
+    WHERE "userId" = ANY(user_ids) AND "role" = 'owner'
+    UNION
+    SELECT h."id" FROM "Household" h
+    WHERE NOT EXISTS (
+      SELECT 1 FROM "HouseholdMember" m
+      WHERE m."householdId" = h."id" AND m."userId" NOT LIKE 'e2e-%'
+    )
+  ) AS households;
+
+  RETURN jsonb_build_object(
+    'deleted', e2e_cleanup_rows(user_ids, owned),
+    'userIds', to_jsonb(user_ids)
+  );
+END;
+$e2e_cleanup_all$;
+`
+
+/**
+ * Every function, in the order the E2E server creates them. One string per
+ * statement: Prisma sends a raw query as one prepared statement, and Postgres
+ * refuses several commands in one prepared statement.
+ */
+export const E2E_CLEANUP_INSTALL_SQL: readonly string[] = [
+  E2E_CLEANUP_ROWS_SQL,
+  E2E_CLEANUP_FUNCTION_SQL,
+  E2E_CLEANUP_ALL_FUNCTION_SQL,
+]
