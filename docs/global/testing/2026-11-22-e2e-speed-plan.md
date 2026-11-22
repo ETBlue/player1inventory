@@ -227,24 +227,57 @@ Why the PR A estimate is 15–20 min and not more: see *Facts*, the 55% figure.
 **Files:** `e2e/run-all.sh`, `e2e/playwright.config.ts`, `scripts/spec/e2e-times.mjs`,
 `scripts/spec/e2e-times.test.mjs`, `.gitignore`.
 
-- [ ] **Step 1:** in the config, `reporter` becomes `[['html'], ['json']]` when
+- [x] **Step 1:** in the config, `reporter` becomes `[['html'], ['json']]` when
   `PLAYWRIGHT_JSON_OUTPUT_FILE` is set, else `'html'` as today. Keep whatever prints the
   "N passed" lines that `run-all.sh` reads; check that the summary table still shows counts.
-- [ ] **Step 2:** `run-all.sh` sets `PLAYWRIGHT_JSON_OUTPUT_FILE="e2e-results/$project.json"`
+- [x] **Step 2:** `run-all.sh` sets `PLAYWRIGHT_JSON_OUTPUT_FILE="e2e-results/$project.json"`
   for each project, and at the end runs `node scripts/spec/e2e-times.mjs e2e-results/*.json`.
   A missing or broken JSON file prints a warning and does not change the exit code.
-- [ ] **Step 3:** `e2e-times.mjs` reads Playwright's JSON (`stats`, `suites`, `specs`,
+- [x] **Step 3:** `e2e-times.mjs` reads Playwright's JSON (`stats`, `suites`, `specs`,
   `tests`, `results[].duration`), and prints per project: the total, the 15 slowest tests
   (file, title, seconds), and the time per spec file, largest first. Test it with
   `node --test` on two small fixture files, one with a nested `describe`, one with a
   retried test (count both results).
-- [ ] **Step 4:** `.gitignore` gets `e2e-results/`.
-- [ ] **Step 5: the baseline.** Run the whole gate once, `pnpm test:e2e:all`, with nothing
+- [x] **Step 4:** `.gitignore` gets `e2e-results/`.
+- [x] **Step 5: the baseline.** Run the whole gate once, `pnpm test:e2e:all`, with nothing
   else running on the machine (check `uptime` and free memory first). Copy
   `e2e-results/` to the session scratchpad. Record in this task's *Done* note: each
   project's time and counts, the 10 slowest cloud spec files, and the load average. This is
   the "before" for every later task.
-- [ ] **Step 6:** the gate without E2E (root `CLAUDE.md`, *Verification Gate*).
+- [x] **Step 6:** the gate without E2E (root `CLAUDE.md`, *Verification Gate*).
+
+**Done 2026-11-22** in `872e354b` (the script and its 8 tests) and `11a9466b` (config,
+`run-all.sh`, `.gitignore`), on `chore/e2e-speed`.
+
+- No configured reporter prints to the terminal (`html` never does; `json` does not when it
+  has an output file), so Playwright 1.58 adds its `line` reporter and the "N passed" lines
+  still print. `run-all.sh` deletes each `e2e-results/<project>.json` before its run, and
+  passes the three files by name to `e2e-times.mjs`. A `--reporter=…` argument replaces the
+  config's reporters, so then no JSON is written.
+- Gate without E2E: lint, build (TS6385: 0), build-storybook and check all pass. `pnpm test`:
+  web 3899 / 378 files, server 2834 / 89, `scripts/spec` 78 (70 + 8).
+- Mutations: reading only the first `results[]` entry turns 2 tests red; skipping nested
+  suites turns 5 tests red. Both restored from a copy, green again.
+
+**Baseline** (`pnpm test:e2e:all`, 2026-11-22 20:36–21:45 CST, at `11a9466b`, all green):
+
+| Project | Time | JSON `stats.duration` | Counts |
+|---|---|---|---|
+| local | 3m44s | 222.5 s | 179 passed, 11 skipped |
+| cloud | 64m08s | 3847.8 s | 210 passed, 8 skipped |
+| pwa | 1m34s | 93.3 s | 73 passed |
+| whole gate | 69m26s wall clock | | 0 failed, 0 flaky |
+
+Each JSON total is within 2 s of the run-all time. In cloud the tests add up to 3839.9 s of
+3847.8 s, so the run overhead is about 8 s. Load average (1 min, 70 samples every 60 s):
+3.65 at the start, min 0.76, max 3.65, mean 1.73. "Inactive" memory never fell below 6.37 GB.
+
+10 slowest cloud spec files (s): `household-ownership` 394.8, `household-invites` 324.4,
+`settings/import-export-cloud` 317.6, `location-people` 251.3, `location-switcher` 175.7,
+`settings/import-households` 166.0, `shared-cart` 161.1, `household-activity-purges` 153.4,
+`household-switch` 149.6, `unified-item-search` 148.7. Slowest test: "user can export and
+re-import cloud data (cloud → cloud)", 55.8 s. 7 of the 15 slowest tests are in
+`household-ownership.spec.ts` (41–48 s each).
 
 **Mutation checks:**
 
@@ -644,6 +677,10 @@ Otherwise the run gets killed, as on 2026-10-31.
 | Where | It said | What is true |
 |---|---|---|
 | P2 | read the collation with `current_setting('lc_collate')` | Postgres 16 removed the `lc_collate` and `lc_ctype` settings. On the Neon TEST branch (Postgres 17) it fails with `ERROR: unrecognized configuration parameter "lc_collate" (SQLSTATE 42704)`. The collation is a column of `pg_database`: `SELECT datcollate, datctype, datlocprovider, datlocale FROM pg_database WHERE datname = current_database();` (`datlocale` is the Postgres 17 name; it was `daticulocale` before) |
+| *Summary*, gate table; *Expected times* | cloud 65m39s, whole gate about 71 min | S.1 baseline at `11a9466b`: cloud 64m08s, whole gate 69m26s (local 3m44s, pwa 1m34s). One run, so part of the gap may be normal variation |
+| S.1 step 1 | "Keep whatever prints the N passed lines" | nothing in the config prints them. Playwright adds its `line` reporter when no configured reporter writes to the terminal, which is still true with `html` plus `json` to a file |
+| S.1 step 2 | run `e2e-times.mjs e2e-results/*.json` | the glob can read a stale or foreign file. `run-all.sh` deletes each project's file before its run and passes the three files by name |
+| *Known gaps* (missing) | — | each Playwright run deletes `test-results/`, so inside `run-all.sh` a failure in `local` loses its error files when `cloud` starts. Keep `test-results/` per project (S.5 or S.9) |
 
 ## Status
 
