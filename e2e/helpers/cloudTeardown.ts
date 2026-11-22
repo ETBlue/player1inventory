@@ -12,9 +12,10 @@ import { CLOUD_SERVER_URL, E2E_USER_ID } from '../constants'
  * `locationPreferences`); `users` is the `User` row itself,
  * deleted last.
  *
- * This list is the contract between the route and the tests. A model dropped
- * from the route's `$transaction` loses its key there, and `cleanupCloudData`
- * below throws on the next cloud test that runs — which is every cloud test.
+ * This list is the contract between the route and the tests. A delete dropped
+ * from the route's SQL function (apps/server/src/lib/e2eCleanupSql.ts) loses
+ * its key there, and `cleanupCloudData` below throws on the next cloud test
+ * that runs — which is every cloud test.
  *
  * The server keeps the same list as `CLEANUP_MODEL_KEYS` in
  * apps/server/src/lib/e2eCleanup.ts. `e2eCleanup.test.ts` reads this file as
@@ -54,10 +55,17 @@ export type CleanupResponse = {
 }
 
 /**
- * Delete one user's households and account, and return the per-model deleted
- * counts. "The user's households" means the households the user OWNS. A
- * household the user only belongs to is not deleted; only the user's own role
- * rows in it go (apps/server/src/lib/e2eCleanup.ts).
+ * Delete one or more users' households and accounts, in ONE request, and
+ * return the per-model deleted counts (summed over the users). "The users'
+ * households" means:
+ *
+ * - every household a listed user OWNS;
+ * - every household whose members are ALL in the list (E2E speed plan,
+ *   decision D6, owner answer P5-A). This is what deletes a household a
+ *   failed test left with no owner, when the spec lists all its users.
+ *
+ * A household with any member outside the list is not deleted; only the
+ * listed users' own role rows in it go (apps/server/src/lib/e2eCleanup.ts).
  *
  * Call it from `beforeEach` ONLY, guarded on `baseURL === CLOUD_WEB_URL`
  * (E2E speed plan, task S.3, decision D7, owner answer P3-A). A cleanup in
@@ -70,12 +78,14 @@ export type CleanupResponse = {
  * dirty.) What a killed run leaves for users this run never reaches is
  * deleted by `e2e/global-setup.ts`, once per cloud run.
  *
- * `userId` defaults to `E2E_USER_ID`, which is the only account the browser can
- * ever be. An API-only spec that writes as a second account (see
- * `E2E_SECOND_USER_ID` in `e2e/constants.ts`) must call this helper ONCE PER
- * USER in `beforeEach`. One call deletes one user's households — the ones that
- * user owns — so a second user's household left behind survives into the next
- * spec and fails it for a reason nobody will find.
+ * `userIds` defaults to `E2E_USER_ID`, which is the only account the browser
+ * can ever be. A spec that writes as other accounts (see
+ * `E2E_SECOND_USER_ID` in `e2e/constants.ts`) passes EVERY user it uses, in
+ * one list, in `beforeEach`. A user left out keeps their households, which
+ * survive into the next spec and fail it for a reason nobody will find. One
+ * string sends the `x-e2e-user-id` header; a list sends the `userIds` body.
+ * (Until task S.4 the route took one user per call, and a spec called this
+ * helper once per user.)
  *
  * ── WHAT IT CHECKS ───────────────────────────────────────────────────────────
  *
@@ -97,18 +107,21 @@ export type CleanupResponse = {
  */
 export async function cleanupCloudData(
   request: APIRequestContext,
-  userId: string = E2E_USER_ID,
+  userIds: string | readonly string[] = E2E_USER_ID,
 ): Promise<CleanupResponse> {
   // One URL for the request and for every error message below. Issue #325: all
   // three messages used to spell out the literal `/e2e/cleanup`, so they dropped
   // the host and port, and would have kept naming the old path after a rename.
   const url = `${CLOUD_SERVER_URL}/e2e/cleanup`
-  const response = await request.delete(url, {
-    headers: { 'x-e2e-user-id': userId },
-  })
+  // One user: the header, as before. A list: the `userIds` body, one request
+  // for all of them (E2E speed plan, task S.4, decision D5).
+  const response =
+    typeof userIds === 'string'
+      ? await request.delete(url, { headers: { 'x-e2e-user-id': userIds } })
+      : await request.delete(url, { data: { userIds: [...userIds] } })
   if (!response.ok()) {
     throw new Error(
-      `cleanupCloudData(${userId}): DELETE ${url} returned ${response.status()} ${response.statusText()} — ${await response.text()}`,
+      `cleanupCloudData(${String(userIds)}): DELETE ${url} returned ${response.status()} ${response.statusText()} — ${await response.text()}`,
     )
   }
 
@@ -125,7 +138,7 @@ export async function cleanupCloudData(
   )
   if (missing.length > 0) {
     throw new Error(
-      `cleanupCloudData: DELETE ${url} returned no deleted count for ${missing.join(', ')} — a model was dropped from the delete list in apps/server/src/lib/e2eCleanup.ts. Got ${JSON.stringify(deleted)}`,
+      `cleanupCloudData: DELETE ${url} returned no deleted count for ${missing.join(', ')} — a delete was dropped from the SQL function in apps/server/src/lib/e2eCleanupSql.ts. Got ${JSON.stringify(deleted)}`,
     )
   }
 
