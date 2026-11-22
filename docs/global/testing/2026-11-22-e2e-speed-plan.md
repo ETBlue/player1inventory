@@ -606,9 +606,9 @@ comments) and `7f3246fb` (gate record, `docs/INDEX.md`), on `chore/e2e-speed`.
 (new), `apps/server/scripts/databaseIsolation.ts`, `apps/server/src/lib/e2eDatabase.ts` and
 test (new), `apps/server/src/index.ts`, `apps/server/src/webhookRouteOrder.test.ts`.
 
-- [ ] **Step 0:** measure the baseline of `pnpm test` and of `pnpm --filter server build`
+- [x] **Step 0:** measure the baseline of `pnpm test` and of `pnpm --filter server build`
   (three runs).
-- [ ] **Step 1: failing tests** in `prisma.test.ts` (`resolveDatasourceUrl` stays a pure
+- [x] **Step 1: failing tests** in `prisma.test.ts` (`resolveDatasourceUrl` stays a pure
   function of its argument):
   - `E2E_TEST_MODE` not `true`: `undefined`, as today;
   - `E2E_DATABASE=neon`: `TEST_DATABASE_URL`; unset: throws, as today;
@@ -620,17 +620,17 @@ test (new), `apps/server/src/index.ts`, `apps/server/src/webhookRouteOrder.test.
   - `E2E_DATABASE` unset: the default of owner question **P7**;
   - any other value: throws.
   No error message prints a URL or a host.
-- [ ] **Step 2:** move `databaseIdentity` and `assertNotAnotherDatabase` into
+- [x] **Step 2:** move `databaseIdentity` and `assertNotAnotherDatabase` into
   `src/lib/databaseUrl.ts`; `scripts/databaseIsolation.ts` re-exports them, so
   `databaseIsolation.test.ts` and `verify-migration.ts` do not change. Measure the server
   build again: the scripts pass now also checks one `src` file (root `CLAUDE.md`, *The
   no-overlap trick*). Record the cost.
-- [ ] **Step 3: `GET /e2e/database`.** Answers `{ kind, migrations: { applied, latest } }`:
+- [x] **Step 3: `GET /e2e/database`.** Answers `{ kind, migrations: { applied, latest } }`:
   `kind` from `E2E_DATABASE`; `applied` and `latest` from `_prisma_migrations` (finished and
   not rolled back). Unit test: no field holds a URL, a host or a password (check the JSON
   text for `://` and `@`). Mount it inside `if (E2E_TEST_MODE)`;
   `webhookRouteOrder.test.ts` fails when it is outside.
-- [ ] **Step 4:** the gate without E2E.
+- [x] **Step 4:** the gate without E2E.
 
 **Mutation checks:**
 
@@ -640,6 +640,38 @@ test (new), `apps/server/src/index.ts`, `apps/server/src/webhookRouteOrder.test.
 | `TEST_DATABASE_URL` left out of the compared variables | the same-identity test for it |
 | `E2E_DATABASE=local` falls back to `TEST_DATABASE_URL` when the local URL is unset | the "unset throws" test |
 | `/e2e/database` mounted outside the E2E block | `webhookRouteOrder.test.ts` |
+
+**Done 2026-11-23** in `ff681b34` (the switch) and `d18391cd` (`GET /e2e/database`), on
+`chore/e2e-speed-b`.
+
+- **The switch:** `resolveDatasourceUrl` reads `E2E_DATABASE` through `e2eDatabaseKind`
+  (`src/lib/databaseUrl.ts`; unset or empty means `local`, P7-A; any other value throws
+  without repeating it). `local` takes `E2E_LOCAL_DATABASE_URL` and refuses it when unset,
+  when a host is not `localhost`, `127.0.0.1`, `::1`, no host or a socket path (`?host=` and
+  `?hostaddr=` are checked too), or when it is the same database as ANY other `*_URL`
+  variable, the TEST_ ones included (`findSameDatabase`, which names the variable only).
+  `neon` takes `TEST_DATABASE_URL`, as before. No branch falls back to the other database.
+  No new message prints a URL or a host.
+- **The move:** `databaseIdentity`, `assertNotAnotherDatabase` and `TEST_URL_VAR_NAMES`
+  are in `src/lib/databaseUrl.ts`, which imports nothing. `scripts/databaseIsolation.ts`
+  re-exports them; `verify-migration.ts` and `databaseIsolation.test.ts` (15 tests) did not
+  change. The scripts pass now checks 237 files, 1 of them from `src` (was 236, 0).
+- **The route:** `{ kind, migrations: { applied, latest } }` from one `$queryRaw` on
+  `"_prisma_migrations"` (finished, not rolled back; `latest` is the largest name). A
+  database error answers 500 with the error's class and codes only. Mounted inside the
+  `E2E_TEST_MODE` block; `webhookRouteOrder.test.ts` checks it (six handlers now).
+- **Gate without E2E:** all green. `pnpm test`: web 3899 / 378, server 2904 / 90 (was
+  2861 / 89), `scripts/spec` 78. esbuild 279.6 KiB (was 275.8). TS6385: 0. The new
+  `prisma.test.ts` against the old `prisma.ts`: 31 of 34 red.
+- **Build time** (3 runs, load average 14 to 37): server build 4.89, 4.57, 4.60 s before;
+  4.96, 4.65, 4.69 s after. `tsc -p tsconfig.scripts.json` alone: 1.06, 0.92, 0.92 s before;
+  1.07, 0.93, 0.94 s after. No cost that the noise lets us see.
+- **Mutations:** all 4 of the table went red (loopback check removed: 7 tests;
+  `TEST_DATABASE_URL` not compared: 1; local falls back to Neon: 1; route outside the
+  block: 4 `webhookRouteOrder` tests). Extra: "unset means neon" red; `?host=` not
+  checked: 2 red; bad value repeated in the message: 4 red in `prisma.test.ts`.
+- **Until S.7 step 4, `--project=cloud` does not start** with `E2E_DATABASE` unset: the
+  server asks for `E2E_LOCAL_DATABASE_URL`. Use `E2E_DATABASE=neon` until then.
 
 ## Task S.7 — the local database: install, create, migrate (a person runs the database steps)
 
@@ -854,6 +886,13 @@ Otherwise the run gets killed, as on 2026-10-31.
 | S.5 brief, the count command | `grep -c '^  DELETE FROM "' apps/server/src/lib/e2eCleanupSql.ts` gives 22 | it gives 0: the statements are indented 4 spaces. `grep -cE '^ +DELETE FROM "' …` gives 22 |
 | *Expected times* | after PR A: whole gate about 50–55 min, cloud about 45–50 min | 45m52s and 40m35s (S.5 gate, one run) |
 | *Expected times* | — | the cloud time moves by more than 10% between runs of the same code (2177.8 s at S.3, 2435.0 s at S.5), browserless specs included. Quote PR A's gain from more than one gate |
+| S.6 step 1 | the local URL is compared with `DATABASE_URL`, `DIRECT_URL`, `TEST_DATABASE_URL`, `TEST_DIRECT_URL` or `PROD_COPY_DATABASE_URL` | the existing guard has no list: it compares every variable whose name ends in `_URL`. The local check does the same and skips only `E2E_LOCAL_DATABASE_URL`, so `PROD_COPY_DIRECT_URL` and any later variable are compared too |
+| S.6 step 1 | "No error message prints a URL or a host" | true for the new code. The old `assertNotAnotherDatabase` message (verify-migration's guard) still prints `host/db`; kept so its test does not change |
+| S.6 step 2 | the move needs only a re-export | the `tsconfig.scripts.json` comment and the `databaseIsolation.ts` header both said `scripts/` imports nothing from `src`; both had to change |
+| S.6 step 2 | "Measure the server build again" | the whole build moves by more than the cost under load. Measure `tsc -p tsconfig.scripts.json` alone and its `--listFiles` count (236 → 237) |
+| S.6 / S.7 (missing) | — | P7-A makes the server ask for `E2E_LOCAL_DATABASE_URL` as soon as S.6 lands, so `--project=cloud` does not start until S.7 step 4 (or with `E2E_DATABASE=neon`) |
+| S.7 step 3 (missing) | — | `postgresql://u@/db?host=/tmp` (a user and no host) is not a valid URL in Node, so the server refuses it. Use `localhost`, or `postgresql:///db?host=/tmp` |
+| D12 (missing) | — | `kind` in `/e2e/database` comes from `E2E_DATABASE`, not from the URL the client used. Both come from the same `process.env` at start, so they agree |
 
 ## Status
 
