@@ -263,6 +263,110 @@ user no longer leaves rows in the dev database. If `E2E_TEST_MODE=true` and
 `DATABASE_URL` (covered by `apps/server/src/lib/prisma.test.ts`) — so a missing test
 database fails loudly instead of silently writing multi-user fixtures into dev.
 
+## The local E2E database — since 2026-11-23 (E2E speed plan, task S.7)
+
+The `cloud` project can run on a Postgres on this Mac instead of the Neon test branch. A
+query there takes well under 1 ms, against about 52 ms on Neon. The server picks the
+database with `E2E_DATABASE` (`apps/server/src/lib/prisma.ts`, task S.6):
+
+| `E2E_DATABASE` | Database | Variable in `apps/server/.env` |
+|---|---|---|
+| `local`, or unset | the local E2E database | `E2E_LOCAL_DATABASE_URL` |
+| `neon` | the Neon test branch | `TEST_DATABASE_URL` |
+
+**Until `E2E_LOCAL_DATABASE_URL` is set, `--project=cloud` does not start** with
+`E2E_DATABASE` unset: the server asks for the local URL. Use `E2E_DATABASE=neon` until then.
+
+### It must match Neon
+
+Read on 2026-11-22 by the owner, on the Neon TEST branch and on production:
+
+| Setting | Neon (TEST and production) | Local |
+|---|---|---|
+| Version | PostgreSQL 17.12 | PostgreSQL 17.12 (Homebrew `postgresql@17`, installed 2026-11-23) |
+| Locale provider (`datlocprovider`) | `b` (builtin) | `b` (builtin) |
+| Locale (`datlocale`) | `C.UTF-8` | `C.UTF-8` |
+| `datcollate`, `datctype` | `C.UTF-8` | `C` (the builtin provider does not use them for sorting) |
+| Time zone | GMT | `UTC` (set on the database) |
+
+Why it matters: `householdMembers` and `locationPeople` sort names in SQL, and
+`location-people.spec.ts` and `household-invites.spec.ts` check that order. Another
+collation sorts "ben" and "Bea" differently. With the builtin provider and `C.UTF-8`, text
+sorts by code point, the same on every machine. **Nothing checks the version or the
+collation at run time.** When Neon moves to a new major version, a person must notice and
+change the local database too.
+
+### Set it up (a person runs these; no agent does)
+
+1. Install and start Postgres 17 (owner answer P1-A):
+
+   ```bash
+   brew install postgresql@17
+   brew services start postgresql@17
+   ```
+
+   It listens on `localhost` only. Homebrew's `initdb` uses the shell's locale for the
+   cluster (`en_US.UTF-8` here). That does not matter: the database sets its own.
+2. Create the database with Neon's locale provider, and set its time zone:
+
+   ```bash
+   createdb -h localhost --template=template0 --locale-provider=builtin \
+     --builtin-locale=C.UTF-8 --locale=C p1i_e2e
+   psql -h localhost -d postgres -c "ALTER DATABASE p1i_e2e SET timezone TO 'UTC'"
+   ```
+
+   `--locale=C` sets only `datcollate` and `datctype`. Do not pass `--locale=C.UTF-8`:
+   macOS may have no libc `C.UTF-8` locale. Check it with the P2 query. `datlocprovider`
+   must be `b` and `datlocale` must be `C.UTF-8`:
+
+   ```bash
+   psql -h localhost -d p1i_e2e -c "SELECT datcollate, datctype, datlocprovider, datlocale FROM pg_database WHERE datname = current_database();"
+   ```
+
+   (Do not use `current_setting('lc_collate')`: Postgres 16 removed that setting.)
+3. Put the URL in `apps/server/.env`, never in the repo:
+
+   ```bash
+   E2E_LOCAL_DATABASE_URL="postgresql://<your mac user>@localhost:5432/p1i_e2e"
+   ```
+
+   The server and the script refuse a host that is not `localhost`, `127.0.0.1`, `::1` or a
+   socket path, and a URL that names the same database as any other `*_URL` variable
+   (`DATABASE_URL`, `DIRECT_URL`, `TEST_DATABASE_URL`, …). **`postgresql://<user>@/p1i_e2e?host=/tmp`
+   is refused**: a user with no host is not a valid URL in Node. Use `localhost`, or
+   `postgresql:///p1i_e2e?host=/tmp`.
+4. Apply the migrations, then check:
+
+   ```bash
+   pnpm --filter server e2e:db:migrate   # prisma migrate deploy
+   pnpm --filter server e2e:db:status    # expect "Database schema is up to date!"
+   ```
+
+**After every new migration, run `pnpm --filter server e2e:db:migrate`.** Nothing applies
+migrations to the local database by itself. Once task S.8 is built, the `cloud` run stops
+at the start until you do (`globalSetup` compares `GET /e2e/database` with the number of
+migration folders).
+
+### What `e2e:db:migrate` and `e2e:db:status` do
+
+Both run `apps/server/scripts/e2eLocalDb.ts`:
+
+1. It reads `apps/server/.env`. A value already set in the shell wins, as with
+   `dotenv/config`.
+2. It refuses to go on unless `E2E_LOCAL_DATABASE_URL` is set and passes the task S.6 checks
+   (`assertLocalE2eDatabaseUrl` in `apps/server/src/lib/databaseUrl.ts`, the same function
+   the server calls). The identity check runs twice: on the merged environment, and on
+   `.env` alone, so a shell value cannot hide a `.env` variable that names the same
+   database.
+3. It runs `pnpm exec prisma migrate deploy` (or `migrate status`) with **both**
+   `DATABASE_URL` and `DIRECT_URL` set to the local URL. `schema.prisma` reads
+   `url = env("DATABASE_URL")` and `directUrl = env("DIRECT_URL")`, and Prisma Migrate uses
+   `directUrl`. With only `DATABASE_URL` changed, the migration would go to the database
+   that `DIRECT_URL` names in `.env`: the DEV database.
+
+No message of the script prints a URL or a host. Its tests (`scripts/e2eLocalDb.test.ts`)
+use made-up URLs and a fake runner; they never run Prisma.
+
 ## Every cloud spec uses `cleanupCloudData` — since 2026-09-25
 
 `e2e/helpers/cloudTeardown.ts` exports `cleanupCloudData(request, userIds?)`. It is the
