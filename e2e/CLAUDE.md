@@ -100,8 +100,18 @@ invocations. It does three things a plain `a && b && c` gets wrong:
 3. It sets `PLAYWRIGHT_HTML_OPEN=never`, so a failure does not open a browser
    and block a non-interactive run.
 
-Extra arguments are passed to every project run, e.g.
-`pnpm test:e2e:all --reporter=line`.
+4. It writes `e2e-results/<project>.json` (Playwright's JSON report, since E2E speed plan
+   task S.1) and, at the end, runs `scripts/spec/e2e-times.mjs` on the three files. That
+   prints each project's total, its 15 slowest tests and the time per spec file. So every
+   gate records the time of every test.
+5. It copies `test-results/` to `e2e-results/test-results-<project>/` right after each
+   project (since task S.5). The next Playwright run deletes `test-results/`, so before
+   this a failure in `local` lost its `error-context.md`, trace and screenshot as soon as
+   `cloud` started. A failed copy prints a warning and does not change the exit code.
+
+`e2e-results/` is gitignored. Extra arguments are passed to every project run, e.g.
+`pnpm test:e2e:all e2e/tests/a11y.spec.ts`. **Do not pass `--reporter=…`**: it replaces
+the config's reporters, so no JSON report is written and the times are lost.
 
 ## A stale `generated/graphql.ts` breaks E2E with symptoms that point elsewhere
 
@@ -131,16 +141,22 @@ that `pnpm test`, `pnpm check` and `build-storybook` all miss.
 
 ## Cloud E2E is not database-isolated
 
-The `cloud` project runs against whatever `DATABASE_URL` is set in `apps/server/.env` —
-normally the **dev database**. There is no dedicated test database.
+The `cloud` project runs against the **Neon test branch**, `TEST_DATABASE_URL` in
+`apps/server/.env`, never the dev database (since 2026-08-30; see *Fixed* below). But that
+test branch is ONE shared database: every worktree and every session that runs cloud E2E
+uses it, and `verify:migration` uses it too.
 
-Isolation is by **row ownership, not by database**: every write is scoped to
-`E2E_USER_ID` (`e2e/constants.ts`, `'e2e-test-user'`) and its household, and the
-`/e2e/cleanup` endpoint (`apps/server/src/lib/e2eCleanup.ts`) deletes only the households
-that user OWNS, the user's own role rows, and the `User` row (`{ where: { id: userId } }`).
-It never deletes all data. **Do not describe the cleanup endpoint as wiping the
-database.** (Until households H3a task 3.10 it ran `deleteMany({ where: { userId } })` per
-model.)
+So inside it, isolation is by **row ownership, not by database**. Every E2E user id starts
+with `e2e-` (`E2E_USER_ID` is `'e2e-test-user'`, every other id is built from
+`E2E_SECOND_USER_ID`). The `/e2e/cleanup` endpoint (`apps/server/src/lib/e2eCleanup.ts`,
+its SQL in `apps/server/src/lib/e2eCleanupSql.ts`) deletes only the listed users' rows:
+the households a listed user OWNS, the households whose members are ALL listed (decision
+D6 of the E2E speed plan), the users' own role rows elsewhere, and the `User` rows. The
+`{ "allE2eUsers": true }` form, used only by `e2e/global-setup.ts`, deletes every user
+whose id starts with `e2e-` and every household with no member outside them. It never
+deletes all data. **Do not describe the cleanup endpoint as wiping the database.** (Until
+households H3a task 3.10 it ran `deleteMany({ where: { userId } })` per model; until E2E
+speed plan task S.2 it ran 22 `deleteMany` in one array-form `$transaction`.)
 
 **Since 2026-11-11 the shared test database carries the households H3a schema.** The main
 session ran `verify:migration` there, which applies `drop_user_scope`: `Location` and the six
@@ -150,8 +166,10 @@ those columns. A cloud location is no longer "the default" (see below), and `/e2
 deletes **22** models since households H7b task M.1 added `LocationPreference` (21 since
 households H6b task K.1 added `OwnershipOffer`, 20 since
 households H6 task J.1 added `HouseholdActivity`, 19 since households H5b task G.6 added
-`HouseholdInvite`; count the distinct `deleteMany` models in `lib/e2eCleanup.ts`, measured
-22 on 2026-11-22).
+`HouseholdInvite`). Count the `DELETE` statements in the SQL:
+`grep -cE '^ +DELETE FROM "' apps/server/src/lib/e2eCleanupSql.ts` gave **22** on
+2026-11-23. (The old command counted `deleteMany` in `lib/e2eCleanup.ts`; since E2E speed
+plan task S.2 it prints 0.)
 
 The last E2E counts on the H3a branch, 2026-11-11, from **three separate runs** (not one
 `pnpm test:e2e:all`): `cloud` **126 passed / 7 skipped**, `local` **178 passed / 6 skipped**,
@@ -225,10 +243,41 @@ database fails loudly instead of silently writing multi-user fixtures into dev.
 
 ## Every cloud spec uses `cleanupCloudData` — since 2026-09-25
 
-`e2e/helpers/cloudTeardown.ts` exports `cleanupCloudData(request)`. It is the only
-version of the cloud teardown now. Call it from `beforeEach` and `afterEach`, guarded on
-`baseURL === CLOUD_WEB_URL`. The helper does **not** guard itself — without the guard a
-local run would fire a cloud cleanup.
+`e2e/helpers/cloudTeardown.ts` exports `cleanupCloudData(request, userIds?)`. It is the
+only version of the cloud teardown. Since the E2E speed plan (tasks S.3 and S.4,
+2026-11-22), the rules are:
+
+| Rule | Why |
+|---|---|
+| Call it from `beforeEach` ONLY, guarded on `baseURL === CLOUD_WEB_URL` (decision D7, owner answer P3-A) | each test starts clean whatever ran before it: a test that failed half way, an `afterEach` that failed, or a killed run. The `afterEach` call cleaned the same users a second time and added nothing |
+| Pass EVERY user the test uses, in ONE list: `cleanupCloudData(request, [A, B, E2E_USER_ID])` | one request. A household whose members are all in the list is deleted too (decision D6), so a household a failed test left with no owner goes with it. A user left out keeps their households |
+| One string (or no argument, which means `E2E_USER_ID`) sends the `x-e2e-user-id` header; a list sends the body `{ "userIds": [...] }` | the header form is the old one, kept for one user |
+| `afterEach` still closes contexts and clears IndexedDB in local mode | only the cloud cleanup left it |
+
+The helper does **not** guard itself — without the guard a local run would fire a cloud
+cleanup. `household-member-cleanup.spec.ts` is the one spec that still cleans one person at
+a time inside a test, because the order of those calls is its subject.
+
+**`e2e/global-setup.ts` cleans what a killed run left behind.** It runs once per Playwright
+invocation, and only when a cloud project is selected (`selectedProjects()` in
+`e2e/helpers/selectedProjects.ts`). It calls `DELETE /e2e/cleanup` with
+`{ "allE2eUsers": true }`, prints the counts on one line, and throws on any error, so a
+broken cleanup stops the run before the first test. Playwright 1.58 starts the `webServer`
+entries and waits for their URLs BEFORE `globalSetup`, so the API server is up. Every
+spec's own `beforeEach` cleans the users that spec uses; `globalSetup` is the only thing
+that cleans users of specs the run does not reach.
+
+**The route is one SQL function, so one cleanup is one database round trip** (since task
+S.2). The SQL is in `apps/server/src/lib/e2eCleanupSql.ts`: `e2e_cleanup_rows` (the 22
+deletes, written once), `e2e_cleanup` (the listed users) and `e2e_cleanup_all` (every E2E
+user). It is a function and not a Prisma `$transaction`, because Prisma sends each
+statement on its own: the old route took about **1.33 s** on the Neon test branch, the
+function about **56–68 ms**. The E2E server creates the three functions at start
+(`CREATE OR REPLACE`, inside the `if (E2E_TEST_MODE)` block of `index.ts`), so a
+production server never creates them. `verify:migration` drops the `public` schema and the
+functions with it; the next E2E server start makes them again. **The functions stay in the
+test database after a server stops.** So a mutation run leaves the mutated text there until
+the next E2E server start.
 
 Until 2026-09-25, 11 spec files hand-rolled the same request at 19 call sites:
 
@@ -272,7 +321,7 @@ that time is lost, with no error on screen: an import never runs, an open menu c
 So after a `cleanupCloudData` that runs mid-test, once a page has loaded, call
 `forgetDeletedHousehold(page)` (`e2e/helpers/cloudTeardown.ts`). It removes only that key.
 The four re-import tests of `settings/import-export-cloud.spec.ts` do this. The
-`beforeEach` and `afterEach` calls need nothing: each test has a fresh context.
+`beforeEach` call needs nothing: each test has a fresh context.
 
 ## `/e2e/cleanup` deletes `Location` and `ItemStock` — since 2026-09-14
 
@@ -287,14 +336,17 @@ visible in a single run, so it went unnoticed:
 - `ItemStock` rows went away by accident, through the `ON DELETE CASCADE` on their
   `itemId`, not because the endpoint asked for them.
 
-Both models are now in the `$transaction` list in `apps/server/src/lib/e2eCleanup.ts`.
+Both models are now in the delete list: the SQL function in
+`apps/server/src/lib/e2eCleanupSql.ts` since E2E speed plan task S.2 (a `$transaction` of
+`deleteMany` in `apps/server/src/lib/e2eCleanup.ts` before that).
 (The route's handler lived inline in `apps/server/src/index.ts` until households task 2.6
 moved it, so measurements below that name `index.ts` are about the same code.)
 
 **The guard that keeps the delete lists in step** is
 `apps/server/src/resolvers/purge-coverage.test.ts`. Since households H3a task 3.10, **two**
-paths hand-maintain a list — `clearAllData` (`import.resolver.ts`) and `/e2e/cleanup`
-(`lib/e2eCleanup.ts`). The third, `purgeUserData` (`purge.resolver.ts`), was removed in
+paths hand-maintain a list — `clearAllData` (`import.resolver.ts`, since households H6a the
+body of `deleteHouseholdData` in `lib/household.ts`) and `/e2e/cleanup` (the `DELETE FROM`
+statements of `lib/e2eCleanupSql.ts` since E2E speed plan task S.2). The third, `purgeUserData` (`purge.resolver.ts`), was removed in
 that task: it had no web caller, and it deleted by `userId`. The guard reads the source
 from disk, so a mock cannot satisfy it.
 
@@ -312,7 +364,16 @@ spec fails on the missing `itemStocks` count, but the rows are not at risk eithe
 
 ## `purge-coverage.test.ts` is a SOURCE-TEXT check — what it cannot see
 
-The guard asserts the string `prisma.location.deleteMany(` **appears** in the file. It
+**Since E2E speed plan task S.2 (2026-11-22) the `/e2e/cleanup` half reads SQL text.** For
+each model it looks for ONE `DELETE FROM "<Model>"` statement in `E2E_CLEANUP_INSTALL_SQL`
+(`lib/e2eCleanupSql.ts`), and checks that the text of its `WHERE` is the one allowed SQL
+form for that model (built from `MODEL_PATHS` plus `SQL_RELATIONS`; the other forms are in
+`SQL_CLEANUP_EXCEPTIONS`). It also checks that `lib/e2eCleanup.ts` holds no `deleteMany`
+and no `$transaction`, so a delete cannot move back out of the SQL unseen. It is still a
+text check, so everything below still holds: it cannot see a VALUE. The history below is
+about the Prisma version of the route.
+
+Until task S.2 the guard asserted the string `prisma.location.deleteMany(` **appears** in the file. It
 never starts the server, never calls the route, and never reads the `where` clause. So
 this satisfies the guard, answers HTTP 200, and deletes nothing:
 
@@ -420,7 +481,7 @@ What guards it instead:
 
 | Check | What it catches |
 |---|---|
-| `apps/server/src/lib/e2eCleanup.test.ts` | the delete order (User last), `where: { id }`, the `users` key, and `forgetSeenToday` running once, AFTER the transaction. Runs against a fake, not SQL |
+| `apps/server/src/lib/e2eCleanup.test.ts` | the delete order in the SQL text (`"User"` last), the `users` key, the user ids sent as a bound value, and `forgetSeenToday` running once per user, AFTER the query. Reads the SQL text and mocks `$queryRaw`; it runs no SQL |
 | the same file, last test | the server's `CLEANUP_MODEL_KEYS` and this directory's `CLEANUP_MODEL_KEYS` differ. It reads `cloudTeardown.ts` as text |
 | `cleanup-endpoint.spec.ts` | a `where` that matches nothing reports `"users":0`. This is the only real-SQL check |
 
@@ -443,13 +504,14 @@ creates it again through `ensureUser`, named by its id. A spec that needs the ro
 any request, or with another name, calls `createCloudUser` (`e2e/helpers/cloudUsers.ts`).
 
 **Order matters for the counts, not only for the deletes.** Every child is deleted before
-its parent, so each count is the number of rows that statement removed. Move
-`item.deleteMany` above `itemTag.deleteMany` and the `ItemTag` rows go by `ON DELETE
-CASCADE` instead, reporting 0.
+its parent, so each count is the number of rows that statement removed. Move the
+`"Item"` delete above the `"ItemTag"` delete in `lib/e2eCleanupSql.ts` and the `ItemTag`
+rows go by `ON DELETE CASCADE` instead, reporting 0 (measured in task S.2:
+`cleanup-endpoint.spec.ts` fails with `itemTags: 0`).
 
-**`cleanupCloudData` checks the KEYS, never the counts.** It runs in the `beforeEach` and
-`afterEach` of every cloud spec, where zero rows is normal and correct — the `beforeEach`
-call usually deletes nothing at all. A "count above zero" check there would fail every
+**`cleanupCloudData` checks the KEYS, never the counts.** It runs in the `beforeEach` of
+every cloud spec, where zero rows is normal and correct: after a passing test the next
+`beforeEach` deletes that test's rows, and after a clean start it deletes nothing. A "count above zero" check there would fail every
 clean run. So the helper asserts only that the body carries a numeric count for every key
 in its own `CLEANUP_MODEL_KEYS` list, and throws naming the missing model otherwise. The
 "at least 1" assertion lives in the spec, which seeds first.
@@ -474,7 +536,8 @@ calls `requireHousehold` (`apps/server/src/lib/authz.ts`), which runs `ensureHou
 (`apps/server/src/lib/household.ts`). For a user with no household, that is first sign-in:
 it makes a household, one location and the user's `HouseholdMember` and `LocationMember`
 rows. So the readback asserts exactly one location and that its id is neither of the two
-the spec seeded. `afterEach` deletes that fresh row.
+the spec seeded. The next test's `beforeEach`, or the next run's `globalSetup`, deletes
+that fresh row (an `afterEach` did until E2E speed plan task S.3).
 
 **Between households H3a tasks 3.5 and 3.10, `afterEach` could not delete it.**
 `/e2e/cleanup` did not delete `HouseholdMember` rows then, and that row's foreign key to
@@ -729,8 +792,9 @@ after households H5c task H.8; 39 minus 16 on
 
 File 26 is `cloud-user-row.spec.ts`, added 2026-10-31 by households H2 task 2.7. It is
 cloud-only and has no browser, so it is also in `local`'s `testIgnore`. Its 3 tests act as
-three new user ids, one per test, built from `E2E_SECOND_USER_ID`. Each id is cleaned up
-with `cleanupCloudData(request, id)` in both hooks.
+three new user ids, one per test, built from `E2E_SECOND_USER_ID`. All of them are cleaned
+up with one `cleanupCloudData(request, ALL_USERS)` call in `beforeEach` (since E2E speed
+plan task S.4; until then one call per id in both hooks).
 
 File 27 is `purge-two-households.spec.ts`, added 2026-11-04 by households H3a task 3.10
 (decision H10). It is cloud-only and has no browser, so it is also in `local`'s
@@ -1611,7 +1675,7 @@ assumed:
 | Check | Result |
 |---|---|
 | What the `cloud` project seeds into each context | an inline `storageState` object with exactly **one** entry, `{ name: 'data-mode', value: 'cloud' }` (`e2e/playwright.config.ts`). Nothing is written back to it |
-| `grep -rnE "storageState\|globalSetup\|browser.newContext\|newPage\(\)" e2e/` | one config line and one comment. No `globalSetup`, no hand-made context, no spec that saves state |
+| `grep -rnE "storageState\|globalSetup\|browser.newContext\|newPage\(\)" e2e/` | in PR C: one config line and one comment. No `globalSetup`, no hand-made context, no spec that saves state. **Two have joined since**, and neither seeds the key: `newUserContext` (`e2e/helpers/userContext.ts`, households H5 task F.8) writes `data-mode`, `e2e-skip-onboarding`, `e2e-user-id` and the keys its caller passes; `e2e/global-setup.ts` (E2E speed plan task S.3) opens only an API request context, with no browser and no storage |
 | Scope of Playwright's `page` / `context` fixtures | test-scoped, so a `localStorage` key written by one test is gone before the next starts |
 
 The hook needs a `migration-strategy` key to act, and nothing seeds one.

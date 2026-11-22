@@ -50,12 +50,17 @@ import { makeGql } from '../utils/cloud'
 // ── WHY IT EXISTS (issue #319) ───────────────────────────────────────────────
 //
 // `apps/server/src/resolvers/purge-coverage.test.ts` guards the route's delete
-// list, but it is a SOURCE-TEXT check. It asserts the string
-// `prisma.location.deleteMany(` appears in `lib/e2eCleanup.ts`. It never starts the
-// server, never calls the route, and never reads the `where` clause. So this
-// passes that guard, answers 200, and deletes nothing:
+// list, but it is a SOURCE-TEXT check. When this spec was written it asserted
+// that the string `prisma.location.deleteMany(` appears in `lib/e2eCleanup.ts`.
+// It never started the server, never called the route, and never read the
+// `where` clause. So this passed that guard, answered 200, and deleted nothing:
 //
 //   prisma.location.deleteMany({ where: { userId: someWrongValue } })
+//
+// Since E2E speed plan task S.2 the route is one SQL function
+// (`lib/e2eCleanupSql.ts`), and the guard reads each `DELETE FROM "<Model>"`
+// and the text of its `WHERE`. It still cannot see a VALUE, so this spec is
+// still the only check that each filter matches real rows.
 //
 // `cleanupCloudData` could not see it either — until this issue it checked only
 // the HTTP status.
@@ -66,8 +71,8 @@ import { makeGql } from '../utils/cloud'
 //
 // ── WHAT IT STILL DOES NOT COVER ─────────────────────────────────────────────
 //
-// `prisma.itemStock.deleteMany` remains covered by no test that can fail.
-// `ItemStock` has no `userId`, so the source guard skips it, and both of its
+// The `"ItemStock"` delete (it was `prisma.itemStock.deleteMany` until task S.2)
+// remains covered by no test that can fail on DATA. Both of its
 // foreign keys are ON DELETE CASCADE (prisma/schema.prisma) — deleting the item
 // or the location takes the stock rows with it. Delete that line and the rows
 // still go; only the reported `itemStocks` count changes, and this spec's
@@ -440,7 +445,7 @@ test.describe('the /e2e/cleanup endpoint really deletes', () => {
     expect(after.allCarts).toEqual([])
     expect(after.allCartItems).toEqual([])
     // Weak on its own: `ItemStock` cascades from both `Item` and `Location`, so
-    // this is empty even if `itemStock.deleteMany` were removed. The `deleted`
+    // this is empty even if the `"ItemStock"` delete were removed. The `deleted`
     // count above is the assertion that speaks for that line.
     expect(after.itemStocksForItem).toEqual([])
     // NOT READ BACK: ItemTag, ItemVendor and RecipeItem. GraphQL exposes them

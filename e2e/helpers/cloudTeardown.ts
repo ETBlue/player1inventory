@@ -2,8 +2,10 @@ import type { APIRequestContext, Page } from '@playwright/test'
 import { CLOUD_SERVER_URL, E2E_USER_ID } from '../constants'
 
 /**
- * Every model `/e2e/cleanup` deletes, in the order the route deletes them
- * (apps/server/src/lib/e2eCleanup.ts). The route returns one count per key
+ * Every model `/e2e/cleanup` deletes, in the order the route deletes them:
+ * the order of the `DELETE` statements in the SQL function `e2e_cleanup_rows`
+ * (apps/server/src/lib/e2eCleanupSql.ts; until E2E speed plan task S.2 it was
+ * a `$transaction` of `deleteMany` calls). The route returns one count per key
  * under `deleted`. 22 models (15 until households H3a task 3.10 added
  * `locationMembers`, `householdMembers` and `households`, 18 until households
  * H5b task G.6 added `householdInvites`, 19 until households H6 task J.1
