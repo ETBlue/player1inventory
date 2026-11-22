@@ -83,17 +83,17 @@ runs it.
 | The cleanup SQL becomes a function body in a TypeScript string, not 22 Prisma calls | it is what makes one round trip possible. The two source-text tests move to the SQL text |
 | A second list to keep: the `cloud-neon` spec list | the config refuses a name that is not in the `cloud` list, so a typo cannot run nothing |
 
-**Expected times.** Estimates, to be replaced by measured numbers in each task's *Done*
-note:
+**Expected times.** Measured numbers since S.5 and S.9. The first estimates are in
+*What this plan got wrong*:
 
-| Gate part | Now (2026-11-22) | After PR A | After PR B |
+| Gate part | Now (2026-11-22) | After PR A (measured, S.5) | After PR B (measured, S.9, two runs) |
 |---|---|---|---|
-| `local` | 3m46s | 3m46s | 3m46s |
-| `cloud` | 65m39s (Neon) | about 45–50 min (Neon) | about 10–15 min (local Postgres) |
-| `cloud-neon` | — | — | about 10–13 min (38 tests, Neon) |
-| `pwa` | 1m36s | 1m36s | 1m36s |
-| **Whole gate** | **about 71 min** | **about 50–55 min** | **about 25–33 min** |
-| Full cloud suite on Neon, before a checkpoint | 65m39s | about 45–50 min | about 45–50 min (unchanged by PR B) |
+| `local` | 3m46s | 3m42s | 3m49s, 3m51s |
+| `cloud` | 65m39s (Neon) | 40m35s (Neon) | **4m16s, 4m04s** (local Postgres) |
+| `cloud-neon` | — | — | 12m01s, 11m51s (40 tests, Neon) |
+| `pwa` | 1m36s | 1m35s | 1m38s, 1m37s |
+| **Whole gate** | **about 71 min** | **45m52s** | **21m44s, 21m24s** |
+| Full cloud suite on Neon, before a checkpoint | 65m39s | 40m35s | 44m33s wall clock (`cloud-neon` 39m10s), `pnpm test:e2e:all:neon` |
 
 Why the PR A estimate is 15–20 min and not more: see *Facts*, the 55% figure.
 
@@ -865,17 +865,53 @@ script) and `ca6574a6` (the docs), on `chore/e2e-speed-b`.
 **Files:** `e2e/CLAUDE.md`, root `CLAUDE.md`, `docs/INDEX.md`, this plan, the H4 deploy
 runbook or the checkpoint runbook (if P10 says so).
 
-- [ ] **Step 1:** `e2e/CLAUDE.md`: which project uses which database, the two commands, the
+- [x] **Step 1:** `e2e/CLAUDE.md`: which project uses which database, the two commands, the
   risks table of this plan (short form), and the new hazard ("`cloud` green on the local
   database is not Neon green"). Root `CLAUDE.md`, *Verification Gate*: the per-PR gate and
   the checkpoint gate.
-- [ ] **Step 2: the whole gate,** alone on the machine, twice in a row (a fast database
+- [x] **Step 2: the whole gate,** alone on the machine, twice in a row (a fast database
   can hide a flaky wait; two runs show whether a new flake appears). All projects green.
-- [ ] **Step 3:** the full cloud list on Neon once (`--full-neon`), to prove nothing in the
+- [x] **Step 3:** the full cloud list on Neon once (`--full-neon`), to prove nothing in the
   switch broke the Neon path. All green.
-- [ ] **Step 4:** record every time next to S.1 and S.5, and update the *Expected times*
+- [x] **Step 4:** record every time next to S.1 and S.5, and update the *Expected times*
   table with measured numbers.
-- [ ] **Step 5:** `docs/INDEX.md`: PR B ✅ built.
+- [x] **Step 5:** `docs/INDEX.md`: PR B ✅ built.
+
+**Done 2026-11-23** in `cee52eba` (stale counts and commands), `1baaa070` (the two gates and
+the database section), `aa327e69` (runbook section 15), `55f1426f` (the times) and
+`b2fc6c6e` (`docs/INDEX.md`), on `chore/e2e-speed-b`.
+
+- **Docs:** `e2e/CLAUDE.md` has a new section, *Which database each cloud project uses*:
+  the two projects, the four commands, the risks a local database hides, and "`cloud` green
+  on the local database is not Neon green". The servers table, the `run-all.sh` section and
+  *Cloud E2E is not database-isolated* name `cloud-neon`. Root `CLAUDE.md`, *Verification
+  Gate*: four rows, the per-PR gate and the checkpoint gate, the one-time setup and "run
+  `e2e:db:migrate` after every new migration". `apps/server/prisma/CLAUDE.md`: the check
+  lives in `src/lib/databaseUrl.ts`.
+- **Stale items fixed:** the cloud count command (now
+  `awk '/^const CLOUD_SPECS = \[/,/^\]/' … | grep -c "spec\.ts'"`, 40 of 44); the migration
+  folder command (now `ls -d apps/server/prisma/migrations/*/ | wc -l`; the H6b, H7a and H7b
+  counts were 21, 21, 22 and are 20, 20, 21); the no-overlap note (7 `.ts` files in
+  `scripts/`, 1 `src` file checked twice); the S.8 forward reference in `e2e/CLAUDE.md`.
+- **P10-A:** section 15 of `docs/global/backend/2026-11-17-deploy-runbook-households-h4.md`,
+  and step 0 of section 8.3 *The order*.
+- **Gate without E2E:** all green. `pnpm test`: web 3899 / 378, server 2934 / 91,
+  `scripts/spec` 80. esbuild 279.7 KiB. TS6385: 0.
+- **E2E** at `aa327e69`, alone on the machine, each first try, no retry, no flaky test:
+
+| Row | S.1 | S.5 | S.9 gate 1 | S.9 gate 2 | S.9 `test:e2e:all:neon` |
+|---|---|---|---|---|---|
+| `local` | 3m44s | 3m42s | 3m49s, 179 / 11 skipped | 3m51s, 179 / 11 | 3m47s, 179 / 11 |
+| `cloud` | 64m08s (Neon) | 40m35s (Neon) | **4m16s** (255.0 s, local), 212 / 8 | **4m04s** (243.3 s), 212 / 8 | — |
+| `cloud-neon` | — | — | 12m01s (720.5 s), 40 | 11m51s (710.6 s), 40 | 39m10s (2348.6 s), 212 / 8 |
+| `pwa` | 1m34s | 1m35s | 1m38s, 73 | 1m37s, 73 | 1m36s, 73 |
+| wall clock | 69m26s | 45m52s | **21m44s** | **21m24s** | **44m33s** |
+
+- Load average (1 min): gate 1 min 2.34, max 6.55, mean 4.26; gate 2 min 2.20, max 7.33,
+  mean 3.94; the Neon run min 2.30, max 6.32, mean 3.51. "Inactive" memory never fell below
+  5.67 GB. Each local `globalSetup` deleted 35 users left by the run before (D7).
+- Slowest `cloud-neon` file in the gate: `settings/import-export-cloud.spec.ts`, 290.1 s and
+  272.2 s.
 
 ---
 
@@ -984,6 +1020,13 @@ Otherwise the run gets killed, as on 2026-10-31.
 | root `CLAUDE.md` and `e2e/CLAUDE.md`, the cloud count command (S.9) | `awk "/name: 'cloud'/,/name: 'pwa'/" e2e/playwright.config.ts \| grep -c "spec\.ts'"` | it prints 0 since S.8: the list is `const CLOUD_SPECS`. Use `awk '/^const CLOUD_SPECS = \[/,/^\]/' e2e/playwright.config.ts \| grep -c "spec\.ts'"` (40) |
 | *Known gaps*, `household-ownership.spec.ts` test 6 | on the local database the loser almost never waits at the lock | in the first full local run it got `OFFER_GONE` (it waited). One run only |
 | *Expected times* | `cloud` about 10–15 min after PR B | 3m55s (235.0 s), one run |
+| root `CLAUDE.md`, H6b and H7a counts (S.9) | migration folders 21 and 21 | 20 and 20: the same `migration_lock.toml` error as the H7b row. Checked with `git ls-tree -d` at `5cd82bf4`, `9701ddff` and `41bbbe1a` |
+| S.9 brief | root `CLAUDE.md` says the check "lives in `scripts/databaseIsolation.ts`" | only `apps/server/prisma/CLAUDE.md` said so. The root file names it only in a dated measurement table (history, kept) |
+| S.9 file list | — | `apps/server/prisma/CLAUDE.md` also changes |
+| P10-A | the Neon run sits "next to the `verify:migration` step" | the H4 runbook has no single such step; `verify:migration` appears in several phase sections. Built as section 15 and step 0 of section 8.3 |
+| *Expected times* | whole gate about 25–33 min after PR B; `cloud-neon` about 10–13 min for 38 tests | 21m44s and 21m24s; `cloud-neon` 12m01s and 11m51s for 40 tests |
+| *Expected times* | full cloud suite on Neon about 45–50 min after PR B | 44m33s wall clock, `cloud-neon` 39m10s |
+| *Known gaps* (missing) | — | `--project=cloud-neon <file>` with a file outside `NEON_SPECS` selects 0 tests and passes. Add `E2E_NEON_FULL=1` to run one other file on Neon (written into `e2e/CLAUDE.md`) |
 
 ## Status
 
@@ -994,9 +1037,14 @@ owner; table under P2). The local database matches: Postgres 17, builtin, `C.UTF
 owner questions are answered.
 
 **PR A built 2026-11-23** on `chore/e2e-speed` (tasks S.1–S.5), merged into `develop` (2026-11-23, #396, merge `197790f4`). The whole gate
-went from 69m26s to 45m52s, all green, and `cloud` went from 64m08s to 40m35s. Next: open
-PR A against `develop`, then PR B (tasks S.6–S.9).
-Nothing built.
+went from 69m26s to 45m52s, all green, and `cloud` went from 64m08s to 40m35s.
+
+**PR B built 2026-11-23** on `chore/e2e-speed-b` (tasks S.6–S.9), not merged. The `cloud`
+project runs on a local Postgres 17, a `cloud-neon` row runs 8 spec files on Neon in every
+gate, and `pnpm test:e2e:all:neon` runs the whole cloud list on Neon before each checkpoint
+(H4 runbook section 15). The whole gate went from 45m52s to 21m44s and 21m24s (two runs),
+all green; `cloud` from 40m35s to about 4 minutes. The checkpoint gate took 44m33s, all
+green. Next: open PR B against `develop`; after it merges, task S.10.
 
 ---
 
