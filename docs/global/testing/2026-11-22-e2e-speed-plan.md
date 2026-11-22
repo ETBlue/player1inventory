@@ -546,20 +546,55 @@ and after. Expect about 20 s less per test.
 **Files:** `e2e/CLAUDE.md`, root `CLAUDE.md`, `apps/server/prisma/CLAUDE.md`,
 `docs/INDEX.md`, this plan.
 
-- [ ] **Step 1:** `e2e/CLAUDE.md`: *Every cloud spec uses `cleanupCloudData`* (one call, in
+- [x] **Step 1:** `e2e/CLAUDE.md`: *Every cloud spec uses `cleanupCloudData`* (one call, in
   `beforeEach`, a list of users), the new `globalSetup`, the route's SQL function (where it
   is, why it is a function, that `verify:migration` drops it and the next E2E start makes
   it again), *`purge-coverage.test.ts` is a SOURCE-TEXT check* (now SQL text). Rewrite the
   stale first paragraph of *Cloud E2E is not database-isolated*.
-- [ ] **Step 2:** `apps/server/prisma/CLAUDE.md`, *Transaction forms*: `e2eCleanup.ts` no
+- [x] **Step 2:** `apps/server/prisma/CLAUDE.md`, *Transaction forms*: `e2eCleanup.ts` no
   longer uses the array form; and the claim that the array form "Prisma can send as a single
   batched request" is not what was measured (1.33 s for about 25 statements at 52 ms each).
-- [ ] **Step 3:** root `CLAUDE.md`, *Verification Gate*: the JSON reports and
+- [x] **Step 3:** root `CLAUDE.md`, *Verification Gate*: the JSON reports and
   `e2e-times.mjs`.
-- [ ] **Step 4: the whole gate,** `pnpm test:e2e:all`, alone on the machine. All three
+- [x] **Step 4: the whole gate,** `pnpm test:e2e:all`, alone on the machine. All three
   green. Record each project's time and counts next to S.1's baseline, in this plan and in
   `e2e/CLAUDE.md`.
-- [ ] **Step 5:** `docs/INDEX.md`: PR A ✅ built.
+- [x] **Step 5:** `docs/INDEX.md`: PR A ✅ built.
+
+**Done 2026-11-23** in `37fc049a` (`run-all.sh` keeps `test-results/`), `9e439f00` (docs and
+comments) and `7f3246fb` (gate record, `docs/INDEX.md`), on `chore/e2e-speed`.
+
+- **Docs:** `e2e/CLAUDE.md`: one cleanup call in `beforeEach` with a list, `globalSetup`,
+  the SQL function, the SQL text check, the JSON reports, the kept `test-results/`, and the
+  Neon test branch in *Cloud E2E is not database-isolated*. Root `CLAUDE.md`: the gate's
+  JSON reports; no source file uses the array form of `$transaction` any more; the cleanup
+  count command is `grep -cE '^ +DELETE FROM "' apps/server/src/lib/e2eCleanupSql.ts` (22).
+  `apps/server/prisma/CLAUDE.md`: the measured cost of the array form. Stale comments in
+  `cloudTeardown.ts`, `utils/cloud.ts` and `cleanup-endpoint.spec.ts`.
+- **`run-all.sh`:** copies `test-results/` to `e2e-results/test-results-<project>/` after
+  each project, after deleting the old copy. A failed copy only warns.
+- **Gate without E2E:** all green. `pnpm test`: web 3899 / 378, server 2861 / 89,
+  `scripts/spec` 78. esbuild 275.8 KiB. TS6385: 0.
+- **Whole gate** (`pnpm test:e2e:all` at `9e439f00`, 2026-11-23 00:17–01:03 CST, first try,
+  all green):
+
+| Project | S.1 | S.5 |
+|---|---|---|
+| local | 3m44s, 179 passed / 11 skipped | 3m42s (221.0 s), 179 / 11 |
+| cloud | 64m08s (3847.8 s), 210 / 8 | **40m35s (2435.0 s)**, 212 / 8 |
+| pwa | 1m34s, 73 | 1m35s (93.7 s), 73 |
+| whole gate | 69m26s | **45m52s** |
+
+- Load average (1 min, 46 samples): 3.69 at the start, min 1.32, max 5.04, mean 2.52.
+  "Inactive" memory never fell below 6.08 GB. `globalSetup` deleted 1 leftover E2E user.
+- 10 slowest cloud spec files (s): `settings/import-export-cloud` 259.9, `location-people`
+  172.3, `household-ownership` 148.0, `household-invites` 131.5, `item-management` 127.6,
+  `unified-item-search` 111.2, `location-switcher` 104.6, `settings/tags` 101.6,
+  `household-activity-purges` 99.2, `settings/import-households` 86.9.
+- `item-list-state-restore.spec.ts:470` (S.4's `ECONNRESET`) passed.
+- The cloud time was about 12% above S.3's `--project=cloud` run (2177.8 s) on the same
+  code. Almost every file was slower, the browserless ones too, so the likely cause is
+  latency that day. Not proved.
 
 ---
 
@@ -805,6 +840,9 @@ Otherwise the run gets killed, as on 2026-10-31.
 | S.4 step 5 | the specs that clean several users | 16 files. 4 of them also cleaned the build-time user in a separate call, now in the same list |
 | S.1 / D14, a run with `--reporter` | `PLAYWRIGHT_JSON_OUTPUT_FILE` gives the JSON report | only when no `--reporter` is passed on the command line: `--reporter=line` replaces the config's reporters, so no JSON file is written |
 | *Expected times* | — | cloud 36.3 m after S.4, the same as after S.3 (36m18s). S.4 is not a measurable gain for the whole project |
+| S.5 brief, the count command | `grep -c '^  DELETE FROM "' apps/server/src/lib/e2eCleanupSql.ts` gives 22 | it gives 0: the statements are indented 4 spaces. `grep -cE '^ +DELETE FROM "' …` gives 22 |
+| *Expected times* | after PR A: whole gate about 50–55 min, cloud about 45–50 min | 45m52s and 40m35s (S.5 gate, one run) |
+| *Expected times* | — | the cloud time moves by more than 10% between runs of the same code (2177.8 s at S.3, 2435.0 s at S.5), browserless specs included. Quote PR A's gain from more than one gate |
 
 ## Status
 
@@ -813,6 +851,10 @@ approval of steps 1 to 3: 2026-11-22. Owner answers 2026-11-22: P1 and P3 to P10
 both run **PostgreSQL 17.12** with the builtin locale provider and `C.UTF-8` (read by the
 owner; table under P2). The local database matches: Postgres 17, builtin, `C.UTF-8`. All
 owner questions are answered.
+
+**PR A built 2026-11-23** on `chore/e2e-speed` (tasks S.1–S.5), not merged. The whole gate
+went from 69m26s to 45m52s, all green, and `cloud` went from 64m08s to 40m35s. Next: open
+PR A against `develop`, then PR B (tasks S.6–S.9).
 Nothing built.
 
 ---
