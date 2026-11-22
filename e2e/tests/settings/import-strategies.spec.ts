@@ -245,11 +245,10 @@ test.beforeEach(async ({ request, baseURL }) => {
   if (isCloud(baseURL)) await cleanupCloudData(request)
 })
 
-test.afterEach(async ({ page, request, baseURL }) => {
-  if (isCloud(baseURL)) {
-    await cleanupCloudData(request)
-    return
-  }
+test.afterEach(async ({ page, baseURL }) => {
+  // Cloud mode: nothing to clean here. Each test cleans up in its own
+  // beforeEach (E2E speed plan, decision D7).
+  if (isCloud(baseURL)) return
   await page.goto('/')
   await page.evaluate(async () => {
     const dbs = await indexedDB.databases()

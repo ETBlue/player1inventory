@@ -191,14 +191,12 @@ test.beforeEach(async ({ request, baseURL }) => {
   await cleanupAll(request)
 })
 
-test.afterEach(async ({ request, baseURL }) => {
+test.afterEach(async () => {
   for (const context of contexts.splice(0)) await context.close()
-  if (baseURL !== CLOUD_WEB_URL) return
-  await cleanupAll(request)
 })
 
 test.describe('two people in one household', () => {
-  // 60 s, not 30 s: two contexts, two cleanups per hook, and a seed of
+  // 60 s, not 30 s: two contexts, two cleanups in `beforeEach`, and a seed of
   // eleven requests, like live-cart.spec.ts.
   test.describe.configure({ timeout: 60_000 })
 

@@ -211,11 +211,6 @@ test.beforeEach(async ({ page, request, baseURL }) => {
   await cleanupAll(request)
 })
 
-test.afterEach(async ({ request, baseURL }) => {
-  if (baseURL !== CLOUD_WEB_URL) return
-  await cleanupAll(request)
-})
-
 test.describe('live pantry updates', () => {
   // 60 s, as in live-cart.spec.ts: the cleanups and the seed take most of
   // the time, not the live update.

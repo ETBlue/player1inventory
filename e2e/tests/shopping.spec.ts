@@ -17,12 +17,10 @@ test.beforeEach(async ({ page, request, baseURL }) => {
   }
 })
 
-test.afterEach(async ({ page, request, baseURL }) => {
-  if (baseURL === CLOUD_WEB_URL) {
-    // Cloud mode: delete all test data from the database via the E2E cleanup endpoint.
-    await cleanupCloudData(request)
-    return
-  }
+test.afterEach(async ({ page, baseURL }) => {
+  // Cloud mode: nothing to clean here. Each test cleans up in its own
+  // beforeEach (E2E speed plan, decision D7).
+  if (baseURL === CLOUD_WEB_URL) return
   // Local mode: clear IndexedDB, localStorage, and sessionStorage.
   // Navigate to the app origin so IndexedDB API is accessible, then clear all databases.
   // We must stay on the same origin to call indexedDB.databases().

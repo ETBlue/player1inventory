@@ -78,7 +78,7 @@ import { makeGql } from '../utils/cloud'
 // ── TEARDOWN COVERS BOTH USERS ───────────────────────────────────────────────
 //
 // `/e2e/cleanup` deletes the households ONE user owns per call (since
-// households H3a task 3.10), so both hooks below call it twice. The second
+// households H3a task 3.10), so `beforeEach` below calls it twice. The second
 // user's rows are invisible to every other cloud spec's teardown, so leaving
 // them behind would fail a later spec for a reason nobody would trace back
 // here.
@@ -118,7 +118,7 @@ async function firstLocationId(
   return id
 }
 
-/** Both users, in both hooks. One call deletes one user. */
+/** Both users, in `beforeEach`. One call deletes one user. */
 async function cleanupBothUsers(
   request: Parameters<typeof cleanupCloudData>[0],
 ): Promise<void> {
@@ -127,11 +127,7 @@ async function cleanupBothUsers(
 }
 
 test.beforeEach(async ({ request }) => {
-  // Guards against a previous run that crashed before its teardown.
-  await cleanupBothUsers(request)
-})
-
-test.afterEach(async ({ request }) => {
+  // The only cleanup of each test: it starts clean whatever ran before it (E2E speed plan, D7).
   await cleanupBothUsers(request)
 })
 

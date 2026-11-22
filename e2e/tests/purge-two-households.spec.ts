@@ -224,12 +224,7 @@ async function snapshot(gql: Gql, itemId: string): Promise<Snapshot> {
 }
 
 test.beforeEach(async ({ request }) => {
-  // Guards against a previous run that crashed before its teardown
-  await cleanupCloudData(request, USER_A)
-  await cleanupCloudData(request, USER_B)
-})
-
-test.afterEach(async ({ request }) => {
+  // The only cleanup of each test: it starts clean whatever ran before it (E2E speed plan, D7).
   await cleanupCloudData(request, USER_A)
   await cleanupCloudData(request, USER_B)
 })

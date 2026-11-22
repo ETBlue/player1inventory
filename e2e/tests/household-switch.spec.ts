@@ -361,10 +361,8 @@ test.beforeEach(async ({ request, baseURL }) => {
   await cleanupAll(request)
 })
 
-test.afterEach(async ({ request, baseURL }) => {
+test.afterEach(async () => {
   for (const context of contexts.splice(0)) await context.close()
-  if (baseURL !== CLOUD_WEB_URL) return
-  await cleanupAll(request)
 })
 
 test.describe('household switch', () => {

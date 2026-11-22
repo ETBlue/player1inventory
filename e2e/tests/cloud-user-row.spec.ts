@@ -84,10 +84,6 @@ test.beforeEach(async ({ request }) => {
   await cleanupAll(request)
 })
 
-test.afterEach(async ({ request }) => {
-  await cleanupAll(request)
-})
-
 test.describe('cloud User row', () => {
   test('user gets a User row on their first request, named by their id', async ({
     request,

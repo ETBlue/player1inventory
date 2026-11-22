@@ -187,10 +187,6 @@ test.beforeEach(async ({ page, request }) => {
   await cleanupAll(request)
 })
 
-test.afterEach(async ({ request }) => {
-  await cleanupAll(request)
-})
-
 test.describe('who can import (decisions O1, O7, T8)', () => {
   test('household member sees why they cannot import, and the server refuses them', async ({
     page,

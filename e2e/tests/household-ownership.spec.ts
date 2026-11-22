@@ -101,7 +101,7 @@ import { makeGql } from '../utils/cloud'
 // | 8, 9 | MIA accepts the hand-over at the end                              |
 //
 // A test that FAILS before its last step can leave a household with no
-// owner. `rescueOrphans` runs before every cleanup, in both hooks: each
+// owner. `rescueOrphans` runs before every cleanup, in `beforeEach`: each
 // spec user who can hold an offer (MIA, BEN, MAX) accepts any open offer
 // they have (so they own the household
 // and their cleanup deletes it), and GHOST's deletion is sent again (a
@@ -445,10 +445,8 @@ test.beforeEach(async ({ request, baseURL }) => {
   await cleanupAll(request)
 })
 
-test.afterEach(async ({ request, baseURL }) => {
+test.afterEach(async () => {
   for (const context of contexts.splice(0)) await context.close()
-  if (baseURL !== CLOUD_WEB_URL) return
-  await cleanupAll(request)
 })
 
 test.describe('household ownership', () => {

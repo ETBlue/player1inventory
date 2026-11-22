@@ -75,10 +75,11 @@ import { makeGql } from '../utils/cloud'
 // ── CLEANING UP AFTER ITSELF ─────────────────────────────────────────────────
 //
 // This spec calls the cleanup endpoint as its SUBJECT, which is unusual. It
-// still runs `cleanupCloudData` in `beforeEach` and `afterEach` like every
-// other cloud spec, so a failure part-way through — before the subject call, or
-// after the readbacks have created a fresh default location — still leaves the
-// database empty for the next spec.
+// still runs `cleanupCloudData` in `beforeEach` like every other cloud spec
+// (only there since E2E speed plan task S.3), so a failure part-way through
+// in an earlier run, or the fresh default location the readbacks create, is
+// gone before the test starts. The next spec's own `beforeEach` cleans the
+// users it uses.
 
 type Row = { id: string }
 
@@ -147,12 +148,7 @@ type ReadBack = {
 }
 
 test.beforeEach(async ({ request }) => {
-  // Guards against a previous run that crashed before its teardown.
-  await cleanupCloudData(request, OFFER_MEMBER)
-  await cleanupCloudData(request)
-})
-
-test.afterEach(async ({ request }) => {
+  // The only cleanup of each test: it starts clean whatever ran before it (E2E speed plan, D7).
   await cleanupCloudData(request, OFFER_MEMBER)
   await cleanupCloudData(request)
 })
@@ -312,7 +308,7 @@ test.describe('the /e2e/cleanup endpoint really deletes', () => {
     // half of the cleanup's filter can delete it: the `toUserId` half names
     // the user, and the household delete would cascade it away before the
     // count. So this seed is what lets `ownershipOffers` read at least 1.
-    // OFFER_MEMBER is cleaned in both hooks: the user's cleanup deletes
+    // OFFER_MEMBER is cleaned in `beforeEach`: the user's cleanup deletes
     // their member row (the household is the user's), theirs the `User` row.
     await createCloudUser(request, OFFER_MEMBER, 'Cleanup Offer Member')
     await joinHousehold(
@@ -421,8 +417,8 @@ test.describe('the /e2e/cleanup endpoint really deletes', () => {
     // Location is read back LAST, because reading it recreates one. The user
     // has no household any more, so the `locations` query runs first sign-in
     // again (`ensureHousehold`) and answers with a brand-new "Home" — exactly
-    // one row, and not one of the seeded ids. `afterEach` deletes it, with
-    // its new household.
+    // one row, and not one of the seeded ids. The next test's `beforeEach`
+    // deletes it, with its new household.
     const { locations: afterLocations } = await gql<{
       locations: { id: string }[]
     }>(LOCATIONS)

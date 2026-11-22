@@ -38,9 +38,11 @@ export const E2E_USER_ID = 'e2e-test-user'
  * this constant (`${E2E_SECOND_USER_ID}-…`) work the same way.
  *
  * Any spec that writes as this user MUST also tear it down —
- * `cleanupCloudData(request, E2E_SECOND_USER_ID)` in both `beforeEach` and
- * `afterEach`. The shared teardown only ever deletes `E2E_USER_ID`'s rows, so
- * rows left here survive into the next spec.
+ * `cleanupCloudData(request, E2E_SECOND_USER_ID)` in `beforeEach` (only there
+ * since E2E speed plan task S.3, decision D7). The shared teardown only ever
+ * deletes `E2E_USER_ID`'s rows, so rows left here survive into the next spec,
+ * until `e2e/global-setup.ts` deletes every `e2e-` user at the start of the
+ * next cloud run.
  */
 export const E2E_SECOND_USER_ID = 'e2e-test-user-2'
 

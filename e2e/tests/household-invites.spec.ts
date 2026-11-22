@@ -250,14 +250,12 @@ test.beforeEach(async ({ request, baseURL }) => {
   await cleanupAll(request)
 })
 
-test.afterEach(async ({ request, baseURL }) => {
+test.afterEach(async () => {
   for (const context of contexts.splice(0)) await context.close()
-  if (baseURL !== CLOUD_WEB_URL) return
-  await cleanupAll(request)
 })
 
 test.describe('invite, join and members', () => {
-  // 90 s: up to three browsers, seven cleanups per hook, and live updates.
+  // 90 s: up to three browsers, seven cleanups in `beforeEach`, and live updates.
   test.describe.configure({ timeout: 90_000 })
 
   test('user can invite a person who joins in another browser', async ({

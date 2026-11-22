@@ -157,11 +157,7 @@ async function cleanupAll(request: Parameters<typeof makeGql>[0]) {
 }
 
 test.beforeEach(async ({ request }) => {
-  // Guards against a previous run that crashed before its teardown
-  await cleanupAll(request)
-})
-
-test.afterEach(async ({ request }) => {
+  // The only cleanup of each test: it starts clean whatever ran before it (E2E speed plan, D7).
   await cleanupAll(request)
 })
 
