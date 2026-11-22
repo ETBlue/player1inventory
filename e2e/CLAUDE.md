@@ -175,7 +175,29 @@ The last E2E counts on the H3a branch, 2026-11-11, from **three separate runs** 
 `pnpm test:e2e:all`): `cloud` **126 passed / 7 skipped**, `local` **178 passed / 6 skipped**,
 `pwa` **73 passed**. Re-measure rather than quote.
 
-The last whole gate, `pnpm test:e2e:all` on `feature/households-h7b` at `14f9501c` on
+The last whole gate, `pnpm test:e2e:all` on `chore/e2e-speed` at `9e439f00` on 2026-11-23
+(E2E speed plan task S.5, after PR A: one-trip cleanup, one cleanup per test, `globalSetup`),
+first try, no retry, **all green**, 45m52s wall clock:
+
+| Project | S.1 baseline (`11a9466b`, 2026-11-22) | S.5 (`9e439f00`) |
+|---|---|---|
+| `local` | 3m44s, 179 passed / 11 skipped | 3m42s (221.0 s), 179 passed / 11 skipped |
+| `cloud` | 64m08s (3847.8 s), 210 passed / 8 skipped | **40m35s (2435.0 s)**, 212 passed / 8 skipped |
+| `pwa` | 1m34s, 73 passed | 1m35s (93.7 s), 73 passed |
+| whole gate | 69m26s | **45m52s** |
+
+Load average (1 min, 46 samples every 60 s): 3.69 at the start, min 1.32, max 5.04, mean
+2.52. "Inactive" memory never fell below 6.08 GB. The `cloud` project was about 12% slower
+than the `--project=cloud` run of task S.3 (2177.8 s) on the same cleanup code. Almost
+every spec file was slower, the browserless ones too (`location-scoped-writes.spec.ts`
+48.9 → 63.5 s, `cloud-roles.spec.ts` 23.2 → 31.3 s), so the likely cause is a slower
+network or database that day, not the code. That was not proved. The 10 slowest `cloud`
+files (s): `settings/import-export-cloud` 259.9, `location-people` 172.3,
+`household-ownership` 148.0, `household-invites` 131.5, `item-management` 127.6,
+`unified-item-search` 111.2, `location-switcher` 104.6, `settings/tags` 101.6,
+`household-activity-purges` 99.2, `settings/import-households` 86.9.
+
+The gate before it, `pnpm test:e2e:all` on `feature/households-h7b` at `14f9501c` on
 2026-11-22 (households H7 task M.6), first try, no retry, **all green**: `local` **179
 passed / 11 skipped** in 3m46s, `cloud` **210 passed / 8 skipped** in 65m39s, `pwa` **73
 passed** in 1m36s. Load average 11.2 at the start (falling, from the `pnpm test` run just
