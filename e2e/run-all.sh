@@ -1,6 +1,17 @@
 #!/usr/bin/env bash
 #
-# Run the three E2E projects one after another, and report all three results.
+# Run the E2E projects one after another, and report every result.
+#
+# Four rows (E2E speed plan, task S.8, owner answer P6-A):
+#
+#   local       local mode, no backend
+#   cloud       the cloud specs on the LOCAL E2E database   (E2E_DATABASE=local)
+#   cloud-neon  the 8 NEON_SPECS files on the Neon test branch (E2E_DATABASE=neon)
+#   pwa         the built app, offline and a11y
+#
+# With --full-neon (`pnpm test:e2e:all:neon`, owner answer P10-A, for a
+# checkpoint release) there are three rows: `cloud` is left out, and
+# `cloud-neon` runs the WHOLE cloud list on Neon (E2E_NEON_FULL=1).
 #
 # Why this script exists, and what a plain `a && b && c` gets wrong:
 #
@@ -17,18 +28,38 @@
 # its test-results/ folder is copied to e2e-results/test-results-<project>/,
 # because the next Playwright run deletes test-results/.
 #
-# The three projects must run as three separate commands, not as one
-# `pnpm test:e2e`. See root CLAUDE.md -> Verification Gate for the measurements.
+# The projects must run as separate commands, not as one `pnpm test:e2e`.
+# See root CLAUDE.md -> Verification Gate for the measurements. `cloud` and
+# `cloud-neon` could not share one command anyway: they use the same API
+# server, and one server uses one database.
 #
-# Extra arguments are passed to every project run, e.g.
-#   pnpm test:e2e:all --reporter=line
+# Extra arguments (other than --full-neon) are passed to every project run, e.g.
+#   pnpm test:e2e:all e2e/tests/a11y.spec.ts
 
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-PROJECTS=(local cloud pwa)
+FULL_NEON=0
+declare -a ARGS=()
+for arg in "$@"; do
+  if [ "$arg" = "--full-neon" ]; then
+    FULL_NEON=1
+  else
+    ARGS+=("$arg")
+  fi
+done
+
+if [ "$FULL_NEON" -eq 1 ]; then
+  PROJECTS=(local cloud-neon pwa)
+  export E2E_NEON_FULL=1
+  NEON_SCOPE="the whole cloud list"
+else
+  PROJECTS=(local cloud cloud-neon pwa)
+  unset E2E_NEON_FULL
+  NEON_SCOPE="the NEON_SPECS files (e2e/neonSpecs.ts)"
+fi
 declare -a CODES=()
 declare -a TIMES=()
 declare -a COUNTS=()
@@ -55,14 +86,22 @@ for project in "${PROJECTS[@]}"; do
   export PLAYWRIGHT_JSON_OUTPUT_FILE="$RESULTS_DIR/$project.json"
   # A file left by an earlier gate would be read as this run's times.
   rm -f "$PLAYWRIGHT_JSON_OUTPUT_FILE"
+  # The database of this row. The config builds `cloud-neon` only with
+  # E2E_DATABASE=neon, and passes the value to the API server; e2e/global-setup.ts
+  # checks that the server really uses that database.
+  if [ "$project" = "cloud-neon" ]; then
+    export E2E_DATABASE=neon
+  else
+    export E2E_DATABASE=local
+  fi
 
   echo ""
   echo "=============================================================="
-  echo "  E2E project: $project"
+  echo "  E2E project: $project (E2E_DATABASE=$E2E_DATABASE)"
   echo "=============================================================="
 
   start=$SECONDS
-  pnpm exec playwright test --config=e2e/playwright.config.ts --project="$project" "$@" 2>&1 |
+  pnpm exec playwright test --config=e2e/playwright.config.ts --project="$project" ${ARGS[@]+"${ARGS[@]}"} 2>&1 |
     tee "$LOGDIR/$project.log"
   code=${PIPESTATUS[0]}
   elapsed=$((SECONDS - start))
@@ -92,7 +131,7 @@ echo ""
 echo "=============================================================="
 echo "  E2E summary"
 echo "=============================================================="
-printf '%-10s %-8s %-8s %s\n' "PROJECT" "RESULT" "TIME" "TESTS"
+printf '%-12s %-8s %-8s %s\n' "PROJECT" "RESULT" "TIME" "TESTS"
 
 failed=0
 for i in "${!PROJECTS[@]}"; do
@@ -102,11 +141,17 @@ for i in "${!PROJECTS[@]}"; do
     result="FAIL(${CODES[$i]})"
     failed=1
   fi
-  printf '%-10s %-8s %-8s %s\n' \
+  printf '%-12s %-8s %-8s %s\n' \
     "${PROJECTS[$i]}" "$result" \
     "$(printf '%dm%02ds' "$((TIMES[i] / 60))" "$((TIMES[i] % 60))")" \
     "${COUNTS[$i]}"
 done
+
+if [ "$FULL_NEON" -eq 1 ]; then
+  echo "Databases: cloud-neon = the Neon test branch ($NEON_SCOPE)."
+else
+  echo "Databases: cloud = the local E2E database; cloud-neon = the Neon test branch ($NEON_SCOPE)."
+fi
 
 # The time of every test, from the JSON reports. Only a report: a missing or
 # broken file prints a warning, and this step never changes the exit code.
@@ -130,4 +175,4 @@ if [ "$failed" -ne 0 ]; then
   exit 1
 fi
 
-echo "All three projects passed."
+echo "All ${#PROJECTS[@]} projects passed."
