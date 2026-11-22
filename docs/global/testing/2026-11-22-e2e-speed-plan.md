@@ -171,7 +171,7 @@ Why the PR A estimate is 15–20 min and not more: see *Facts*, the 55% figure.
 | The Neon **pooler** (PgBouncer in transaction mode): prepared statements, session settings, connection limits | the local URL is a direct connection | every `cloud-neon` spec: they all use the pooled `TEST_DATABASE_URL` |
 | **Latency races**: two requests that overlap only because each query takes 52 ms | locally a query takes well under 1 ms, so the window closes | `household-ownership.spec.ts` (two accepts at once: only a run where the loser waits at the lock gets `OFFER_GONE`), `live-cart.spec.ts`, `live-pantry.spec.ts` (event order, refetch timing), in `cloud-neon` |
 | **Waits that are long enough only on a fast database.** `location-switcher.spec.ts` waits up to 5 s for "Home" and has taken 3.9 s and 5.0 s on Neon | a fast local database makes such waits pass easily | the full suite on Neon before each checkpoint (owner question **P10**). Not in `cloud-neon` |
-| **Sort order of text in SQL.** `householdMembers` and `locationPeople` sort by name in SQL. The result depends on the database's collation (`lc_collate`). A Homebrew `initdb` takes the shell's locale | a local database with another collation sorts "ben" and "Bea" differently | create the local database with Neon's collation (owner question **P2**, task S.7). `location-people.spec.ts` and `household-invites.spec.ts` check names in order |
+| **Sort order of text in SQL.** `householdMembers` and `locationPeople` sort by name in SQL. The result depends on the database's collation (`pg_database.datcollate`, and `datlocprovider`). A Homebrew `initdb` takes the shell's locale | a local database with another collation sorts "ben" and "Bea" differently | create the local database with Neon's collation (owner question **P2**, task S.7). `location-people.spec.ts` and `household-invites.spec.ts` check names in order |
 | **A different Postgres major version** | planner and error text differences, and features one version has and the other not | match the major version (P2). `globalSetup` cannot check it, so S.7 records it in `e2e/CLAUDE.md` |
 | **Time zone** of the session | local `timezone` may be the Mac's, Neon's is GMT | create the local database with `timezone = 'UTC'` (S.7). The columns are `TIMESTAMP(3)` without a zone |
 | **A stale local database** (a new migration not applied) | nothing applies migrations by itself | `globalSetup` compares `applied` with the folder count (D12) and stops the run |
@@ -494,7 +494,7 @@ commands in step 4.
   1. install Postgres `<major>` (Homebrew `postgresql@<major>` and `brew services start`, or
      Postgres.app);
   2. create the database with Neon's collation and `timezone = 'UTC'`, for example
-     `createdb --locale=<Neon's lc_collate> --template=template0 p1i_e2e` and
+     `createdb --locale=<Neon's datcollate> --template=template0 p1i_e2e` and
      `ALTER DATABASE p1i_e2e SET timezone TO 'UTC'`;
   3. set `E2E_LOCAL_DATABASE_URL` in `apps/server/.env` (never in the repo);
   4. `pnpm --filter server e2e:db:migrate`, then `e2e:db:status`: "Database schema is up to
@@ -636,12 +636,18 @@ Otherwise the run gets killed, as on 2026-10-31.
 
 ## What this plan got wrong
 
-(Filled in while building.)
+| Where | It said | What is true |
+|---|---|---|
+| P2 | read the collation with `current_setting('lc_collate')` | Postgres 16 removed the `lc_collate` and `lc_ctype` settings. On the Neon TEST branch (Postgres 17) it fails with `ERROR: unrecognized configuration parameter "lc_collate" (SQLSTATE 42704)`. The collation is a column of `pg_database`: `SELECT datcollate, datctype, datlocprovider, datlocale FROM pg_database WHERE datname = current_database();` (`datlocale` is the Postgres 17 name; it was `daticulocale` before) |
 
 ## Status
 
 **Plan written 2026-11-22** on `chore/e2e-speed`, from `develop` at `41bbbe1a`. Owner
-approval of steps 1 to 3: 2026-11-22. Owner questions P1 to P10 open. Nothing built.
+approval of steps 1 to 3: 2026-11-22. Owner answers 2026-11-22: P1 and P3 to P10 all A. P2 in part: the Neon TEST branch runs
+**PostgreSQL 17.12** (`SELECT version()`, read by the owner), so the local database is
+Postgres 17 (`postgresql@17`). Still open in P2: the collation (the plan's command failed,
+see *What this plan got wrong*) and whether production runs the same major version.
+Nothing built.
 
 ---
 
@@ -664,6 +670,11 @@ console (the project's settings show the Postgres version), or, for both values,
 command the PR 0/1 plan used, run by you:
 `SELECT version(), current_setting('lc_collate'), current_setting('lc_ctype');`
 on the TEST branch. Please also confirm that production uses the same major version.
+
+**Answer, in part (2026-11-22):** the TEST branch runs PostgreSQL 17.12. The command above
+fails on Postgres 16 and newer (`lc_collate` is no longer a setting). Read the collation with
+`SELECT datcollate, datctype, datlocprovider, datlocale FROM pg_database WHERE datname = current_database();`
+instead. Still owed: the collation, and production's major version.
 
 **P3 — Which hook keeps the cleanup?** (needed before S.3)
 
