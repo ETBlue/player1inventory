@@ -13,7 +13,9 @@
 #
 # Each project also writes e2e-results/<project>.json (Playwright's JSON
 # reporter), and the end of the run prints the slowest tests and the time per
-# spec file from those files (scripts/spec/e2e-times.mjs).
+# spec file from those files (scripts/spec/e2e-times.mjs). After each project,
+# its test-results/ folder is copied to e2e-results/test-results-<project>/,
+# because the next Playwright run deletes test-results/.
 #
 # The three projects must run as three separate commands, not as one
 # `pnpm test:e2e`. See root CLAUDE.md -> Verification Gate for the measurements.
@@ -65,6 +67,17 @@ for project in "${PROJECTS[@]}"; do
   code=${PIPESTATUS[0]}
   elapsed=$((SECONDS - start))
 
+  # Keep this project's failure files (error-context.md, trace, screenshot).
+  # The next Playwright run deletes test-results/, so without this copy a
+  # failure in `local` loses its error text when `cloud` starts. A failed
+  # copy only prints a warning: it never changes the exit code.
+  saved="$RESULTS_DIR/test-results-$project"
+  rm -rf "$saved"
+  if [ -d test-results ]; then
+    cp -R test-results "$saved" ||
+      echo "WARNING: could not copy test-results/ to $saved"
+  fi
+
   # Playwright's closing block lists one line per outcome, e.g. "170 passed (7.3m)".
   counts=$(grep -oE '[0-9]+ (passed|failed|skipped|flaky|interrupted|did not run)' \
     "$LOGDIR/$project.log" | tail -6 | paste -sd, - | sed 's/,/, /g')
@@ -110,6 +123,7 @@ node scripts/spec/e2e-times.mjs "${json_files[@]}" ||
 
 echo ""
 echo "HTML reports: playwright-report/<project>  (open with: pnpm exec playwright show-report playwright-report/<project>)"
+echo "Failure files: $RESULTS_DIR/test-results-<project>/"
 
 if [ "$failed" -ne 0 ]; then
   echo "At least one project failed."
