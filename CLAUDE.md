@@ -17,7 +17,8 @@ pnpm test:server  # Run server tests only
 pnpm test:watch   # Run web tests in watch mode
 pnpm test:ui      # Run web tests with UI browser interface
 pnpm test:e2e      # Run E2E tests with Playwright (headless) — ONE project at a time, or narrowed by path
-pnpm test:e2e:all  # THE GATE — runs local, cloud and pwa as three separate invocations
+pnpm test:e2e:all  # THE GATE — runs local, cloud (local Postgres), cloud-neon (8 files on Neon) and pwa, one after another
+pnpm test:e2e:all:neon # The checkpoint gate — local, the WHOLE cloud list on Neon, and pwa
 pnpm test:e2e:ui   # Run E2E tests with Playwright UI (interactive)
 pnpm test:e2e:debug # Debug E2E tests step-by-step
 pnpm lint         # Lint with Biome — apps/web/src AND e2e/
@@ -1284,12 +1285,33 @@ command:
 pnpm test:e2e:all
 ```
 
-`e2e/run-all.sh` runs the three projects — `local`, `cloud`, `pwa` — as three separate
-Playwright invocations, one after another. It does **not** stop at the first failing
-project: all three run, and a summary table at the end gives each project's result, elapsed
-time and test counts. It exits non-zero if any project failed. Each project writes its own
-HTML report (`playwright-report/local`, `/cloud`, `/pwa`), and the reporter never opens a
-browser, so the command is safe to run non-interactively.
+`e2e/run-all.sh` runs **four rows** — `local`, `cloud`, `cloud-neon`, `pwa` — as four
+separate Playwright invocations, one after another (since E2E speed plan task S.8,
+2026-11-23; three rows before). It does **not** stop at the first failing row: all of them
+run, and a summary table at the end gives each row's result, elapsed time and test counts,
+and a line under it says which database each cloud row used. It exits non-zero if any row
+failed. Each row writes its own HTML report (`playwright-report/local`, `/cloud`,
+`/cloud-neon`, `/pwa`), and the reporter never opens a browser, so the command is safe to
+run non-interactively.
+
+**Two gates, two commands** (owner answers P6-A and P10-A of the E2E speed plan,
+`docs/global/testing/2026-11-22-e2e-speed-plan.md`):
+
+| Gate | Command | Rows | When |
+|---|---|---|---|
+| per PR | `pnpm test:e2e:all` | `local`; `cloud`, the whole cloud list on the **local** E2E database; `cloud-neon`, the 8 files of `e2e/neonSpecs.ts` on the **Neon test branch**; `pwa` | the final phase of every branch |
+| checkpoint | `pnpm test:e2e:all:neon` (`run-all.sh --full-neon`) | `local`; `cloud-neon` with the WHOLE cloud list on Neon; `pwa`. No `cloud` row | before each checkpoint release, as a named step of the deploy runbook (section 15 of `docs/global/backend/2026-11-17-deploy-runbook-households-h4.md`) |
+
+**`cloud` green on the local database is not Neon green.** A local query takes well under
+1 ms, a Neon query about 52 ms. A fast database closes latency races and makes a short wait
+pass. The `cloud-neon` row covers the pooler, the live socket and the lock races on every
+PR; the checkpoint gate covers the rest. See `e2e/CLAUDE.md`, *Which database each cloud
+project uses*.
+
+**The per-PR gate needs the local E2E database on this machine**, migrated to the newest
+migration. One-time setup and the rule "run `pnpm --filter server e2e:db:migrate` after
+every new migration" are in `e2e/CLAUDE.md`, *The local E2E database*. A database that is
+behind stops the run at the start (`globalSetup`), with a message that names the command.
 
 **Each gate also records the time of every test** (since E2E speed plan task S.1,
 2026-11-22). Per project, `run-all.sh` writes and keeps:
@@ -1299,7 +1321,7 @@ browser, so the command is safe to run non-interactively.
 | `e2e-results/<project>.json` | Playwright's JSON report. The config adds the `json` reporter only when `PLAYWRIGHT_JSON_OUTPUT_FILE` is set, and `run-all.sh` sets it |
 | `e2e-results/test-results-<project>/` | a copy of `test-results/` (error text, trace, screenshot), made right after the project ends. The next Playwright run deletes `test-results/`, so without the copy a failure in `local` loses its files when `cloud` starts (since task S.5) |
 
-At the end it runs `node scripts/spec/e2e-times.mjs` on the three JSON files. That prints,
+At the end it runs `node scripts/spec/e2e-times.mjs` on the JSON files of the rows it ran. That prints,
 per project, the total, the 15 slowest tests and the time per spec file. `e2e-results/` is
 gitignored. **A `--reporter=…` argument turns the JSON report off**: it replaces the
 config's reporters. So do not pass one when you want the times.
