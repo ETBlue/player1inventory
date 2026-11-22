@@ -491,11 +491,16 @@ commands in step 4.
   database only, created with Neon's major version and collation, migrated with
   `pnpm --filter server e2e:db:migrate` after every new migration.
 - [ ] **Step 4 (owner):** with the answers to P1 and P2:
-  1. install Postgres `<major>` (Homebrew `postgresql@<major>` and `brew services start`, or
-     Postgres.app);
-  2. create the database with Neon's collation and `timezone = 'UTC'`, for example
-     `createdb --locale=<Neon's datcollate> --template=template0 p1i_e2e` and
-     `ALTER DATABASE p1i_e2e SET timezone TO 'UTC'`;
+  1. install Postgres 17 (Homebrew `postgresql@17` and `brew services start postgresql@17`,
+     owner answer P1-A);
+  2. create the database with Neon's locale provider and `timezone = 'UTC'`:
+     `createdb --template=template0 --locale-provider=builtin --builtin-locale=C.UTF-8 --locale=C p1i_e2e`
+     and `ALTER DATABASE p1i_e2e SET timezone TO 'UTC'`. Neon uses the **builtin** provider
+     (`datlocprovider = b`) with `C.UTF-8`, so text sorts by code point, the same on every
+     machine. `--locale=C` sets only `datcollate` and `datctype`, which the builtin provider
+     does not use for sorting; macOS may have no libc `C.UTF-8` locale, so do not pass it
+     there. Check it with the P2 query: `datlocprovider` must be `b` and `datlocale`
+     `C.UTF-8`. Unproved until the owner runs it;
   3. set `E2E_LOCAL_DATABASE_URL` in `apps/server/.env` (never in the repo);
   4. `pnpm --filter server e2e:db:migrate`, then `e2e:db:status`: "Database schema is up to
      date!".
@@ -643,10 +648,10 @@ Otherwise the run gets killed, as on 2026-10-31.
 ## Status
 
 **Plan written 2026-11-22** on `chore/e2e-speed`, from `develop` at `41bbbe1a`. Owner
-approval of steps 1 to 3: 2026-11-22. Owner answers 2026-11-22: P1 and P3 to P10 all A. P2 in part: the Neon TEST branch runs
-**PostgreSQL 17.12** (`SELECT version()`, read by the owner), so the local database is
-Postgres 17 (`postgresql@17`). Still open in P2: the collation (the plan's command failed,
-see *What this plan got wrong*) and whether production runs the same major version.
+approval of steps 1 to 3: 2026-11-22. Owner answers 2026-11-22: P1 and P3 to P10 all A. P2: the Neon TEST branch and production
+both run **PostgreSQL 17.12** with the builtin locale provider and `C.UTF-8` (read by the
+owner; table under P2). The local database matches: Postgres 17, builtin, `C.UTF-8`. All
+owner questions are answered.
 Nothing built.
 
 ---
@@ -674,7 +679,16 @@ on the TEST branch. Please also confirm that production uses the same major vers
 **Answer, in part (2026-11-22):** the TEST branch runs PostgreSQL 17.12. The command above
 fails on Postgres 16 and newer (`lc_collate` is no longer a setting). Read the collation with
 `SELECT datcollate, datctype, datlocprovider, datlocale FROM pg_database WHERE datname = current_database();`
-instead. Still owed: the collation, and production's major version.
+instead.
+
+**Answer (2026-11-22), read by the owner on both branches:**
+
+| Branch | `version()` | `datcollate` | `datctype` | `datlocprovider` | `datlocale` |
+|---|---|---|---|---|---|
+| TEST | PostgreSQL 17.12 | `C.UTF-8` | `C.UTF-8` | `b` (builtin) | `C.UTF-8` |
+| production | PostgreSQL 17.12 | `C.UTF-8` | `C.UTF-8` | `b` (builtin) | `C.UTF-8` |
+
+So the local database is Postgres 17 with the builtin provider and `C.UTF-8` (task S.7 step 4).
 
 **P3 — Which hook keeps the cleanup?** (needed before S.3)
 
