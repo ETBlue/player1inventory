@@ -356,9 +356,14 @@ than trusting a number here — it said **four** when there were seven.
   insufficient: **Prisma Migrate issues DDL through `directUrl`**, so that is the connection
   that actually drops the schema.
 
-  The check lives in `scripts/databaseIsolation.ts` (issue #333) and is unit-tested in
+  The check (`assertNotAnotherDatabase`, with `databaseIdentity`) lives in
+  `src/lib/databaseUrl.ts` since E2E speed plan task S.6 (2026-11-23), so the E2E server can
+  share it. `scripts/databaseIsolation.ts` (issue #333) re-exports it, so
+  `verify-migration.ts` imports it from there as before. It is unit-tested in
   `scripts/databaseIsolation.test.ts` — 15 tests, all against fabricated URLs. The script
-  itself calls it at module top level, before any DDL.
+  itself calls it at module top level, before any DDL. Since the same date the local E2E
+  database variable, `E2E_LOCAL_DATABASE_URL`, ends in `_URL` too, so the guard also refuses
+  a `TEST_*` URL that names the local E2E database.
 
   **It used to compare `DATABASE_URL` and `DIRECT_URL` only**, a hardcoded pair. The same
   `apps/server/.env` also holds `PROD_COPY_DATABASE_URL` and `PROD_COPY_DIRECT_URL`, so

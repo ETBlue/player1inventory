@@ -299,7 +299,7 @@ that really set up that role.
 > | live guard fields in `publishesNothing` | **3**: `recordImport`, `deleteHousehold`, `dismissOwnershipOffer` | `awk '/^const publishesNothing: /,/^}/' apps/server/src/resolvers/live-publish.guard.test.ts \| grep -cE '^  [a-zA-Z]+:'` |
 > | models `/e2e/cleanup` deletes | **21** (`OwnershipOffer` is new) | `grep -cE '^ +DELETE FROM "' apps/server/src/lib/e2eCleanupSql.ts` (since E2E speed plan task S.2; the old `grep -o 'prisma\.[a-zA-Z]*\.deleteMany' apps/server/src/lib/e2eCleanup.ts` command now prints 0) |
 > | `.graphql` schema files | **15** (`ownership.graphql` is new) | `ls apps/server/src/schema/*.graphql \| wc -l` |
-> | migration folders | **21** | `ls apps/server/prisma/migrations \| grep -c _` |
+> | migration folders | **20** (this said 21 until 2026-11-23: the old command, `ls apps/server/prisma/migrations \| grep -c _`, also counts the file `migration_lock.toml`) | `ls -d apps/server/prisma/migrations/*/ \| wc -l` |
 > | server bundle | **254.0 KiB**, 15 `.graphql` files copied | the `esbuild:` line of `pnpm build` |
 > | tests | web **3729 / 364 files**, server **2689 / 85**, `scripts/spec` **70** | `pnpm test` |
 > | cloud spec files | **38 of 42** in `e2e/tests/` | the two commands under *Proving a Test Works* |
@@ -335,7 +335,7 @@ that really set up that role.
 > | live guard fields in `publishesNothing` | **4**: `recordImport`, `deleteHousehold`, `dismissOwnershipOffer`, `setActiveHousehold` |
 > | models `/e2e/cleanup` deletes | **21** (unchanged) |
 > | `.graphql` schema files | **15** (unchanged; the new fields are in `household.graphql`) |
-> | migration folders | **21** (unchanged; `git log --oneline 9701ddff..HEAD -- apps/server/prisma/` is empty) |
+> | migration folders | **20** (unchanged; `git log --oneline 9701ddff..HEAD -- apps/server/prisma/` is empty. This said 21 until 2026-11-23; see the H6b table) |
 > | server bundle | **260.2 KiB**, 15 `.graphql` files copied |
 > | tests | web **3840 / 373 files**, server **2767 / 87**, `scripts/spec` **70** |
 > | cloud spec files | **39 of 43** in `e2e/tests/`; the `cloud` project collects **210** tests |
@@ -370,7 +370,7 @@ that really set up that role.
 > | live guard fields in `publishesNothing` | **7**: `recordImport`, `deleteHousehold`, `dismissOwnershipOffer`, `setActiveHousehold`, `markLocationVisited`, `reorderLocations`, `setLocationSort` |
 > | models `/e2e/cleanup` deletes | **22** (`LocationPreference` is new) |
 > | `.graphql` schema files | **15** (unchanged; the new fields are in `location.graphql`) |
-> | migration folders | **22** (`add_location_preferences` is new) |
+> | migration folders | **21** (`add_location_preferences` is new. This said 22 until 2026-11-23; see the H6b table) |
 > | server bundle | **266.6 KiB**, 15 `.graphql` files copied |
 > | tests | web **3899 / 378 files**, server **2834 / 89**, `scripts/spec` **70** |
 > | cloud spec files | **40 of 44** in `e2e/tests/`; `--list` collects **218** in `cloud`, **190** in `local`, **73** in `pwa` |
@@ -1197,9 +1197,10 @@ build:     prisma generate && tsc --noEmit && tsc -p tsconfig.scripts.json && no
 typecheck: prisma generate && tsc --noEmit && tsc -p tsconfig.scripts.json
 ```
 
-**The two passes do not overlap**, which is why this costs little: `tsc --noEmit` checks the
-files under `src`, the second pass checks the **3** `.ts` files under `scripts`, and nothing is
-checked twice. (`src` was **53** files when this was written; on 2026-11-13
+**The two passes overlap by one file**, which is why this costs little: `tsc --noEmit` checks the
+files under `src`, and the second pass checks the `.ts` files under `scripts` (**3** when this
+was written, **7** on 2026-11-23) plus ONE `src` file, `src/lib/databaseUrl.ts` (since E2E
+speed plan task S.6; see *The no-overlap trick* below). (Until S.6 nothing was checked twice. `src` was **53** files when this was written; on 2026-11-13
 `tsc --noEmit --listFiles` listed **86**. The two `.mjs` build scripts in `scripts/` are not
 type-checked, because `allowJs` is off.) The first version of this fix reused the whole-project `typecheck` and so
 checked `src` twice — 105 files instead of 53, and 3.4s. **`apps/web`'s own second pass,
@@ -1266,10 +1267,14 @@ each file is checked once.
 - **Not yet proved on Railway.** Nobody has run the start check there. If it fails there,
   the deploy build fails and the old server keeps running. Read the build log.
 
-**The no-overlap trick depends on a fact that could change.** `scripts/` imports nothing from
-`src` today — only `@prisma/client`, `vitest`, node builtins, and its own sibling modules. If
-a script ever imports from `src`, TypeScript pulls those files into the scripts program and
-checks them again, and the saving goes away. Correct either way, but measure before adding
+**The no-overlap trick depends on a fact that could change, and it changed once.** Until
+2026-11-23 `scripts/` imported nothing from `src`. Since E2E speed plan task S.6,
+`scripts/databaseIsolation.ts` and `scripts/e2eLocalDb.ts` import `src/lib/databaseUrl.ts`
+(the shared database URL checks; `databaseIsolation.ts` re-exports `databaseIdentity` and
+`assertNotAnotherDatabase` from it). That file imports nothing, so the scripts pass checks
+**1** `src` file twice: `--listFiles` went from 236 to 237 files, and no build time change
+could be seen under load. If a script imports a `src` file that imports more, TypeScript
+pulls those in too, and the saving shrinks. Correct either way, but measure before adding
 such an import.
 
 **Final phase only** — after all steps are complete, run the **whole** E2E suite with one
@@ -1411,7 +1416,7 @@ text alone settles nothing — the repeat at low load and the timing measurement
 the contention is between the concurrent **servers**, not concurrent tests. Passing
 `--workers=N` on the command line does nothing.
 
-No `--grep`. Playwright's `webServer` config starts the servers for you. This runs **three** projects — **348 tests in 27 spec files** (measured 2026-10-04): **176 in `local`** across 22 spec files, **103 in `cloud`** across 20, and **69 in `pwa`** across 2. It said 341 in 26 files on 2026-09-29. The `pwa` project arrived with the PWA work and uses a fourth port, `PWA_WEB_PORT 5176`, so four ports must be free before a run, not three.
+No `--grep`. Playwright's `webServer` config starts the servers for you. On 2026-10-04 this ran **three** projects (four rows since 2026-11-23, see above) — **348 tests in 27 spec files** (measured 2026-10-04): **176 in `local`** across 22 spec files, **103 in `cloud`** across 20, and **69 in `pwa`** across 2. It said 341 in 26 files on 2026-09-29. The `pwa` project arrived with the PWA work and uses a fourth port, `PWA_WEB_PORT 5176`, so four ports must be free before a run, not three.
 
 **Do not narrow the final run with `--grep`.** `--grep` matches a single joined string made of the project name, the spec file's path **relative to `e2e/tests/`**, every `describe` title, and the test title. An area word selects a test only if that exact word appears somewhere in that string. So a list of feature areas silently drops whole spec files whose names happen to use a different word form.
 
@@ -2041,9 +2046,10 @@ test. (This said "one place: `/e2e/cleanup`" from 2026-11-04, households H3a tas
 
 Note also that **no *unit* test executes the resolvers against real SQL** — every server
 test runs against a hand-written stateful Prisma fake. Cloud **E2E** does hit real
-Postgres (`E2E_TEST_MODE=true` routes `prisma.ts` at `TEST_DATABASE_URL`, a dedicated Neon
-branch), but only for the spec files listed in the `cloud` project's `testMatch` in
-`e2e/playwright.config.ts` — that list is opt-in and covers **40 of the 44 spec files in
+Postgres (`E2E_TEST_MODE=true` routes `prisma.ts` at the local E2E database, or at
+`TEST_DATABASE_URL`, a dedicated Neon branch, with `E2E_DATABASE=neon`; see `e2e/CLAUDE.md`,
+*The local E2E database*), but only for the spec files in `CLOUD_SPECS` in
+`e2e/playwright.config.ts` (the `cloud` project's `testMatch`) — that list is opt-in and covers **40 of the 44 spec files in
 `e2e/tests/`** (measured 2026-11-22, after households H7b task M.5 added
 `location-sort.spec.ts`; 39 of 43 on 2026-11-21, after households H7a task L.6 added
 `household-switch.spec.ts`; 38 of 42 on 2026-11-20, after households H6b task K.8 added
@@ -2060,10 +2066,15 @@ branch), but only for the spec files listed in the `cloud` project's `testMatch`
 2026-10-12, by which point both numbers were wrong by 3:
 
 ```bash
-awk "/name: 'cloud'/,/name: 'pwa'/" e2e/playwright.config.ts \
-  | grep -c "spec\.ts'"                                 # cloud's testMatch
+awk '/^const CLOUD_SPECS = \[/,/^\]/' e2e/playwright.config.ts \
+  | grep -c "spec\.ts'"                                 # the cloud list
 find e2e/tests -name '*.spec.ts' | wc -l              # every spec file
 ```
+
+Measured 2026-11-23: **40** and **44**. **The `awk` range changed on 2026-11-23** (E2E speed
+plan task S.8). The cloud list moved out of the `cloud` project into `const CLOUD_SPECS`, so
+the `cloud` and `cloud-neon` projects can share it. The command this block gave before,
+`awk "/name: 'cloud'/,/name: 'pwa'/" … | grep -c "spec\.ts'"`, prints 0 since then.
 
 **The command this block used to give printed 0, and had done so since 2026-10-30.** It
 was `awk "/name: 'cloud'/,0" … | grep -m1 testMatch | grep -o "'\*\*/[^']*\.spec\.ts'" | wc -l`.
@@ -2071,8 +2082,8 @@ It only worked while the whole `testMatch` array sat on one line. The Biome swee
 (issue #346, commit `e015378d`) put one entry per line, so the line holding `testMatch`
 holds no spec name. Measured: the old command gives 25 on the commit before the sweep and 0
 on the sweep itself.
-The new command counts every spec name between the `cloud` and `pwa` project headers. Today
-that range holds only `cloud`'s `testMatch`, because `cloud` has no `testIgnore`.
+The command after it counted every spec name between the `cloud` and `pwa` project headers.
+That worked until the list moved into `CLOUD_SPECS` (see above).
 
 The 4 files outside the `cloud` project today are `a11y.spec.ts`, `pwa-offline.spec.ts`,
 `settings/import-export-local.spec.ts` and `onboarding.spec.ts`. The first three cannot run

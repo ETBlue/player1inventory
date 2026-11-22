@@ -343,9 +343,11 @@ change the local database too.
    ```
 
 **After every new migration, run `pnpm --filter server e2e:db:migrate`.** Nothing applies
-migrations to the local database by itself. Once task S.8 is built, the `cloud` run stops
-at the start until you do (`globalSetup` compares `GET /e2e/database` with the number of
-migration folders).
+migrations to the local database by itself. The `cloud` run stops at the start until you do
+(since task S.8): `globalSetup` (`e2e/global-setup.ts`) reads `GET /e2e/database` and
+throws when fewer migrations are applied than there are migration folders, or when the
+newest applied name sorts before the newest folder. Measured with an extra empty folder:
+"21 migrations applied, 22 migration folders".
 
 ### What `e2e:db:migrate` and `e2e:db:status` do
 
@@ -839,19 +841,23 @@ reconcile finds nothing to remove and creates every row the fixture lists. No ed
 loop was needed in 4b or in PR 5 — which is the whole argument for reading state back
 instead of predicting it.
 
-**The `cloud` project's `testMatch` is 39 files today** (`e2e/playwright.config.ts`,
-measured 2026-11-21, after households H7 task L.6; 38 after H6b task K.8, 37 on 2026-11-20
+**The cloud list (`CLOUD_SPECS`) is 40 files today** (`e2e/playwright.config.ts`,
+measured 2026-11-23; 40 after households H7b task M.5, 39 on 2026-11-21 after households H7
+task L.6; 38 after H6b task K.8, 37 on 2026-11-20
 after households H6 task J.8; 36 on 2026-11-19, 35 on 2026-11-18, 29
-on 2026-11-04 and 13 on 2026-09-23). **Count the array rather than reusing that 39** — it
+on 2026-11-04 and 13 on 2026-09-23). **Count the array rather than reusing that 40** — it
 grows most weeks:
 
 ```bash
-awk "/name: 'cloud'/,/name: 'pwa'/" e2e/playwright.config.ts | grep -c "spec\.ts'"
+awk '/^const CLOUD_SPECS = \[/,/^\]/' e2e/playwright.config.ts | grep -c "spec\.ts'"
 ```
 
-The `awk` range matters: the file holds **three** such lists — `local`'s `testIgnore`,
-`cloud`'s `testMatch` and `pwa`'s `testMatch` — and a grep over the whole file counts all 56
-entries instead of the 37 that belong to `cloud` (measured 2026-11-20).
+It gave **40** on 2026-11-23. The `awk` range matters: the file holds more than one such
+list (`local`'s `testIgnore`, `CLOUD_SPECS`, `pwa`'s `testMatch`), and a grep over the
+whole file counts them all (56 instead of 37 on 2026-11-20). **The range changed on
+2026-11-23** (E2E speed plan task S.8): the cloud list moved into `const CLOUD_SPECS`, so
+`cloud` and `cloud-neon` share it. The command this section gave before,
+`awk "/name: 'cloud'/,/name: 'pwa'/" … | grep -c "spec\.ts'"`, prints 0 since then.
 
 **The command this section used to give printed 0 from 2026-10-30.** It ended
 `| grep -m1 testMatch | grep -o "'\*\*/[^']*\.spec\.ts'" | wc -l`, so it only counted the
