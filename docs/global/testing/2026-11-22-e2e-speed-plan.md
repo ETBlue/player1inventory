@@ -393,29 +393,72 @@ total within 2 s.
 `e2e/global-setup.ts` (new), `e2e/playwright.config.ts`, `apps/server/src/lib/e2eCleanup.ts`
 and `e2eCleanupSql.ts` (the `allE2eUsers` form), `e2eCleanup.test.ts`.
 
-- [ ] **Step 1:** check in Playwright 1.58's documentation or source whether `globalSetup`
+- [x] **Step 1:** check in Playwright 1.58's documentation or source whether `globalSetup`
   runs after the `webServer` entries are ready. If not, use a setup project that the cloud
   projects list in `dependencies`.
-- [ ] **Step 2: failing unit tests** for `{ "allE2eUsers": true }`: the server selects the
+- [x] **Step 2: failing unit tests** for `{ "allE2eUsers": true }`: the server selects the
   users with `id LIKE 'e2e-%'` inside the same function call (a second function
   `e2e_cleanup_all()`, or a branch of the first), still one round trip; a body with both
   `userIds` and `allE2eUsers` is `400`. The function also returns the ids it deleted, so
   the handler can call `forgetSeenToday` for each one (or clear that memory as a whole in
   this mode).
-- [ ] **Step 3: `global-setup.ts`.** When a cloud project is selected (reuse
+- [x] **Step 3: `global-setup.ts`.** When a cloud project is selected (reuse
   `selectedProjects()`; export it from the config module or move it into a helper), call
   the route with `allE2eUsers` once. Print the deleted counts on one line. Throw on any
   error, so a broken cleanup stops the run before the first test.
-- [ ] **Step 4: remove the `afterEach` cleanup calls** in every spec. Keep each
+- [x] **Step 4: remove the `afterEach` cleanup calls** in every spec. Keep each
   `beforeEach` call, and keep every other line of each `afterEach` (closing contexts,
   clearing IndexedDB in local mode). Keep cleanups in the middle of a test, and their
   `forgetDeletedHousehold(page)`. Use `git grep`, never a walk that can enter `.worktrees/`.
   Count before and after: `git grep -c cleanupCloudData -- e2e/tests`.
-- [ ] **Step 5:** update `cloudTeardown.ts`'s comment ("Call it from both `beforeEach` and
+- [x] **Step 5:** update `cloudTeardown.ts`'s comment ("Call it from both `beforeEach` and
   `afterEach`" becomes `beforeEach` only, with the D7 reason) and the comment on
   `E2E_SECOND_USER_ID` in `e2e/constants.ts`.
-- [ ] **Step 6:** the gate without E2E, then the whole cloud project:
+- [x] **Step 6:** the gate without E2E, then the whole cloud project:
   `pnpm test:e2e --project=cloud`. All green.
+
+**Done 2026-11-22** in `6ec63ccc` (the S.2 count fix), `c0879a64` (server), `4ba583ec`
+(`globalSetup`) and `cf0e38f6` (the specs), on `chore/e2e-speed`.
+
+- **The S.2 count fix (decided by the main session).** Each delete in the SQL is now one
+  statement that writes its own count:
+  `WITH d AS (DELETE … RETURNING 1) SELECT result || jsonb_build_object('<key>', count(*)) INTO result FROM d;`.
+  There is no `GET DIAGNOSTICS` any more, and a unit test fails if it comes back. With the
+  whole `"ItemTag"` statement removed, 4 unit tests go red and `cleanup-endpoint.spec.ts`
+  goes red with `500 … bad count: itemTags`. "Remove the `DELETE` and keep its count line"
+  cannot be written any more. After the fix: the 3 specs of S.2 step 8, 6 passed. One call:
+  p50 56 ms, p90 58 ms (nothing to delete); p50 57 ms, p90 58 ms (owns 1 household).
+- **Step 1:** Playwright 1.58.2 runs the `webServer` plugin setup (start the process, then
+  wait for its `url`) before `globalSetup`: `createGlobalSetupTasks` in
+  `lib/runner/tasks.js`, `WebServerPlugin.setup` in `lib/plugins/webServerPlugin.js`,
+  `testRunner.js` line 372. So there is no setup project.
+- **The server:** the 22 deletes are in `e2e_cleanup_rows(user_ids, owned)`, written once.
+  `e2e_cleanup(user_ids)` finds the owned households. `e2e_cleanup_all()` takes every
+  `User` whose id starts with `e2e-`, and the households an E2E user owns plus every
+  household with no member who is not an E2E user (D8). It returns `{ deleted, userIds }`,
+  and the route calls `forgetSeenToday` for each id. It answers 400 with a header, with
+  another body key, or with a value that is not `true`. The server installs the 3
+  functions with one call each.
+- **The specs:** every `afterEach` cleanup is gone. Lines naming `cleanupCloudData` in
+  `e2e/tests`: 165 in 42 files before, 134 in 42 after. `a11y`, `item-management`,
+  `onboarding` and `settings/tags` cleaned only in `afterEach`; their cleanup moved into
+  `beforeEach`. `selectedProjects()` moved to `e2e/helpers/selectedProjects.ts`.
+- **Gate without E2E:** all green. `pnpm test`: web 3899 / 378, server 2858 / 89 (was
+  2850), `scripts/spec` 78. esbuild 274.4 KiB. The first `pnpm test` run had 1 red web
+  test (`OwnershipOfferBanner.test.tsx`, a focus check) at load average 16 to 28; it passed
+  alone, and a full re-run was green.
+- **The cloud project** (`--project=cloud`, at `cf0e38f6`, JSON report): **210 passed, 8
+  skipped, 2177.8 s (36m18s)**, against S.1's 3847.8 s (43% less; S.2 and S.3 together).
+  Load average (1 min, 37 samples): min 1.34, max 4.57, mean 2.40. "Inactive" memory never
+  fell below 5.36 GB. The slowest files (s): `settings/import-export-cloud` 277.3 (was
+  317.6), `location-people` 133.0 (251.3), `household-ownership` 127.8 (394.8),
+  `household-invites` 112.4 (324.4).
+- **Mutations:** all red, except the two no-op controls. `settings/locations.spec.ts`
+  `beforeEach` cleanup made a no-op: 6 failed. `global-setup.ts` deletes nothing (probe user
+  `e2e-test-user-probe` made before the run): the probe user is still there; with the real
+  one, `{"user":null}`. `LIKE 'e2e-test-user-2%'`: the prefix and constants unit test red.
+  `allE2eUsers` branch never taken: 4 unit tests red. `forgetSeenToday` before the query:
+  2 unit tests red.
 
 **Mutation checks:**
 
@@ -717,6 +760,14 @@ Otherwise the run gets killed, as on 2026-10-31.
 | S.2 file list | — | `apps/server/src/webhookRouteOrder.test.ts` also changes |
 | root `CLAUDE.md` and `e2e/CLAUDE.md`, the count of models `/e2e/cleanup` deletes | `grep -o 'prisma\.[a-zA-Z]*\.deleteMany' apps/server/src/lib/e2eCleanup.ts \| sort -u \| wc -l` | it now prints 0. Use `grep -c '^  DELETE FROM "' apps/server/src/lib/e2eCleanupSql.ts` (22). Fix in S.5 |
 | *Known gaps* (missing) | — | the function stays in the test database after a server stops, so a mutation run leaves the mutated function there until the next E2E server start. A removed "create function" call is caught only by `webhookRouteOrder.test.ts`, not by E2E |
+| D2 | each count comes from `GET DIAGNOSTICS … ROW_COUNT` | that is a separate statement that reads the LAST statement's count, so a removed `DELETE` with its count line kept reported the previous delete's count, and the E2E spec stayed green (S.2 mutation 1). Since `6ec63ccc` each count is `count(*)` of the delete's own `RETURNING` rows, in the same statement |
+| D4, S.2 step 7 | one `$executeRawUnsafe(E2E_CLEANUP_FUNCTION_SQL)` | with three functions (since S.3) it is one call per statement: Postgres refuses several commands in one prepared statement |
+| S.3 step 2 | select the users with `LIKE 'e2e-%'` | D8 also asks for every household with no non-E2E member (a household with no owner left by a killed run). Built |
+| S.3 step 2 | a body with `userIds` and `allE2eUsers` is 400 | the `userIds` body comes in S.4. The 400 is built and tested now |
+| S.3 step 4 | keep each `beforeEach` call | four specs (`a11y`, `item-management`, `onboarding`, `settings/tags`) had no `beforeEach` cleanup; it moved there from `afterEach` |
+| S.3 mutation row 3 | "the `allE2eUsers` unit test that seeds `e2e-test-user`" | a unit test cannot run the `LIKE`. The test reads `E2E_USER_ID` and `E2E_SECOND_USER_ID` from `e2e/constants.ts` and checks that both start with the prefix in the SQL |
+| *Expected times* | cloud about 45–50 min after PR A | 36m18s after S.2 and S.3, before S.4 |
+| S.5 (to do) | — | `e2e/CLAUDE.md` still says "no `globalSetup`" and "both hooks", and `cloudTeardown.ts`'s `CLEANUP_MODEL_KEYS` comment still names the route's `$transaction` |
 
 ## Status
 
