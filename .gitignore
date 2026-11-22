@@ -40,6 +40,8 @@ storybook-static
 # Playwright
 playwright-report
 test-results
+# JSON report per E2E project (e2e/run-all.sh, scripts/spec/e2e-times.mjs)
+e2e-results/
 
 # Living spec reports (scripts/spec/)
 spec-dist/

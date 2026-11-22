@@ -221,11 +221,7 @@ function stockAt(rows: StockRow[], locationId: string): StockRow | undefined {
 }
 
 test.beforeEach(async ({ request }) => {
-  // Guards against a previous run that crashed before its teardown.
-  await cleanupCloudData(request)
-})
-
-test.afterEach(async ({ request }) => {
+  // The only cleanup of each test: it starts clean whatever ran before it (E2E speed plan, D7).
   await cleanupCloudData(request)
 })
 

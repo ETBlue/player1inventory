@@ -38,7 +38,11 @@ queries Prisma batches into one transaction with no logic between them:
 `apps/server/src/lib/e2eCleanup.ts` (the E2E-only cleanup endpoint).
 (`purge.resolver.ts` was removed in households H3a task 3.10, and the same
 task moved `clearAllData` in `import.resolver.ts` to the interactive form.
-`e2eCleanup.ts` still uses the array form.)
+`e2eCleanup.ts` used the array form until E2E speed plan task S.2, 2026-11-22.
+It now calls ONE Postgres function, `e2e_cleanup`, with one `$queryRaw`; see
+`apps/server/src/lib/e2eCleanupSql.ts`. So no source file uses the array form
+today: `git grep -n '\$transaction(\[' -- apps/server/src` finds only the
+test fake `src/test/stockFake.ts`, which refuses it, and its test.)
 
 `apps/server/src/resolvers/shelf.resolver.ts:89`'s `applyShelfFilterPicks`
 resolver introduces the first **interactive (callback) form** —
@@ -49,8 +53,14 @@ cannot express.
 
 **Implication for pooled connections:** the interactive form holds one
 database connection open for the duration of the callback (every query inside
-it must run sequentially against the same `tx`), unlike the array form, which
-Prisma can send as a single batched request. `schema.prisma:5-8` already
+it must run sequentially against the same `tx`). The array form does NOT
+save round trips either. Measured 2026-11-22 on the Neon test branch (one round
+trip about 52 ms): the old `/e2e/cleanup`, one read plus an array-form
+`$transaction` of 22 `deleteMany`, took **1.33 s** (p50 of 20 calls). That is
+about 25 × 52 ms, so Prisma sent each statement, plus `BEGIN` and `COMMIT`, on
+its own. The same deletes in one SQL function took **56–68 ms**. When the
+number of round trips matters, put the statements in the database (a function
+or one SQL statement), not in a Prisma transaction. `schema.prisma:5-8` already
 configures a `directUrl` alongside the pooled `DATABASE_URL` — an interactive
 transaction is exactly the kind of pattern that benefits from a non-pooled
 connection, since it ties up a connection from the pool for the whole

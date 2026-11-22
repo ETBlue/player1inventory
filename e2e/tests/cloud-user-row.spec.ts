@@ -33,9 +33,10 @@ import { makeGql } from '../utils/cloud'
 //
 // 1. Each test uses an id no other spec uses. No other spec can have put it
 //    in the memory.
-// 2. `cleanupCloudData(request, id)` in `beforeEach` deletes the row AND calls
-//    `forgetSeenToday(id)` (lib/e2eCleanup.ts). So even a re-run of this file
-//    in the same server process starts with the id forgotten.
+// 2. `cleanupCloudData(request, ALL_USERS)` in `beforeEach` deletes the rows
+//    AND calls `forgetSeenToday(id)` for each id (lib/e2eCleanup.ts). So even
+//    a re-run of this file in the same server process starts with the ids
+//    forgotten.
 //
 // ── WHY THE "LATER REQUEST" TEST MARKS THE USER DELETED FIRST ────────────────
 //
@@ -75,16 +76,14 @@ const DELETED_USER_DISPLAY_NAME = 'Deleted user'
 async function cleanupAll(
   request: Parameters<typeof cleanupCloudData>[0],
 ): Promise<void> {
-  for (const id of ALL_USERS) await cleanupCloudData(request, id)
+  // One call for every user (E2E speed plan, task S.4). The route forgets
+  // each listed id (`forgetSeenToday`) after the delete.
+  await cleanupCloudData(request, ALL_USERS)
 }
 
 test.beforeEach(async ({ request }) => {
   // Deletes the rows a crashed run left behind, and makes the server forget
   // these ids (see "WHY EACH TEST HAS ITS OWN USER ID" above).
-  await cleanupAll(request)
-})
-
-test.afterEach(async ({ request }) => {
   await cleanupAll(request)
 })
 

@@ -173,11 +173,10 @@ test.beforeEach(async ({ page, request, baseURL }) => {
   }
 })
 
-test.afterEach(async ({ page, request, baseURL }) => {
-  if (baseURL === CLOUD_WEB_URL) {
-    await cleanupCloudData(request)
-    return
-  }
+test.afterEach(async ({ page, baseURL }) => {
+  // Cloud mode: nothing to clean here. Each test cleans up in its own
+  // beforeEach (E2E speed plan, decision D7).
+  if (baseURL === CLOUD_WEB_URL) return
 
   await page.goto('/')
   await page.evaluate(async () => {

@@ -1153,7 +1153,7 @@ Filled in from the task reports and reviews.
 local mode, saved on the device). Nothing built.
 
 **H7a built 2026-11-21** on `feature/households-h7a` (tasks L.1–L.7), merged into `develop` (2026-11-22, #394, merge `bf71f485`), not deployed. Owner decisions O56-A and O57-B applied in L.7. No migration. Deploy notes: section 13 of the H4 runbook. The first `pnpm test:e2e:all` failed 2 cloud tests not caused by H7a; the second, at `ef8982fb`, was green in all three projects (see L.7).
-**H7b built 2026-11-22** on `feature/households-h7b` (tasks M.1–M.6), from `develop` at `bf71f485`. Not merged, not deployed. One additive migration with one backfill, `20261122000000_add_location_preferences`, proved by `verify:migration` on the TEST database (main session, 2026-11-22, 284 `ok`, 0 failed). Owner decision O58-A added 2026-11-22. Deploy notes: section 14 of the H4 runbook. `pnpm test:e2e:all` at `14f9501c` was green on the first try in all three projects (see M.6).
+**H7b built 2026-11-22** on `feature/households-h7b` (tasks M.1–M.6), from `develop` at `bf71f485`, merged into `develop` (2026-11-22, #395, merge `41bbbe1a`), not deployed. One additive migration with one backfill, `20261122000000_add_location_preferences`, proved by `verify:migration` on the TEST database (main session, 2026-11-22, 284 `ok`, 0 failed). Owner decision O58-A added 2026-11-22. Deploy notes: section 14 of the H4 runbook. `pnpm test:e2e:all` at `14f9501c` was green on the first try in all three projects (see M.6).
 
 ---
 

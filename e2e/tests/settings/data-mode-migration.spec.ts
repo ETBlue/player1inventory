@@ -176,9 +176,7 @@ test.beforeEach(async ({ request }) => {
   await cleanupCloudData(request)
 })
 
-test.afterEach(async ({ page, request }) => {
-  await cleanupCloudData(request)
-
+test.afterEach(async ({ page }) => {
   // Every test gets a fresh browser context, so nothing below can reach the next
   // test. It is cleared anyway: this branch made `PostLoginMigrationDialog` —
   // which can wipe a cloud account — mount in every cloud spec, and a leftover

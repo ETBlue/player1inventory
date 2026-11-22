@@ -7,7 +7,7 @@ import {
   test,
 } from '@playwright/test'
 import { checkA11y, injectAxe } from 'axe-playwright'
-import { CLOUD_WEB_URL, E2E_SECOND_USER_ID } from '../constants'
+import { CLOUD_WEB_URL, E2E_SECOND_USER_ID, E2E_USER_ID } from '../constants'
 import { AXE_OPTIONS, checkDialogA11y } from '../helpers/axe'
 import { cleanupCloudData } from '../helpers/cloudTeardown'
 import {
@@ -220,12 +220,12 @@ function cardOf(page: Page, name: string) {
 }
 
 async function cleanupAll(request: APIRequestContext) {
-  // BEA first, OWNER last: OWNER's cleanup deletes the household.
-  await cleanupCloudData(request, BEA)
-  await cleanupCloudData(request, OWNER)
-  // And the build-time user: if the `e2e-user-id` override ever stops
-  // working, every context writes as it (shared-household.spec.ts).
-  await cleanupCloudData(request)
+  // One call for every user (E2E speed plan, task S.4). A household whose
+  // members are all listed is deleted too (decision D6), so the order of
+  // the users no longer matters.
+  // The build-time user is in the list too: if the `e2e-user-id` override
+  // ever stops working, every context writes as it (shared-household.spec.ts).
+  await cleanupCloudData(request, [BEA, OWNER, E2E_USER_ID])
 }
 
 test.beforeEach(async ({ request, baseURL }) => {
@@ -233,10 +233,8 @@ test.beforeEach(async ({ request, baseURL }) => {
   await cleanupAll(request)
 })
 
-test.afterEach(async ({ request, baseURL }) => {
+test.afterEach(async () => {
   for (const context of contexts.splice(0)) await context.close()
-  if (baseURL !== CLOUD_WEB_URL) return
-  await cleanupAll(request)
 })
 
 test.describe('the activity log and the danger zones', () => {

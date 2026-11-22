@@ -130,14 +130,10 @@ async function snapshot(gql: Gql, home: string): Promise<Snapshot> {
 }
 
 test.beforeEach(async ({ request }) => {
-  // Guards against a previous run that crashed before its teardown
-  await cleanupCloudData(request, MEMBER)
-  await cleanupCloudData(request, OWNER)
-})
-
-test.afterEach(async ({ request }) => {
-  await cleanupCloudData(request, MEMBER)
-  await cleanupCloudData(request, OWNER)
+  // The only cleanup of each test: it starts clean whatever ran before it (E2E speed plan, D7).
+  // One call for both (task S.4). The tests below still clean ONE person at
+  // a time on purpose: the order of the two calls is their subject.
+  await cleanupCloudData(request, [MEMBER, OWNER])
 })
 
 test.describe('/e2e/cleanup with two people in one household', () => {

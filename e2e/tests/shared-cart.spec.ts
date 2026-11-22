@@ -215,20 +215,14 @@ async function logCount(gql: Gql, seed: Seed, itemId: string) {
 }
 
 async function cleanupAll(request: Parameters<typeof makeGql>[0]) {
-  // The two members first, then the owner, whose cleanup deletes the
-  // household, its carts and every cart row in them.
-  await cleanupCloudData(request, PARTICIPANT)
-  await cleanupCloudData(request, VIEWER)
-  await cleanupCloudData(request, IMPORTER)
-  await cleanupCloudData(request, OWNER)
+  // One call for every user (E2E speed plan, task S.4). A household whose
+  // members are all listed is deleted too (decision D6), so the order of
+  // the users no longer matters.
+  await cleanupCloudData(request, [PARTICIPANT, VIEWER, IMPORTER, OWNER])
 }
 
 test.beforeEach(async ({ request }) => {
-  // Guards against a previous run that crashed before its teardown
-  await cleanupAll(request)
-})
-
-test.afterEach(async ({ request }) => {
+  // The only cleanup of each test: it starts clean whatever ran before it (E2E speed plan, D7).
   await cleanupAll(request)
 })
 
@@ -371,8 +365,8 @@ test.describe('a shared cart in one household', () => {
     //
     // 60s, not the default 30s: this test took 15.4s to 20.1s alone (five
     // runs, 2026-11-15), the slowest in the file. A test that runs past its
-    // budget shows misleading Postgres errors, because `afterEach` cleanup
-    // races its last requests (docs/global/bugs/2026-11-15-bug-reimport-tests-over-time-budget.md).
+    // budget showed misleading Postgres errors, because the `afterEach` cleanup
+    // (removed in E2E speed plan task S.3) raced its last requests (docs/global/bugs/2026-11-15-bug-reimport-tests-over-time-budget.md).
     test.setTimeout(60_000)
     const owner = makeGql(request, OWNER)
     const participant = makeGql(request, PARTICIPANT)

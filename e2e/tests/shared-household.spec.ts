@@ -6,7 +6,7 @@ import {
   type Page,
   test,
 } from '@playwright/test'
-import { CLOUD_WEB_URL, E2E_SECOND_USER_ID } from '../constants'
+import { CLOUD_WEB_URL, E2E_SECOND_USER_ID, E2E_USER_ID } from '../constants'
 import { cleanupCloudData } from '../helpers/cloudTeardown'
 import { addHouseholdMember } from '../helpers/cloudUsers'
 import {
@@ -176,14 +176,14 @@ async function openAs(
 }
 
 async function cleanupAll(request: APIRequestContext) {
-  // MEMBER first: OWNER's cleanup deletes the household and its role rows.
-  await cleanupCloudData(request, MEMBER)
-  await cleanupCloudData(request, OWNER)
-  // And the build-time user. No test here acts as it, but if the
-  // `localStorage` override ever stops working, every context falls back to
-  // `E2E_USER_ID` and writes rows as that user. Found by the mutation that
+  // One call for every user (E2E speed plan, task S.4). A household whose
+  // members are all listed is deleted too (decision D6), so the order of
+  // the users no longer matters.
+  // The build-time user is in the list too. No test here acts as it, but if
+  // the `localStorage` override ever stops working, every context falls back
+  // to `E2E_USER_ID` and writes rows as that user. Found by the mutation that
   // made `getE2ETestUserId` ignore the key.
-  await cleanupCloudData(request)
+  await cleanupCloudData(request, [MEMBER, OWNER, E2E_USER_ID])
 }
 
 test.beforeEach(async ({ request, baseURL }) => {
@@ -191,14 +191,12 @@ test.beforeEach(async ({ request, baseURL }) => {
   await cleanupAll(request)
 })
 
-test.afterEach(async ({ request, baseURL }) => {
+test.afterEach(async () => {
   for (const context of contexts.splice(0)) await context.close()
-  if (baseURL !== CLOUD_WEB_URL) return
-  await cleanupAll(request)
 })
 
 test.describe('two people in one household', () => {
-  // 60 s, not 30 s: two contexts, two cleanups per hook, and a seed of
+  // 60 s, not 30 s: two contexts, two cleanups in `beforeEach`, and a seed of
   // eleven requests, like live-cart.spec.ts.
   test.describe.configure({ timeout: 60_000 })
 

@@ -10,9 +10,10 @@ import { CLOUD_GRAPHQL_URL, E2E_USER_ID } from '../constants'
  * takes to act as a second account — see
  * `e2e/tests/cart-id-cross-user-leak.spec.ts`.
  *
- * A spec that writes as a second user must also clean that user up:
- * `cleanupCloudData(request, thatUserId)` in both `beforeEach` and
- * `afterEach`. The default teardown deletes only `E2E_USER_ID`'s rows.
+ * A spec that writes as a second user must also clean that user up: pass
+ * every user of the spec in ONE list to `cleanupCloudData(request, [...])` in
+ * `beforeEach` (E2E speed plan, tasks S.3 and S.4). The default call deletes
+ * only `E2E_USER_ID`'s rows.
  */
 export function makeGql(
   request: APIRequestContext,

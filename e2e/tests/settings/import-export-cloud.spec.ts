@@ -67,10 +67,6 @@ test.beforeEach(async ({ page }) => {
   })
 })
 
-test.afterEach(async ({ request }) => {
-  await cleanupCloudData(request)
-})
-
 // Helper: seed all fixture entities via GraphQL bulk create mutations.
 //
 // THIS IS THE SPEC'S OWN SEED, NOT `e2e/helpers/cloudSeed.ts`'s, and PR 4b task
@@ -503,7 +499,8 @@ test('user can import a local backup into cloud mode (local → cloud)', async (
 // GraphQL call.
 //
 // WHY THE FAILURE LOOKED LIKE A DATA BUG. When the 30s ran out in the middle of
-// the import, `afterEach` ran `cleanupCloudData` while the page was still sending
+// the import, `afterEach` ran `cleanupCloudData` (it did until E2E speed plan
+// task S.3) while the page was still sending
 // import mutations. The cleanup deleted the household's rows under them, so the
 // next mutation failed with a Postgres error: `deadlock detected` in
 // `cartItem.upsert`, a foreign-key error on `CartItem_itemId_fkey` or

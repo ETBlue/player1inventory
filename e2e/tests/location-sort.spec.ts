@@ -58,7 +58,7 @@ import { makeGql } from '../utils/cloud'
 // `testIgnore` (e2e/playwright.config.ts): local mode has no second person,
 // no `dataUpdatedAt` and no visits.
 
-/** The member of test 1. Cleaned up in both hooks. */
+/** The member of test 1. Cleaned up in `beforeEach`. */
 const BEA = `${E2E_SECOND_USER_ID}-sort-bea`
 
 const NAMES = ['Cellar', 'Attic', 'Dock'] as const
@@ -125,15 +125,9 @@ test.beforeEach(async ({ page, request }) => {
   await page.addInitScript(() => {
     localStorage.setItem('e2e-skip-onboarding', 'true')
   })
-  // Guards against a previous run that crashed before its teardown. Bea's
-  // cleanup comes first: their member row is in Mia's household.
-  await cleanupCloudData(request, BEA)
-  await cleanupCloudData(request)
-})
-
-test.afterEach(async ({ request }) => {
-  await cleanupCloudData(request, BEA)
-  await cleanupCloudData(request)
+  // The only cleanup of each test: it starts clean whatever ran before it
+  // (E2E speed plan, D7). One call for both users (task S.4).
+  await cleanupCloudData(request, [BEA, E2E_USER_ID])
 })
 
 test('user can keep their own location order', async ({

@@ -65,17 +65,15 @@ test.beforeEach(async ({ page, request, baseURL }) => {
     localStorage.setItem('e2e-skip-onboarding', 'true')
   })
   if (baseURL === CLOUD_WEB_URL) {
-    // Guards against a previous run that crashed before its teardown.
+    // The only cleanup of each test: it starts clean whatever ran before it (E2E speed plan, D7).
     await cleanupCloudData(request)
   }
 })
 
-test.afterEach(async ({ page, request, baseURL }) => {
-  if (baseURL === CLOUD_WEB_URL) {
-    // Cloud mode: delete this user's rows through the E2E cleanup endpoint.
-    await cleanupCloudData(request)
-    return
-  }
+test.afterEach(async ({ page, baseURL }) => {
+  // Cloud mode: nothing to clean here. Each test cleans up in its own
+  // beforeEach (E2E speed plan, decision D7).
+  if (baseURL === CLOUD_WEB_URL) return
   // Local mode: clear IndexedDB, localStorage, and sessionStorage.
   await page.goto('/')
   await page.evaluate(async () => {
@@ -428,10 +426,8 @@ const CREATE_LOCATION = `mutation ($name: String!) { createLocation(name: $name)
 test.describe('cloud: View only on the switcher (households H5 task F.4)', () => {
   test.beforeEach(async ({ request, baseURL }) => {
     test.skip(baseURL !== CLOUD_WEB_URL, 'roles exist in cloud mode only')
-    // The browser's user first (its cleanup removes its own role rows), then
-    // the owner, whose cleanup deletes the household.
-    await cleanupCloudData(request, E2E_USER_ID)
-    await cleanupCloudData(request, SWITCHER_OWNER)
+    // One call for both users (E2E speed plan, task S.4).
+    await cleanupCloudData(request, [E2E_USER_ID, SWITCHER_OWNER])
 
     const owner = makeGql(request, SWITCHER_OWNER)
     // The owner's first request runs first sign-in, which makes "Home"
@@ -454,12 +450,6 @@ test.describe('cloud: View only on the switcher (households H5 task F.4)', () =>
         { locationId: garage.createLocation.id, role: 'participant' },
       ],
     })
-  })
-
-  test.afterEach(async ({ request, baseURL }) => {
-    if (baseURL !== CLOUD_WEB_URL) return
-    await cleanupCloudData(request, E2E_USER_ID)
-    await cleanupCloudData(request, SWITCHER_OWNER)
   })
 
   /** The sidebar trigger on the pantry, with Home active and its badge shown. */

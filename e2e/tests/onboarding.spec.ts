@@ -3,12 +3,16 @@ import { CLOUD_WEB_URL } from '../constants'
 import { cleanupCloudData } from '../helpers/cloudTeardown'
 import { OnboardingPage } from '../pages/OnboardingPage'
 
-test.afterEach(async ({ page, request, baseURL }) => {
-  if (baseURL === CLOUD_WEB_URL) {
-    // Cloud mode: delete all test data from the database via the E2E cleanup endpoint.
-    await cleanupCloudData(request)
-    return
-  }
+test.beforeEach(async ({ request, baseURL }) => {
+  // Cloud mode: start from a clean account. The cleanup runs here only, not
+  // in afterEach (E2E speed plan, decision D7).
+  if (baseURL === CLOUD_WEB_URL) await cleanupCloudData(request)
+})
+
+test.afterEach(async ({ page, baseURL }) => {
+  // Cloud mode: nothing to clean here. Each test cleans up in its own
+  // beforeEach (E2E speed plan, decision D7).
+  if (baseURL === CLOUD_WEB_URL) return
   // Local mode for onboarding tests: clear all object stores within the DB
   // WITHOUT deleting the database itself.
   //

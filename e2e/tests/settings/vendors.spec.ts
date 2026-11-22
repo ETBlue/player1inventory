@@ -46,11 +46,10 @@ test.beforeEach(async ({ page, request, baseURL }) => {
   }
 })
 
-test.afterEach(async ({ page, request, baseURL }) => {
-  if (baseURL === CLOUD_WEB_URL) {
-    // Cloud mode: delete all test data from the database via the E2E cleanup endpoint.
-    await cleanupCloudData(request)
-  } else {
+test.afterEach(async ({ page, baseURL }) => {
+  // Cloud mode: nothing to clean here. Each test cleans up in its own
+  // beforeEach (E2E speed plan, decision D7).
+  if (baseURL !== CLOUD_WEB_URL) {
     // Local mode: clear IndexedDB, localStorage, and sessionStorage.
     await page.goto('/')
     await page.evaluate(async () => {

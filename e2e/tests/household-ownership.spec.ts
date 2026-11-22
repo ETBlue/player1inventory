@@ -7,7 +7,7 @@ import {
   test,
 } from '@playwright/test'
 import { checkA11y, injectAxe } from 'axe-playwright'
-import { CLOUD_WEB_URL, E2E_SECOND_USER_ID } from '../constants'
+import { CLOUD_WEB_URL, E2E_SECOND_USER_ID, E2E_USER_ID } from '../constants'
 import { AXE_OPTIONS, checkDialogA11y } from '../helpers/axe'
 import { cleanupCloudData } from '../helpers/cloudTeardown'
 import {
@@ -82,31 +82,29 @@ import { makeGql } from '../utils/cloud'
 // person" counts in tests 5 and 7 would give the same answer with or
 // without their `deletedAt` filter (plan K.8, *Mutation checks*).
 //
-// ── THE CLEANUP TRAP, AND HOW EACH TEST ENDS ─────────────────────────────────
+// ── THE CLEANUP TRAP ─────────────────────────────────────────────────────────
 //
-// `/e2e/cleanup` deletes the households a user OWNS (lib/e2eCleanup.ts). A
-// household whose owner's account was deleted has NO owner row until
-// someone accepts, so no user's cleanup deletes it. Each test ends in a
-// state the cleanup can remove:
+// A household whose owner's account was deleted has NO owner row until
+// someone accepts the hand-over. An owner rule alone cannot find it, so a
+// test that fails half way can leave one behind.
 //
-// | Test | How it ends                                                       |
-// |------|-------------------------------------------------------------------|
-// | 1    | MIA owns the household; MIA's cleanup deletes it                  |
-// | 2    | OWNER still owns it                                               |
-// | 3    | MIA accepted, so MIA owns it                                      |
-// | 4    | OWNER still owns it (BEN was a member)                            |
-// | 5    | the hand-over deleted the household itself                        |
-// | 6    | the winner owns it                                                |
-// | 7    | MIA's leave deleted it                                            |
-// | 8, 9 | MIA accepts the hand-over at the end                              |
+// Since E2E speed plan task S.4 one cleanup call in `beforeEach` takes
+// EVERY user of this file, plus the build-time user. `/e2e/cleanup` deletes
+// the households a listed user owns AND the households whose members are
+// all listed (lib/e2eCleanupSql.ts, decision D6, owner answer P5-A). Every
+// person who can be left in such a household (MIA, BEN, MAX, GHOST) is in
+// the list, so that call deletes it, whatever state the test ended in.
 //
-// A test that FAILS before its last step can leave a household with no
-// owner. `rescueOrphans` runs before every cleanup, in both hooks: each
-// spec user who can hold an offer (MIA, BEN, MAX) accepts any open offer
-// they have (so they own the household
-// and their cleanup deletes it), and GHOST's deletion is sent again (a
-// household where GHOST is the only member left is deleted by it, the
-// same as test 5). Both are no-ops when there is nothing to rescue.
+// Until task S.4 each test had to END in a state the cleanup could remove
+// (an accept, a delete, or a live owner), and `rescueOrphans` ran before
+// seven cleanup calls: MIA, BEN and MAX accepted any open offer, and
+// GHOST's deletion was sent again. Both are gone. Proved by failure
+// injection on 2026-11-22 (a `throw` right after the owner's account is
+// deleted in test 3, and in test 7): the next test passed, and its one
+// cleanup call reported 2 households deleted (the one with no owner, and
+// OTTO's). With the D6 rule removed it reported 1: the household with no
+// owner stayed behind, and the next test passed anyway. So a green next
+// test does not prove the cleanup; the count does.
 //
 // ── TRAPS ────────────────────────────────────────────────────────────────────
 //
@@ -159,10 +157,8 @@ const SOLO_NAME = 'Sara Solo'
 const GHOST_NAME = 'Gus Ghost'
 const OTTO_ITEM = 'Otto Rice'
 
-/** Every spec user, in cleanup order: people who own nothing first. */
+/** Every spec user. One cleanup call takes them all (see *The cleanup trap*). */
 const ALL_USERS = [GHOST, BEN, MAX, MIA, OWNER, SOLO, OTTO]
-/** The people who may hold an offer a failed test left open. */
-const MAY_HOLD_OFFERS = [MIA, BEN, MAX]
 
 type Gql = ReturnType<typeof makeGql>
 type Row = { id: string }
@@ -328,30 +324,14 @@ async function offersOf(request: APIRequestContext, userId: string) {
   return myOwnershipOffers
 }
 
-/** See *The cleanup trap* at the top. Never throws. */
-async function rescueOrphans(request: APIRequestContext) {
-  for (const userId of MAY_HOLD_OFFERS) {
-    try {
-      for (const offer of await offersOf(request, userId)) {
-        await makeGql(request, userId)(ACCEPT, { id: offer.id })
-      }
-    } catch {
-      // No household, no offer, or already answered: nothing to rescue.
-    }
-  }
-  try {
-    await sendFakeUserDeleted(request, GHOST)
-  } catch {
-    // Nothing to rescue.
-  }
-}
-
+/**
+ * Every spec user, and the build-time user, in ONE cleanup call (E2E speed
+ * plan, task S.4). See *The cleanup trap* at the top. The build-time user is
+ * in the list because, if the `e2e-user-id` override ever stops working,
+ * every context writes as it (shared-household.spec.ts).
+ */
 async function cleanupAll(request: APIRequestContext) {
-  await rescueOrphans(request)
-  for (const userId of ALL_USERS) await cleanupCloudData(request, userId)
-  // And the build-time user: if the `e2e-user-id` override ever stops
-  // working, every context writes as it (shared-household.spec.ts).
-  await cleanupCloudData(request)
+  await cleanupCloudData(request, [...ALL_USERS, E2E_USER_ID])
 }
 
 /** Every context a test opens. `afterEach` closes them all. */
@@ -445,10 +425,8 @@ test.beforeEach(async ({ request, baseURL }) => {
   await cleanupAll(request)
 })
 
-test.afterEach(async ({ request, baseURL }) => {
+test.afterEach(async () => {
   for (const context of contexts.splice(0)) await context.close()
-  if (baseURL !== CLOUD_WEB_URL) return
-  await cleanupAll(request)
 })
 
 test.describe('household ownership', () => {
@@ -833,8 +811,8 @@ test.describe('household ownership', () => {
    * (`e2e/helpers/axe.ts`). That file runs in `local` and `pwa` only, where
    * these cloud pages redirect, so the scans live here. An open dialog is
    * scanned alone, with the known filled-button contrast defect allowed
-   * (`checkDialogA11y`). It ends with MIA accepting the hand-over, so MIA's
-   * cleanup deletes the household (see *The cleanup trap*).
+   * (`checkDialogA11y`). It ends with the household still offered to MIA,
+   * with no owner; the next `beforeEach` deletes it (see *The cleanup trap*).
    */
   async function scanEverything(
     browser: Browser,
@@ -886,10 +864,6 @@ test.describe('household ownership', () => {
     await expect(banner.handoverText(seed.household.name)).toBeVisible()
     await expect(miaMembers.noOwnerNote()).toBeVisible()
     await scan(miaPage)
-
-    // Clean-up step, not a check: MIA owns the household afterwards
-    await banner.accept()
-    await expect(banner.acceptedNotice(seed.household.name)).toBeVisible()
   }
 
   test('user can use the ownership banner and transfer without accessibility violations', async ({

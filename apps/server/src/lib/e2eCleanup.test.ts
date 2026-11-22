@@ -1,32 +1,41 @@
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { Prisma } from '@prisma/client'
 import type { Request, Response } from 'express'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // `DELETE /e2e/cleanup` (lib/e2eCleanup.ts), called directly with a fake
-// request and response.
+// request and response, and the SQL function it calls (lib/e2eCleanupSql.ts),
+// read as text.
 //
 // What these tests pin, and what they do not:
-// - They pin WHICH models are deleted, in WHICH order, with the EXACT filter
-//   of each of the 22 (18 since households H3a task 3.10, plus the invites
-//   since H5b task G.6, plus the activity rows since H6 task J.1, plus the
-//   ownership offers since H6b task K.1, plus the location preferences since
-//   H7b task M.1), and that exactly those 22 operations, in that order, are
-//   what reaches `$transaction`.
-// - They pin which households count as the user's: only those with an
-//   `owner` row. A household the user only belongs to is never deleted.
-// - They pin that each count lands under its own key, and that
-//   `forgetSeenToday` runs once, for this user, and only AFTER the
-//   transaction has finished.
+// - The handler sends ONE query, `SELECT e2e_cleanup($1::text[])`, with the
+//   user ids as a BOUND value, never as text in the SQL. No `$transaction`
+//   and no `deleteMany` (E2E speed plan, task S.2: one round trip instead of
+//   about 25).
+// - Each of the 22 counts the function returns lands under its own key, in
+//   the order of `CLEANUP_MODEL_KEYS`. A missing or wrong key is a 500 that
+//   names the key.
+// - `forgetSeenToday` runs once per user, only AFTER the query has resolved,
+//   and not when it throws.
+// - The SQL text: the 22 `DELETE FROM "<Model>"` statements are exactly the
+//   22 models, in the order the route must delete them, each once, and each
+//   writes its own count key in the same statement (no `GET DIAGNOSTICS`). The owner read asks for `owner` rows
+//   only. The exact WHERE text of each statement is checked in
+//   resolvers/purge-coverage.test.ts.
 // - They do NOT run SQL. Whether each filter matches the right rows in
 //   Postgres is checked by e2e/tests/cleanup-endpoint.spec.ts (every count at
-//   least 1) and e2e/tests/purge-two-households.spec.ts.
+//   least 1), e2e/tests/household-member-cleanup.spec.ts and
+//   e2e/tests/purge-two-households.spec.ts.
+//
+// Until task S.2 this file pinned 22 `deleteMany` calls and the array form of
+// `$transaction`. Those calls are now SQL statements in one function.
 
 // `vi.mock` factories are hoisted above every other line, so what they share
 // with the tests is built in `vi.hoisted`.
 const shared = vi.hoisted(() => ({
-  /** Every call this file sees, in order: `read:owners`, `delete:<model>`, `commit`, `forget:<id>`. */
+  /** Every call this file sees, in order: `query`, `resolved`, `forget:<id>`. */
   events: [] as string[],
   /** The 22 Prisma client names, in the order the route must delete them. */
   MODELS: [
@@ -53,61 +62,57 @@ const shared = vi.hoisted(() => ({
     'household',
     'user',
   ] as const,
-  /**
-   * The `HouseholdMember` rows the route's owner read searches. Each test
-   * sets them. The read applies `userId` and `role` key by key, and throws
-   * on any other key, so a read that drops `role` returns MORE rows here,
-   * not the same rows.
-   */
-  memberRows: [] as { householdId: string; userId: string; role: string }[],
-  /**
-   * Lets a test hold the transaction open, to check what runs before it
-   * finishes. `null` means the transaction finishes at once.
-   */
-  transactionGate: null as Promise<void> | null,
-  transactionError: null as Error | null,
+  /** `CLEANUP_MODEL_KEYS`, copied in `beforeEach` (the factory runs before the import). */
+  keys: [] as string[],
+  /** What the fake `$queryRaw` answers. `undefined` means: the 22 counts. */
+  answer: undefined as unknown,
+  /** Lets a test hold the query open, to check what runs before it finishes. */
+  queryGate: null as Promise<void> | null,
+  queryError: null as Error | null,
+  /** The `userIds` the fake `e2e_cleanup_all()` answers. */
+  allUserIds: ['e2e-test-user', 'e2e-test-user-2-a'] as unknown,
+  /** What the fake `e2e_cleanup_all()` answers as a whole. `undefined` means: counts + `allUserIds`. */
+  allAnswer: undefined as unknown,
 }))
 const { events, MODELS } = shared
 
 vi.mock('./prisma.js', () => {
-  // Each model's count is its position in MODELS plus 1, so a count that
-  // lands under the wrong key is seen. Each deleteMany returns a marker
-  // naming its model and holding its argument, so the array that reaches
-  // `$transaction` says which operations it holds.
-  const client: Record<string, Record<string, unknown>> = {}
-  shared.MODELS.forEach((model, index) => {
+  // A `deleteMany` on any model, and `$transaction`, would mean the route
+  // went back to one round trip per statement. Each records an event, and
+  // the tests check that none is there.
+  const client: Record<string, unknown> = {}
+  for (const model of shared.MODELS) {
     client[model] = {
-      deleteMany: vi.fn((args: unknown) => {
-        shared.events.push(`delete:${model}`)
-        return { model, args, count: index + 1 }
+      deleteMany: vi.fn(() => {
+        shared.events.push(`deleteMany:${model}`)
+        return { count: 0 }
       }),
     }
+  }
+  const $transaction = vi.fn(async () => {
+    shared.events.push('transaction')
+    return []
   })
-  const householdMember = client.householdMember as Record<string, unknown>
-  householdMember.findMany = vi.fn(
-    async (args: { where: Record<string, unknown>; select?: unknown }) => {
-      shared.events.push('read:owners')
-      for (const key of Object.keys(args.where)) {
-        if (key !== 'userId' && key !== 'role') {
-          throw new Error(`e2eCleanup.test: householdMember.findMany does not model where.${key}`)
-        }
-      }
-      return shared.memberRows
-        .filter((row) => args.where.userId === undefined || row.userId === args.where.userId)
-        .filter((row) => args.where.role === undefined || row.role === args.where.role)
-        .map((row) => ({ householdId: row.householdId }))
-    },
-  )
-  // The ARRAY form only, like the route. The array's items are the values the
-  // deleteMany fakes returned, already in call order.
-  const $transaction = vi.fn(async (ops: unknown) => {
-    if (!Array.isArray(ops)) throw new Error('this fake models only the array form of $transaction')
-    if (shared.transactionGate) await shared.transactionGate
-    if (shared.transactionError) throw shared.transactionError
-    shared.events.push('commit')
-    return ops
+  // The function's answer: the model at position i in MODELS gets a count of
+  // i + 1, so a count that lands under the wrong key is seen.
+  const $queryRaw = vi.fn(async (query: { text?: string }) => {
+    shared.events.push('query')
+    if (shared.queryGate) await shared.queryGate
+    if (shared.queryError) throw shared.queryError
+    shared.events.push('resolved')
+    const counts = Object.fromEntries(shared.keys.map((key, index) => [key, index + 1]))
+    if (query.text?.includes('e2e_cleanup_all()')) {
+      const result =
+        shared.allAnswer === undefined
+          ? { deleted: counts, userIds: shared.allUserIds }
+          : shared.allAnswer
+      return [{ result }]
+    }
+    const deleted = shared.answer === undefined ? counts : shared.answer
+    return [{ deleted }]
   })
-  return { prisma: { ...client, $transaction } }
+  const $executeRawUnsafe = vi.fn(async () => 0)
+  return { prisma: { ...client, $transaction, $queryRaw, $executeRawUnsafe } }
 })
 
 vi.mock('./userRow.js', () => ({
@@ -118,10 +123,24 @@ vi.mock('./userRow.js', () => ({
 
 import { prisma } from './prisma.js'
 import { forgetSeenToday } from './userRow.js'
-import { CLEANUP_MODEL_KEYS, e2eCleanupHandler } from './e2eCleanup.js'
+import {
+  CLEANUP_MODEL_KEYS,
+  e2eCleanupHandler,
+  errorCodeOf,
+  installE2eCleanupFunction,
+} from './e2eCleanup.js'
+import {
+  E2E_CLEANUP_ALL_FUNCTION_SQL,
+  E2E_CLEANUP_FUNCTION_SQL,
+  E2E_CLEANUP_INSTALL_SQL,
+  E2E_CLEANUP_ROWS_SQL,
+} from './e2eCleanupSql.js'
 
-function fakeRequest(userId?: string): Request {
-  return { headers: userId === undefined ? {} : { 'x-e2e-user-id': userId } } as unknown as Request
+function fakeRequest(userId?: string, body?: unknown): Request {
+  return {
+    headers: userId === undefined ? {} : { 'x-e2e-user-id': userId },
+    body,
+  } as unknown as Request
 }
 
 function fakeResponse() {
@@ -140,76 +159,59 @@ function fakeResponse() {
   return res
 }
 
-function deleteArgsOf(model: (typeof MODELS)[number]): unknown {
-  const client = prisma as unknown as Record<string, { deleteMany: ReturnType<typeof vi.fn> }>
-  return client[model]?.deleteMany.mock.calls[0]?.[0]
+/** The one argument the handler passed to `$queryRaw`. */
+function sentQuery(): Prisma.Sql {
+  const calls = vi.mocked(prisma.$queryRaw).mock.calls
+  expect(calls).toHaveLength(1)
+  const [query, ...rest] = calls[0] as unknown[]
+  // One `Prisma.Sql` object and nothing else, so no value travels outside it.
+  expect(rest).toEqual([])
+  // The same class `Prisma.sql` builds (`Prisma.Sql` is a type only at run
+  // time in this Prisma version, so `toBeInstanceOf` cannot be used).
+  expect(Object.getPrototypeOf(query)).toBe(Object.getPrototypeOf(Prisma.sql`x`))
+  return query as Prisma.Sql
+}
+
+/** The table name of a model: `inventoryLog` → `InventoryLog`. No model has `@@map`. */
+function tableOf(model: string): string {
+  return model.charAt(0).toUpperCase() + model.slice(1)
+}
+
+/** The SQL text with every `--` comment removed. */
+function withoutComments(sql: string): string {
+  return sql.replace(/--[^\n]*/g, '')
+}
+
+/**
+ * Every delete statement, in the one shape the function uses, with the count
+ * key it writes IN THE SAME STATEMENT:
+ * `WITH d AS (DELETE FROM "<table>" WHERE … RETURNING 1)
+ *  SELECT result || jsonb_build_object('<key>', count(*)) INTO result FROM d;`
+ * A delete written in another shape is not matched, and the test that counts
+ * every `DELETE FROM` then fails, so a statement cannot hide from this list.
+ */
+function deletesWithKeys(sql: string): { table: string; key: string }[] {
+  const pattern =
+    /WITH d AS \(\s*DELETE FROM "(\w+)"\s+WHERE\s[^;]*?\s+RETURNING 1\s*\)\s*SELECT result \|\| jsonb_build_object\('(\w+)', count\(\*\)\) INTO result FROM d;/g
+  return [...withoutComments(sql).matchAll(pattern)].map((m) => ({
+    table: m[1] ?? '',
+    key: m[2] ?? '',
+  }))
 }
 
 beforeEach(() => {
   vi.clearAllMocks()
   events.length = 0
-  shared.transactionGate = null
-  shared.transactionError = null
-  // The user `e2e-user-1` owns hh-own and is only a MEMBER of hh-other,
-  // which `e2e-user-2` owns. `e2e-user-2` also has a member row in hh-own.
-  shared.memberRows = [
-    { householdId: 'hh-own', userId: 'e2e-user-1', role: 'owner' },
-    { householdId: 'hh-other', userId: 'e2e-user-1', role: 'member' },
-    { householdId: 'hh-other', userId: 'e2e-user-2', role: 'owner' },
-    { householdId: 'hh-own', userId: 'e2e-user-2', role: 'manager' },
-  ]
+  shared.keys = [...CLEANUP_MODEL_KEYS]
+  shared.answer = undefined
+  shared.queryGate = null
+  shared.queryError = null
+  shared.allUserIds = ['e2e-test-user', 'e2e-test-user-2-a']
+  shared.allAnswer = undefined
 })
 
-/** The filter each of the 22 deletes must carry, for `e2e-user-1` who owns hh-own. */
-const OWNED = { in: ['hh-own'] }
-const EXPECTED_FILTERS: Record<(typeof MODELS)[number], unknown> = {
-  inventoryLog: { where: { location: { householdId: OWNED } } },
-  cartItem: { where: { cart: { location: { householdId: OWNED } } } },
-  cart: { where: { location: { householdId: OWNED } } },
-  itemTag: { where: { item: { householdId: OWNED } } },
-  itemVendor: { where: { item: { householdId: OWNED } } },
-  recipeItem: { where: { recipe: { householdId: OWNED } } },
-  itemStock: { where: { location: { householdId: OWNED } } },
-  item: { where: { householdId: OWNED } },
-  tag: { where: { householdId: OWNED } },
-  tagType: { where: { householdId: OWNED } },
-  vendor: { where: { householdId: OWNED } },
-  recipe: { where: { householdId: OWNED } },
-  shelf: { where: { householdId: OWNED } },
-  locationMember: {
-    where: { OR: [{ userId: 'e2e-user-1' }, { location: { householdId: OWNED } }] },
-  },
-  // Every preference row on the owned households' locations (anybody's), and
-  // the user's own rows on any other location (households H7b, task M.1).
-  // Both foreign keys are ON DELETE CASCADE, so the location and User deletes
-  // would remove them anyway; deleting them first makes the count show them.
-  locationPreference: {
-    where: { OR: [{ userId: 'e2e-user-1' }, { location: { householdId: OWNED } }] },
-  },
-  location: { where: { householdId: OWNED } },
-  // Every invite of hh-own, and the invites e2e-user-1 made anywhere else
-  // (`createdById` is RESTRICT, so they would block the User delete).
-  householdInvite: {
-    where: { OR: [{ householdId: OWNED }, { createdById: 'e2e-user-1' }] },
-  },
-  // Every activity row of hh-own (households H6, task J.1). Only the owned
-  // households: a log row of hh-other that names e2e-user-1 stays, because
-  // `actorId` and `targetUserId` have no foreign key to block the User
-  // delete (decision T46).
-  householdActivity: { where: { householdId: OWNED } },
-  // Every offer of hh-own, and every offer TO e2e-user-1 in any household
-  // (households H6b, task K.1, decision T58). `toUserId` is ON DELETE
-  // CASCADE, so the User delete would remove the second half anyway; it is
-  // deleted here so the count says so. An offer e2e-user-1 MADE in hh-other
-  // stays: `fromUserId` has no foreign key.
-  ownershipOffer: { where: { OR: [{ householdId: OWNED }, { toUserId: 'e2e-user-1' }] } },
-  householdMember: { where: { OR: [{ userId: 'e2e-user-1' }, { householdId: OWNED }] } },
-  household: { where: { id: OWNED } },
-  user: { where: { id: 'e2e-user-1' } },
-}
-
 describe('e2eCleanupHandler', () => {
-  it('answers 400 without the user header, deletes nothing and forgets no one', async () => {
+  it('answers 400 without the user header, queries nothing and forgets no one', async () => {
     const res = fakeResponse()
     await e2eCleanupHandler(fakeRequest(), res as unknown as Response)
 
@@ -217,101 +219,41 @@ describe('e2eCleanupHandler', () => {
     expect(events).toEqual([])
   })
 
-  it('deletes the 22 models in order, each with its exact filter, and the User row last', async () => {
-    // When the cleanup runs for a user who owns one household
-    const res = fakeResponse()
-    await e2eCleanupHandler(fakeRequest('e2e-user-1'), res as unknown as Response)
-
-    // Then the owned households are read first, then every model is deleted
-    // once, children before parents, User last
-    expect(events).toEqual([
-      'read:owners',
-      ...MODELS.map((model) => `delete:${model}`),
-      'commit',
-      'forget:e2e-user-1',
-    ])
-    // And each delete carries exactly its filter. Until task 3.10 only 2 of
-    // the 15 were checked here (`user` and `shelf`).
-    expect(Object.keys(EXPECTED_FILTERS)).toEqual([...MODELS])
-    for (const model of MODELS) {
-      const client = prisma as unknown as Record<string, { deleteMany: ReturnType<typeof vi.fn> }>
-      expect(client[model]?.deleteMany.mock.calls, model).toStrictEqual([[EXPECTED_FILTERS[model]]])
-    }
-    // And exactly those 22 operations, in that order, are what reaches the
-    // one transaction. A real PrismaPromise is lazy: a deleteMany that is
-    // built but left out of the array never runs, and its argument above
-    // would still look right.
-    expect(vi.mocked(prisma.$transaction).mock.calls).toStrictEqual([
-      [
-        MODELS.map((model, index) => ({
-          model,
-          args: EXPECTED_FILTERS[model],
-          count: index + 1,
-        })),
-      ],
-    ])
-  })
-
-  it('never deletes a household the user only belongs to', async () => {
-    // Given e2e-user-1 is only a member of hh-other (see beforeEach)
+  it('sends ONE query, with no $transaction and no deleteMany', async () => {
+    // When the cleanup runs for one user
     await e2eCleanupHandler(fakeRequest('e2e-user-1'), fakeResponse() as unknown as Response)
 
-    // Then the owner read asks for owner rows of this user only
-    const read = vi.mocked(
-      (prisma as unknown as { householdMember: { findMany: ReturnType<typeof vi.fn> } })
-        .householdMember.findMany,
-    )
-    expect(read.mock.calls).toStrictEqual([
-      [{ where: { userId: 'e2e-user-1', role: 'owner' }, select: { householdId: true } }],
-    ])
-    // And hh-other is named by no household-wide filter. Only this user's
-    // own member rows go there, through `{ userId }`.
-    expect(deleteArgsOf('household')).toEqual({ where: { id: { in: ['hh-own'] } } })
-    expect(JSON.stringify(deleteArgsOf('householdMember'))).not.toContain('hh-other')
-    expect(JSON.stringify(deleteArgsOf('locationMember'))).not.toContain('hh-other')
+    // Then the database sees one query, and the user is forgotten after it
+    expect(events).toEqual(['query', 'resolved', 'forget:e2e-user-1'])
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1)
+    expect(prisma.$transaction).not.toHaveBeenCalled()
   })
 
-  it('a user who owns no household deletes no household data, only their own role rows and User row', async () => {
-    // Given e2e-user-3 owns nothing and is a member of hh-other
-    shared.memberRows.push({ householdId: 'hh-other', userId: 'e2e-user-3', role: 'member' })
+  it('sends the user ids as a bound value, never as text in the SQL', async () => {
+    await e2eCleanupHandler(fakeRequest('e2e-user-1'), fakeResponse() as unknown as Response)
 
-    await e2eCleanupHandler(fakeRequest('e2e-user-3'), fakeResponse() as unknown as Response)
-
-    // Then every household filter is `{ in: [] }`, which matches no row in
-    // Prisma. It is never `undefined`, which would match every row.
-    expect(deleteArgsOf('household')).toEqual({ where: { id: { in: [] } } })
-    expect(deleteArgsOf('item')).toEqual({ where: { householdId: { in: [] } } })
-    expect(deleteArgsOf('householdMember')).toEqual({
-      where: { OR: [{ userId: 'e2e-user-3' }, { householdId: { in: [] } }] },
-    })
-    // And only the invites this user made go, because they block the User
-    // delete. Invites of hh-other that someone else made stay.
-    expect(deleteArgsOf('householdInvite')).toEqual({
-      where: { OR: [{ householdId: { in: [] } }, { createdById: 'e2e-user-3' }] },
-    })
-    // And only this user's own preference rows go, on any location. Rows of
-    // other people on hh-other's locations stay.
-    expect(deleteArgsOf('locationPreference')).toEqual({
-      where: { OR: [{ userId: 'e2e-user-3' }, { location: { householdId: { in: [] } } }] },
-    })
-    // And only the offers TO this user go. Offers of hh-other to anyone else
-    // stay with hh-other.
-    expect(deleteArgsOf('ownershipOffer')).toEqual({
-      where: { OR: [{ householdId: { in: [] } }, { toUserId: 'e2e-user-3' }] },
-    })
-    expect(deleteArgsOf('user')).toEqual({ where: { id: 'e2e-user-3' } })
+    const query = sentQuery()
+    // The SQL text holds a placeholder, and the ids are its one value
+    expect(query.text).toBe('SELECT e2e_cleanup($1::text[]) AS deleted')
+    expect(query.values).toEqual([['e2e-user-1']])
+    // And no part of the text holds the id
+    expect(query.strings.join('')).not.toContain('e2e-user-1')
   })
 
-  it('returns each count under its own key, users included', async () => {
+  it('returns each count under its own key, in the order of CLEANUP_MODEL_KEYS', async () => {
     const res = fakeResponse()
     await e2eCleanupHandler(fakeRequest('e2e-user-1'), res as unknown as Response)
 
-    // The fake gives the model at position i a count of i + 1
+    // The fake gives the key at position i a count of i + 1
     expect(res.statusCode).toBe(200)
     expect(res.body).toEqual({
       ok: true,
       deleted: Object.fromEntries(CLEANUP_MODEL_KEYS.map((key, index) => [key, index + 1])),
     })
+    // Same order as the keys, whatever order the function's JSON had. jsonb
+    // sorts its keys by length, so the database's order is not this one.
+    const body = res.body as { deleted: Record<string, number> }
+    expect(Object.keys(body.deleted)).toEqual([...CLEANUP_MODEL_KEYS])
     expect(CLEANUP_MODEL_KEYS).toHaveLength(22)
     expect(CLEANUP_MODEL_KEYS[21]).toBe('users')
     // The new key sits between the role rows and the locations, the same place
@@ -321,35 +263,346 @@ describe('e2eCleanupHandler', () => {
     )
   })
 
-  it('forgets the user only after the transaction has finished', async () => {
-    // Given a transaction that is held open
+  it('answers 500 and names the key when a count is missing', async () => {
+    // Given a function answer with no `itemTags`
+    const counts: Record<string, number> = Object.fromEntries(
+      CLEANUP_MODEL_KEYS.map((key) => [key, 1]),
+    )
+    delete counts.itemTags
+    shared.answer = counts
+
+    const res = fakeResponse()
+    await e2eCleanupHandler(fakeRequest('e2e-user-1'), res as unknown as Response)
+
+    expect(res.statusCode).toBe(500)
+    expect(JSON.stringify(res.body)).toContain('itemTags')
+  })
+
+  it('answers 500 and names the key when a count is not a whole number, or a key is unknown', async () => {
+    const counts: Record<string, unknown> = Object.fromEntries(
+      CLEANUP_MODEL_KEYS.map((key) => [key, 1]),
+    )
+    counts.carts = '1'
+    shared.answer = counts
+    const res = fakeResponse()
+    await e2eCleanupHandler(fakeRequest('e2e-user-1'), res as unknown as Response)
+    expect(res.statusCode).toBe(500)
+    expect(JSON.stringify(res.body)).toContain('carts')
+
+    vi.clearAllMocks()
+    shared.answer = { ...Object.fromEntries(CLEANUP_MODEL_KEYS.map((key) => [key, 1])), widgets: 1 }
+    const res2 = fakeResponse()
+    await e2eCleanupHandler(fakeRequest('e2e-user-1'), res2 as unknown as Response)
+    expect(res2.statusCode).toBe(500)
+    expect(JSON.stringify(res2.body)).toContain('widgets')
+
+    vi.clearAllMocks()
+    shared.answer = null
+    const res3 = fakeResponse()
+    await e2eCleanupHandler(fakeRequest('e2e-user-1'), res3 as unknown as Response)
+    expect(res3.statusCode).toBe(500)
+  })
+
+  it('forgets the user only after the query has resolved', async () => {
+    // Given a query that is held open
     let finish: () => void = () => {}
-    shared.transactionGate = new Promise<void>((resolve) => {
+    shared.queryGate = new Promise<void>((resolve) => {
       finish = resolve
     })
     const res = fakeResponse()
     const run = e2eCleanupHandler(fakeRequest('e2e-user-1'), res as unknown as Response)
 
     // While it is open, the memory is not touched
-    await vi.waitFor(() => expect(prisma.$transaction).toHaveBeenCalledTimes(1))
+    await vi.waitFor(() => expect(prisma.$queryRaw).toHaveBeenCalledTimes(1))
     expect(forgetSeenToday).not.toHaveBeenCalled()
 
     // When it finishes
     finish()
     await run
 
-    // Then the user is forgotten once, after the commit
-    expect(events.slice(-2)).toEqual(['commit', 'forget:e2e-user-1'])
+    // Then the user is forgotten once, after the query
+    expect(events).toEqual(['query', 'resolved', 'forget:e2e-user-1'])
     expect(forgetSeenToday).toHaveBeenCalledTimes(1)
   })
 
-  it('forgets no one when the transaction fails, because nothing was deleted', async () => {
-    shared.transactionError = new Error('connection lost')
+  it('forgets no one when the query fails, because nothing was deleted', async () => {
+    shared.queryError = new Error('connection lost')
 
     await expect(
       e2eCleanupHandler(fakeRequest('e2e-user-1'), fakeResponse() as unknown as Response),
     ).rejects.toThrow('connection lost')
     expect(forgetSeenToday).not.toHaveBeenCalled()
+  })
+})
+
+describe('the userIds form (E2E speed plan, task S.4)', () => {
+  it('sends several users as ONE bound array, and forgets each after the query', async () => {
+    // When a spec cleans two users in one call
+    const res = fakeResponse()
+    await e2eCleanupHandler(
+      fakeRequest(undefined, { userIds: ['e2e-a', 'e2e-b'] }),
+      res as unknown as Response,
+    )
+
+    // Then the database sees one query, with both ids as its one value
+    const query = sentQuery()
+    expect(query.text).toBe('SELECT e2e_cleanup($1::text[]) AS deleted')
+    expect(query.values).toEqual([['e2e-a', 'e2e-b']])
+    expect(query.strings.join('')).not.toContain('e2e-a')
+    expect(prisma.$transaction).not.toHaveBeenCalled()
+    // And both users are forgotten, after the query
+    expect(events).toEqual(['query', 'resolved', 'forget:e2e-a', 'forget:e2e-b'])
+    expect(res.statusCode).toBe(200)
+    expect(res.body).toEqual({
+      ok: true,
+      deleted: Object.fromEntries(CLEANUP_MODEL_KEYS.map((key, index) => [key, index + 1])),
+    })
+  })
+
+  it('sends a repeated id once', async () => {
+    await e2eCleanupHandler(
+      fakeRequest(undefined, { userIds: ['e2e-a', 'e2e-b', 'e2e-a'] }),
+      fakeResponse() as unknown as Response,
+    )
+    expect(sentQuery().values).toEqual([['e2e-a', 'e2e-b']])
+    expect(events).toEqual(['query', 'resolved', 'forget:e2e-a', 'forget:e2e-b'])
+  })
+
+  it('answers 400, and queries nothing, for a bad userIds body', async () => {
+    const cases: [string | undefined, unknown][] = [
+      // with the header too: which one is meant?
+      ['e2e-a', { userIds: ['e2e-b'] }],
+      // empty, not a list, not strings, an empty string
+      [undefined, { userIds: [] }],
+      [undefined, { userIds: 'e2e-a' }],
+      [undefined, { userIds: ['e2e-a', 3] }],
+      [undefined, { userIds: ['e2e-a', ''] }],
+      // another key next to it
+      [undefined, { userIds: ['e2e-a'], extra: true }],
+    ]
+    for (const [header, body] of cases) {
+      const res = fakeResponse()
+      await e2eCleanupHandler(fakeRequest(header, body), res as unknown as Response)
+      expect(res.statusCode, JSON.stringify(body)).toBe(400)
+    }
+    expect(events).toEqual([])
+  })
+})
+
+describe('the allE2eUsers form (E2E speed plan, task S.3)', () => {
+  it('sends ONE query to e2e_cleanup_all(), with no bound value, and answers the counts and the ids', async () => {
+    // When global-setup asks for every E2E user
+    const res = fakeResponse()
+    await e2eCleanupHandler(fakeRequest(undefined, { allE2eUsers: true }), res as unknown as Response)
+
+    // Then the database sees one query, and each deleted user is forgotten after it
+    expect(events).toEqual([
+      'query',
+      'resolved',
+      'forget:e2e-test-user',
+      'forget:e2e-test-user-2-a',
+    ])
+    const query = sentQuery()
+    expect(query.text).toBe('SELECT e2e_cleanup_all() AS result')
+    expect(query.values).toEqual([])
+    expect(prisma.$transaction).not.toHaveBeenCalled()
+
+    // And the answer carries the 22 counts, in order, and the ids
+    expect(res.statusCode).toBe(200)
+    expect(res.body).toEqual({
+      ok: true,
+      deleted: Object.fromEntries(CLEANUP_MODEL_KEYS.map((key, index) => [key, index + 1])),
+      userIds: ['e2e-test-user', 'e2e-test-user-2-a'],
+    })
+  })
+
+  it('works when there is no E2E user left: no one to forget', async () => {
+    shared.allUserIds = []
+    const res = fakeResponse()
+    await e2eCleanupHandler(fakeRequest(undefined, { allE2eUsers: true }), res as unknown as Response)
+
+    expect(res.statusCode).toBe(200)
+    expect(forgetSeenToday).not.toHaveBeenCalled()
+  })
+
+  it('answers 400, and queries nothing, for allE2eUsers with a header, with userIds, or not true', async () => {
+    const cases: [string | undefined, unknown][] = [
+      ['e2e-user-1', { allE2eUsers: true }],
+      [undefined, { allE2eUsers: true, userIds: ['a'] }],
+      [undefined, { allE2eUsers: 'true' }],
+      [undefined, { allE2eUsers: false }],
+    ]
+    for (const [header, body] of cases) {
+      const res = fakeResponse()
+      await e2eCleanupHandler(fakeRequest(header, body), res as unknown as Response)
+      expect(res.statusCode, JSON.stringify(body)).toBe(400)
+    }
+    expect(events).toEqual([])
+  })
+
+  it('answers 500 when the function gives no list of ids, or a bad count', async () => {
+    shared.allAnswer = { deleted: {} }
+    const res = fakeResponse()
+    await e2eCleanupHandler(fakeRequest(undefined, { allE2eUsers: true }), res as unknown as Response)
+    expect(res.statusCode).toBe(500)
+    expect(JSON.stringify(res.body)).toContain('user ids')
+
+    vi.clearAllMocks()
+    shared.allAnswer = { deleted: { carts: 1 }, userIds: [] }
+    const res2 = fakeResponse()
+    await e2eCleanupHandler(fakeRequest(undefined, { allE2eUsers: true }), res2 as unknown as Response)
+    expect(res2.statusCode).toBe(500)
+    expect(JSON.stringify(res2.body)).toContain('inventoryLogs')
+  })
+})
+
+describe('installE2eCleanupFunction', () => {
+  it('sends the three function texts, one statement each, as they are', async () => {
+    await installE2eCleanupFunction()
+
+    // One call per statement: Postgres refuses several commands in one
+    // prepared statement.
+    expect(vi.mocked(prisma.$executeRawUnsafe).mock.calls).toEqual([
+      [E2E_CLEANUP_ROWS_SQL],
+      [E2E_CLEANUP_FUNCTION_SQL],
+      [E2E_CLEANUP_ALL_FUNCTION_SQL],
+    ])
+    expect(E2E_CLEANUP_INSTALL_SQL).toEqual([
+      E2E_CLEANUP_ROWS_SQL,
+      E2E_CLEANUP_FUNCTION_SQL,
+      E2E_CLEANUP_ALL_FUNCTION_SQL,
+    ])
+    for (const sql of E2E_CLEANUP_INSTALL_SQL) {
+      expect(withoutComments(sql).match(/CREATE OR REPLACE FUNCTION/g)).toHaveLength(1)
+    }
+  })
+})
+
+describe('errorCodeOf', () => {
+  it('names the error class and its codes, never the message', () => {
+    // A Prisma raw query error carries the Postgres code in `meta.code`, and
+    // a message that can hold the database host.
+    const err = Object.assign(new Error('could not reach db.example.host:5432'), {
+      name: 'PrismaClientKnownRequestError',
+      code: 'P2010',
+      meta: { code: '42601', message: 'syntax error at db.example.host' },
+    })
+
+    const text = errorCodeOf(err)
+
+    expect(text).toBe('PrismaClientKnownRequestError P2010 42601')
+    expect(text).not.toContain('host')
+  })
+
+  it('works for a value that is not an Error', () => {
+    expect(errorCodeOf('boom')).toBe('unknown error')
+  })
+})
+
+describe('the SQL function text (E2E_CLEANUP_FUNCTION_SQL)', () => {
+  it('creates the three functions, in PL/pgSQL', () => {
+    expect(E2E_CLEANUP_ROWS_SQL).toContain(
+      'CREATE OR REPLACE FUNCTION e2e_cleanup_rows(user_ids text[], owned text[]) RETURNS jsonb',
+    )
+    expect(E2E_CLEANUP_FUNCTION_SQL).toContain(
+      'CREATE OR REPLACE FUNCTION e2e_cleanup(user_ids text[]) RETURNS jsonb',
+    )
+    expect(E2E_CLEANUP_ALL_FUNCTION_SQL).toContain(
+      'CREATE OR REPLACE FUNCTION e2e_cleanup_all() RETURNS jsonb',
+    )
+    for (const sql of E2E_CLEANUP_INSTALL_SQL) expect(sql).toContain('LANGUAGE plpgsql')
+  })
+
+  it('writes the 22 deletes once: the two entry functions delete nothing themselves', () => {
+    // Each entry function chooses the users and the households, then calls
+    // e2e_cleanup_rows. A DELETE in one of them would be a delete the other
+    // does not make.
+    expect(withoutComments(E2E_CLEANUP_FUNCTION_SQL)).not.toMatch(/\bDELETE\b/i)
+    expect(withoutComments(E2E_CLEANUP_ALL_FUNCTION_SQL)).not.toMatch(/\bDELETE\b/i)
+    expect(withoutComments(E2E_CLEANUP_FUNCTION_SQL)).toContain(
+      'RETURN e2e_cleanup_rows(user_ids, owned);',
+    )
+    expect(withoutComments(E2E_CLEANUP_ALL_FUNCTION_SQL)).toContain(
+      "'deleted', e2e_cleanup_rows(user_ids, owned)",
+    )
+  })
+
+  it('deletes exactly the 22 models, in order, each once, each followed by its own count key', () => {
+    const deletes = deletesWithKeys(E2E_CLEANUP_ROWS_SQL)
+
+    // Every DELETE is in the shape the pattern reads, so none is missed
+    const allDeletes = withoutComments(E2E_CLEANUP_ROWS_SQL).match(/DELETE FROM/g) ?? []
+    expect(allDeletes).toHaveLength(22)
+    expect(deletes).toHaveLength(22)
+
+    // Children before parents, User last, and each count under its own key
+    expect(deletes).toEqual(
+      MODELS.map((model, index) => ({ table: tableOf(model), key: CLEANUP_MODEL_KEYS[index] })),
+    )
+  })
+
+  it('takes each count from its own DELETE, never from GET DIAGNOSTICS', () => {
+    // `GET DIAGNOSTICS c = ROW_COUNT` is a separate statement that reads the
+    // count of the LAST statement that ran. With a DELETE removed and its
+    // count line kept, the count silently repeated the delete before it, and
+    // cleanup-endpoint.spec.ts stayed green (E2E speed plan, S.2 mutation 1).
+    const sql = withoutComments(E2E_CLEANUP_ROWS_SQL)
+    expect(withoutComments(E2E_CLEANUP_INSTALL_SQL.join('\n'))).not.toMatch(/GET\s+DIAGNOSTICS/i)
+    expect(sql).not.toMatch(/ROW_COUNT/i)
+    // `result` is written only by the 22 delete statements (and its start
+    // value), so no count can be added apart from its delete.
+    expect(sql.match(/INTO result\b/g)).toHaveLength(22)
+    expect(sql.match(/result :=/g)).toBeNull()
+  })
+
+  it('reads the owned households: owned by a listed user, or with every member listed (D6)', () => {
+    // A household a user only belongs to is never deleted while it has a
+    // member outside the list. `owned` holds the households where a listed
+    // user has the `owner` role, and (decision D6, owner answer P5-A) the
+    // households whose members are ALL listed. The second half starts from a
+    // listed user's member row, so a household with no member at all is
+    // never taken here (only `e2e_cleanup_all` takes those).
+    const sql = withoutComments(E2E_CLEANUP_FUNCTION_SQL).replace(/\s+/g, ' ')
+    expect(sql).toContain(
+      `SELECT COALESCE(array_agg(DISTINCT "id"), '{}'::text[]) INTO owned FROM ( SELECT "householdId" AS "id" FROM "HouseholdMember" WHERE "userId" = ANY(user_ids) AND "role" = 'owner' UNION SELECT m."householdId" FROM "HouseholdMember" m WHERE m."userId" = ANY(user_ids) AND NOT EXISTS ( SELECT 1 FROM "HouseholdMember" o WHERE o."householdId" = m."householdId" AND NOT (o."userId" = ANY(user_ids)) ) ) AS households;`,
+    )
+    // And `owned` is written nowhere else
+    expect(sql.match(/INTO owned/g)).toHaveLength(1)
+    expect(sql.match(/owned :=/g)).toBeNull()
+  })
+
+  it('refuses an empty or missing list of users', () => {
+    expect(withoutComments(E2E_CLEANUP_FUNCTION_SQL)).toContain(
+      'IF user_ids IS NULL OR cardinality(user_ids) = 0 THEN',
+    )
+  })
+
+  it('e2e_cleanup_all takes the users by the E2E prefix, and every E2E user id has it', () => {
+    // The prefix is written in the SQL. A narrower one would leave some E2E
+    // users behind; this reads the two base ids from e2e/constants.ts (every
+    // other E2E id is built from E2E_SECOND_USER_ID) and checks each matches.
+    const sql = withoutComments(E2E_CLEANUP_ALL_FUNCTION_SQL).replace(/\s+/g, ' ')
+    const prefixes = [...sql.matchAll(/LIKE '([^']*)%'/g)].map((m) => m[1])
+    // Two uses: the users, and "a member who is not an E2E user"
+    expect(prefixes).toEqual(['e2e-', 'e2e-'])
+    expect(sql).toContain(`FROM "User" WHERE "id" LIKE 'e2e-%';`)
+
+    const here = dirname(fileURLToPath(import.meta.url))
+    const constants = readFileSync(resolve(here, '../../../../e2e/constants.ts'), 'utf8')
+    const ids = ['E2E_USER_ID', 'E2E_SECOND_USER_ID'].map(
+      (name) => constants.match(new RegExp(`export const ${name} = '([^']+)'`))?.[1],
+    )
+    expect(ids).toEqual(['e2e-test-user', 'e2e-test-user-2'])
+    for (const id of ids) {
+      for (const prefix of prefixes) expect(id?.startsWith(prefix ?? '\u0000'), `${id} / ${prefix}`).toBe(true)
+    }
+  })
+
+  it('e2e_cleanup_all takes the owned households, and every household with no non-E2E member', () => {
+    const sql = withoutComments(E2E_CLEANUP_ALL_FUNCTION_SQL).replace(/\s+/g, ' ')
+    expect(sql).toContain(
+      `SELECT "householdId" AS "id" FROM "HouseholdMember" WHERE "userId" = ANY(user_ids) AND "role" = 'owner' UNION SELECT h."id" FROM "Household" h WHERE NOT EXISTS ( SELECT 1 FROM "HouseholdMember" m WHERE m."householdId" = h."id" AND m."userId" NOT LIKE 'e2e-%' )`,
+    )
   })
 })
 

@@ -188,10 +188,10 @@ function milkCheckbox(page: Page) {
 }
 
 async function cleanupAll(request: Parameters<typeof makeGql>[0]) {
-  // MEMBER first: the owner's cleanup deletes household A and its role rows.
-  await cleanupCloudData(request, MEMBER)
-  await cleanupCloudData(request, STRANGER)
-  await cleanupCloudData(request)
+  // One call for every user (E2E speed plan, task S.4). A household whose
+  // members are all listed is deleted too (decision D6), so the order of
+  // the users no longer matters.
+  await cleanupCloudData(request, [MEMBER, STRANGER, E2E_USER_ID])
 }
 
 test.beforeEach(async ({ page, request, baseURL }) => {
@@ -202,16 +202,11 @@ test.beforeEach(async ({ page, request, baseURL }) => {
   await cleanupAll(request)
 })
 
-test.afterEach(async ({ request, baseURL }) => {
-  if (baseURL !== CLOUD_WEB_URL) return
-  await cleanupAll(request)
-})
-
 test.describe('live cart updates', () => {
   // 60 s, not the default 30 s. The hooks share the test's time budget, and
   // most of it goes to the database, not to live updates. Measured
   // 2026-11-16 at load average about 2.3, one test: the three cleanups take
-  // 3.4 to 5.9 s per hook (twice per test), the seed 7.0 s, opening the page
+  // 3.4 to 5.9 s per hook (twice per test until E2E speed plan task S.3; once since), the seed 7.0 s, opening the page
   // 1.8 to 2.3 s, the warm-up 1.0 to 1.2 s. Each test took 19.6 to 23.4 s in
   // all, too close to 30 s for a busy machine.
   test.describe.configure({ timeout: 60_000 })

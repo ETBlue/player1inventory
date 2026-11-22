@@ -5,6 +5,8 @@ import {
   createCloudUser,
   createInvite,
   joinHousehold,
+  readCloudUser,
+  sendFakeUserDeleted,
 } from '../helpers/cloudUsers'
 import { makeGql } from '../utils/cloud'
 
@@ -32,15 +34,33 @@ import { makeGql } from '../utils/cloud'
 // The other half, `createdById` (an invite the user made in a household they
 // do not own), is pinned only by that unit test too.
 //
+// ── SEVERAL USERS IN ONE CALL (E2E speed plan, task S.4) ─────────────────────
+//
+// | Test | What it proves on real SQL                                         |
+// |------|--------------------------------------------------------------------|
+// | 2    | one call with two users deletes both; each count is the sum        |
+// | 3    | a household with NO owner (its owner's account deleted) and two    |
+// |      | members A and B: a call with [A] keeps it, a call with [A, B]      |
+// |      | deletes it with its data (decision D6, owner answer P5-A)          |
+//
+// Test 3 is the real-SQL check of the D6 rule in both directions. The other
+// direction, "a member's cleanup leaves the OWNER's household alone", is
+// household-member-cleanup.spec.ts.
+//
 // ── WHY IT EXISTS (issue #319) ───────────────────────────────────────────────
 //
 // `apps/server/src/resolvers/purge-coverage.test.ts` guards the route's delete
-// list, but it is a SOURCE-TEXT check. It asserts the string
-// `prisma.location.deleteMany(` appears in `lib/e2eCleanup.ts`. It never starts the
-// server, never calls the route, and never reads the `where` clause. So this
-// passes that guard, answers 200, and deletes nothing:
+// list, but it is a SOURCE-TEXT check. When this spec was written it asserted
+// that the string `prisma.location.deleteMany(` appears in `lib/e2eCleanup.ts`.
+// It never started the server, never called the route, and never read the
+// `where` clause. So this passed that guard, answered 200, and deleted nothing:
 //
 //   prisma.location.deleteMany({ where: { userId: someWrongValue } })
+//
+// Since E2E speed plan task S.2 the route is one SQL function
+// (`lib/e2eCleanupSql.ts`), and the guard reads each `DELETE FROM "<Model>"`
+// and the text of its `WHERE`. It still cannot see a VALUE, so this spec is
+// still the only check that each filter matches real rows.
 //
 // `cleanupCloudData` could not see it either — until this issue it checked only
 // the HTTP status.
@@ -51,8 +71,8 @@ import { makeGql } from '../utils/cloud'
 //
 // ── WHAT IT STILL DOES NOT COVER ─────────────────────────────────────────────
 //
-// `prisma.itemStock.deleteMany` remains covered by no test that can fail.
-// `ItemStock` has no `userId`, so the source guard skips it, and both of its
+// The `"ItemStock"` delete (it was `prisma.itemStock.deleteMany` until task S.2)
+// remains covered by no test that can fail on DATA. Both of its
 // foreign keys are ON DELETE CASCADE (prisma/schema.prisma) — deleting the item
 // or the location takes the stock rows with it. Delete that line and the rows
 // still go; only the reported `itemStocks` count changes, and this spec's
@@ -75,15 +95,33 @@ import { makeGql } from '../utils/cloud'
 // ── CLEANING UP AFTER ITSELF ─────────────────────────────────────────────────
 //
 // This spec calls the cleanup endpoint as its SUBJECT, which is unusual. It
-// still runs `cleanupCloudData` in `beforeEach` and `afterEach` like every
-// other cloud spec, so a failure part-way through — before the subject call, or
-// after the readbacks have created a fresh default location — still leaves the
-// database empty for the next spec.
+// still runs `cleanupCloudData` in `beforeEach` like every other cloud spec
+// (only there since E2E speed plan task S.3), so a failure part-way through
+// in an earlier run, or the fresh default location the readbacks create, is
+// gone before the test starts. The next spec's own `beforeEach` cleans the
+// users it uses.
 
 type Row = { id: string }
 
 /** The member the seed's ownership offer is made TO (households H6b K.8). */
 const OFFER_MEMBER = `${E2E_SECOND_USER_ID}-cleanup-offer`
+/** Test 2: two users, each with their own household, cleaned in one call. */
+const SUM_A = `${E2E_SECOND_USER_ID}-cleanup-sum-a`
+const SUM_B = `${E2E_SECOND_USER_ID}-cleanup-sum-b`
+/** Test 3: an owner whose account is deleted, and the two members left. */
+const GONE_OWNER = `${E2E_SECOND_USER_ID}-cleanup-gone-owner`
+const LEFT_A = `${E2E_SECOND_USER_ID}-cleanup-left-a`
+const LEFT_B = `${E2E_SECOND_USER_ID}-cleanup-left-b`
+/** Every user this file writes as, cleaned in ONE call (E2E speed plan, S.4). */
+const ALL_USERS = [
+  OFFER_MEMBER,
+  SUM_A,
+  SUM_B,
+  GONE_OWNER,
+  LEFT_A,
+  LEFT_B,
+  E2E_USER_ID,
+]
 
 const LOCATIONS = `query { locations { id name } }`
 const CREATE_LOCATION = `mutation ($name: String!) { createLocation(name: $name) { id } }`
@@ -147,14 +185,11 @@ type ReadBack = {
 }
 
 test.beforeEach(async ({ request }) => {
-  // Guards against a previous run that crashed before its teardown.
-  await cleanupCloudData(request, OFFER_MEMBER)
-  await cleanupCloudData(request)
-})
-
-test.afterEach(async ({ request }) => {
-  await cleanupCloudData(request, OFFER_MEMBER)
-  await cleanupCloudData(request)
+  // The only cleanup of each test: it starts clean whatever ran before it
+  // (E2E speed plan, D7). One call for every user of the file (task S.4).
+  // Test 3 can leave a household with no owner when it fails half way; all
+  // its members are in this list, so this call deletes it (decision D6).
+  await cleanupCloudData(request, ALL_USERS)
 })
 
 test.describe('the /e2e/cleanup endpoint really deletes', () => {
@@ -312,7 +347,7 @@ test.describe('the /e2e/cleanup endpoint really deletes', () => {
     // half of the cleanup's filter can delete it: the `toUserId` half names
     // the user, and the household delete would cascade it away before the
     // count. So this seed is what lets `ownershipOffers` read at least 1.
-    // OFFER_MEMBER is cleaned in both hooks: the user's cleanup deletes
+    // OFFER_MEMBER is cleaned in `beforeEach`: the user's cleanup deletes
     // their member row (the household is the user's), theirs the `User` row.
     await createCloudUser(request, OFFER_MEMBER, 'Cleanup Offer Member')
     await joinHousehold(
@@ -410,7 +445,7 @@ test.describe('the /e2e/cleanup endpoint really deletes', () => {
     expect(after.allCarts).toEqual([])
     expect(after.allCartItems).toEqual([])
     // Weak on its own: `ItemStock` cascades from both `Item` and `Location`, so
-    // this is empty even if `itemStock.deleteMany` were removed. The `deleted`
+    // this is empty even if the `"ItemStock"` delete were removed. The `deleted`
     // count above is the assertion that speaks for that line.
     expect(after.itemStocksForItem).toEqual([])
     // NOT READ BACK: ItemTag, ItemVendor and RecipeItem. GraphQL exposes them
@@ -421,12 +456,115 @@ test.describe('the /e2e/cleanup endpoint really deletes', () => {
     // Location is read back LAST, because reading it recreates one. The user
     // has no household any more, so the `locations` query runs first sign-in
     // again (`ensureHousehold`) and answers with a brand-new "Home" — exactly
-    // one row, and not one of the seeded ids. `afterEach` deletes it, with
-    // its new household.
+    // one row, and not one of the seeded ids. The next test's `beforeEach`
+    // deletes it, with its new household.
     const { locations: afterLocations } = await gql<{
       locations: { id: string }[]
     }>(LOCATIONS)
     expect(afterLocations).toHaveLength(1)
     expect(seededLocationIds).not.toContain(afterLocations[0].id)
+  })
+
+  test('one call with two users deletes both, and each count is the sum', async ({
+    request,
+  }) => {
+    // Given two users, each in their own household: A with one tag type,
+    // B with two. The first request of each makes a household, its "Home",
+    // a member row and a location role row (first sign-in).
+    const a = makeGql(request, SUM_A)
+    const b = makeGql(request, SUM_B)
+    for (const [gql, names] of [
+      [a, ['A Kind']],
+      [b, ['B Kind 1', 'B Kind 2']],
+    ] as const) {
+      const { locations } = await gql<{ locations: Row[] }>(LOCATIONS)
+      expect(locations).toHaveLength(1)
+      for (const name of names) {
+        await gql(CREATE_TAG_TYPE, { name, color: 'blue' })
+      }
+    }
+
+    // When ONE call cleans both
+    const { deleted } = await cleanupCloudData(request, [SUM_A, SUM_B])
+
+    // Then each count is A's plus B's
+    expect(deleted.tagTypes).toBe(3)
+    expect(deleted.households).toBe(2)
+    expect(deleted.locations).toBe(2)
+    expect(deleted.householdMembers).toBe(2)
+    expect(deleted.locationMembers).toBe(2)
+    expect(deleted.users).toBe(2)
+    // And both users are gone
+    expect(await readCloudUser(request, SUM_A)).toBeNull()
+    expect(await readCloudUser(request, SUM_B)).toBeNull()
+  })
+
+  test('a household with no owner is deleted only when every member is in the list', async ({
+    request,
+  }) => {
+    // Given a household with one item, and two members, A (manager) and B
+    // (member), who joined through real invites before sending any other
+    // request (so neither has a household of their own)
+    const owner = makeGql(request, GONE_OWNER)
+    await createCloudUser(request, GONE_OWNER, 'Gone Owner')
+    await createCloudUser(request, LEFT_A, 'Left A')
+    await createCloudUser(request, LEFT_B, 'Left B')
+    await owner(LOCATIONS)
+    await owner(CREATE_ITEM, { input: { name: 'Orphan Rice' } })
+    await joinHousehold(
+      request,
+      LEFT_A,
+      await createInvite(request, GONE_OWNER, 'manager', []),
+    )
+    await joinHousehold(
+      request,
+      LEFT_B,
+      await createInvite(request, GONE_OWNER, 'member', []),
+    )
+
+    // And the owner's account is deleted: the hand-over removes the owner's
+    // member row, so the household has NO owner, and offers it to the others
+    await sendFakeUserDeleted(request, GONE_OWNER)
+    const b = makeGql(request, LEFT_B)
+    const HOUSEHOLD_STATE = `query {
+      household { id hasOwner }
+      householdMembers { userId role }
+      items { name }
+    }`
+    type State = {
+      household: { id: string; hasOwner: boolean }
+      householdMembers: { userId: string; role: string }[]
+      items: { name: string }[]
+    }
+    const before = await b<State>(HOUSEHOLD_STATE)
+    expect(before.household.hasOwner).toBe(false)
+    expect(before.householdMembers.map((p) => p.userId).sort()).toEqual(
+      [LEFT_A, LEFT_B].sort(),
+    )
+    expect(before.items).toEqual([{ name: 'Orphan Rice' }])
+
+    // When only A is cleaned
+    const first = await cleanupCloudData(request, [LEFT_A])
+
+    // Then the household stays: B, a member, is not in the list
+    expect(first.deleted.households).toBe(0)
+    expect(first.deleted.items).toBe(0)
+    expect(first.deleted.householdMembers).toBe(1)
+    expect(first.deleted.users).toBe(1)
+    const middle = await b<State>(HOUSEHOLD_STATE)
+    expect(middle.household.id).toBe(before.household.id)
+    expect(middle.householdMembers.map((p) => p.userId)).toEqual([LEFT_B])
+    expect(middle.items).toEqual([{ name: 'Orphan Rice' }])
+
+    // When A and B are cleaned together
+    const second = await cleanupCloudData(request, [LEFT_A, LEFT_B])
+
+    // Then the household and its data are deleted: every member is listed,
+    // although nobody owns it
+    expect(second.deleted.households).toBe(1)
+    expect(second.deleted.items).toBe(1)
+    expect(second.deleted.locations).toBe(1)
+    expect(second.deleted.householdMembers).toBe(1)
+    expect(second.deleted.users).toBe(1)
   })
 })

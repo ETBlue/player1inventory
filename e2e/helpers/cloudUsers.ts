@@ -29,7 +29,7 @@ import { makeGql } from '../utils/cloud'
  * A spec that writes a `User` row must clean it up. Since task 2.6 of the
  * plan, `cleanupCloudData(request, id)` deletes the `User` row with that id,
  * along with the rest of that user's data. So a spec that writes a row for
- * `E2E_SECOND_USER_ID` must call it for that id too, in both hooks.
+ * `E2E_SECOND_USER_ID` must call it for that id too, in `beforeEach`.
  */
 
 /**
@@ -231,7 +231,7 @@ export type JoinedHousehold = {
  *   own at all: the join sets the first sign-in claim.
  * - The invite is used. A second join with the same token throws.
  *
- * Clean `userId` up with `cleanupCloudData(request, userId)` in both hooks.
+ * Clean `userId` up with `cleanupCloudData(request, userId)` in `beforeEach`.
  * It deletes their member rows in the joined household, and any household
  * they still own.
  */

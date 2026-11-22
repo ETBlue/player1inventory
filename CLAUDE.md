@@ -265,7 +265,7 @@ that really set up that role.
 > | Count | Value | Command |
 > |---|---|---|
 > | live guard fields | **76**: 74 in `publishes`, 2 in `publishesNothing` (`recordImport`, `deleteHousehold`) | `awk '/^const publishes: /,/^}/' apps/server/src/resolvers/live-publish.guard.test.ts \| grep -cE '^  [a-zA-Z]+: \{'` gives the `publishes` part only (74 then). See the H6b table below for both commands |
-> | models `/e2e/cleanup` deletes | **20** | `grep -o 'prisma\.[a-zA-Z]*\.deleteMany' apps/server/src/lib/e2eCleanup.ts \| sort -u \| wc -l` |
+> | models `/e2e/cleanup` deletes | **20** | `grep -cE '^ +DELETE FROM "' apps/server/src/lib/e2eCleanupSql.ts` (since E2E speed plan task S.2; the old `grep -o 'prisma\.[a-zA-Z]*\.deleteMany' apps/server/src/lib/e2eCleanup.ts` command now prints 0) |
 > | `await requireCatalogRole(ctx, 'manager')` in `import.resolver.ts` | **23**: the 22 bulk import mutations and `recordImport` | `grep -c "await requireCatalogRole(ctx, 'manager')" apps/server/src/resolvers/import.resolver.ts` |
 > | `.graphql` schema files | **14** (`activity.graphql` is new) | `ls apps/server/src/schema/*.graphql \| wc -l` |
 >
@@ -297,7 +297,7 @@ that really set up that role.
 > |---|---|---|
 > | live guard fields in `publishes` | **78** (74 after H6a; the four offer writes) | `awk '/^const publishes: /,/^}/' apps/server/src/resolvers/live-publish.guard.test.ts \| grep -cE '^  [a-zA-Z]+: \{'` |
 > | live guard fields in `publishesNothing` | **3**: `recordImport`, `deleteHousehold`, `dismissOwnershipOffer` | `awk '/^const publishesNothing: /,/^}/' apps/server/src/resolvers/live-publish.guard.test.ts \| grep -cE '^  [a-zA-Z]+:'` |
-> | models `/e2e/cleanup` deletes | **21** (`OwnershipOffer` is new) | `grep -o 'prisma\.[a-zA-Z]*\.deleteMany' apps/server/src/lib/e2eCleanup.ts \| sort -u \| wc -l` |
+> | models `/e2e/cleanup` deletes | **21** (`OwnershipOffer` is new) | `grep -cE '^ +DELETE FROM "' apps/server/src/lib/e2eCleanupSql.ts` (since E2E speed plan task S.2; the old `grep -o 'prisma\.[a-zA-Z]*\.deleteMany' apps/server/src/lib/e2eCleanup.ts` command now prints 0) |
 > | `.graphql` schema files | **15** (`ownership.graphql` is new) | `ls apps/server/src/schema/*.graphql \| wc -l` |
 > | migration folders | **21** | `ls apps/server/prisma/migrations \| grep -c _` |
 > | server bundle | **254.0 KiB**, 15 `.graphql` files copied | the `esbuild:` line of `pnpm build` |
@@ -341,7 +341,7 @@ that really set up that role.
 > | cloud spec files | **39 of 43** in `e2e/tests/`; the `cloud` project collects **210** tests |
 >
 > **Personal location order and the four sorts are built in H7b** (on
-> `feature/households-h7b`, from `develop` at `bf71f485`; **not merged, not deployed**; plan
+> `feature/households-h7b`, from `develop` at `bf71f485`; **merged into `develop` (2026-11-22, #395, merge `41bbbe1a`), not deployed**; plan
 > `docs/global/permissions/2026-11-21-households-plan-h7.md`, tasks M.1 to M.6; deploy notes
 > in section 14 of the H4 runbook). **One additive migration with one backfill**,
 > `20261122000000_add_location_preferences`. It deploys with the server, and the **server
@@ -1286,6 +1286,19 @@ time and test counts. It exits non-zero if any project failed. Each project writ
 HTML report (`playwright-report/local`, `/cloud`, `/pwa`), and the reporter never opens a
 browser, so the command is safe to run non-interactively.
 
+**Each gate also records the time of every test** (since E2E speed plan task S.1,
+2026-11-22). Per project, `run-all.sh` writes and keeps:
+
+| File | What it holds |
+|---|---|
+| `e2e-results/<project>.json` | Playwright's JSON report. The config adds the `json` reporter only when `PLAYWRIGHT_JSON_OUTPUT_FILE` is set, and `run-all.sh` sets it |
+| `e2e-results/test-results-<project>/` | a copy of `test-results/` (error text, trace, screenshot), made right after the project ends. The next Playwright run deletes `test-results/`, so without the copy a failure in `local` loses its files when `cloud` starts (since task S.5) |
+
+At the end it runs `node scripts/spec/e2e-times.mjs` on the three JSON files. That prints,
+per project, the total, the 15 slowest tests and the time per spec file. `e2e-results/` is
+gitignored. **A `--reporter=…` argument turns the JSON report off**: it replaces the
+config's reporters. So do not pass one when you want the times.
+
 **Do not run the bare `pnpm test:e2e` as your gate on this machine.** One invocation runs
 all three projects together and keeps every server alive for the whole run — three web
 servers plus the API server. The machine starves, and the run reports failures nobody
@@ -2017,12 +2030,14 @@ changes a returned row changes nothing in the store; to change the store, write 
 Only the **interactive callback** form is modelled — `$transaction(async (tx) => …)`. The
 array form, `$transaction([p1, p2])`, throws a clear error on purpose: JavaScript evaluates
 the array before `$transaction` is called, so the fake's writes have already landed, and a
-snapshot taken then would report a rollback that never happened. One place uses the array
-form today: the `/e2e/cleanup` route, in `apps/server/src/lib/e2eCleanup.ts`. It is not
-tested through this fake; `e2eCleanup.test.ts` has its own mock that models only the array
-form. Check with `git grep -n '\$transaction(\[' -- apps/server/src` (measured 2026-11-04,
-households H3a task 3.10; this line said "four resolvers: import, purge, location,
-`index.ts`" before, which had gone stale).
+snapshot taken then would report a rollback that never happened. **No source file uses the
+array form today.** The last user was the `/e2e/cleanup` route
+(`apps/server/src/lib/e2eCleanup.ts`); since E2E speed plan task S.2 (2026-11-22) it makes
+one `$queryRaw` call to a SQL function instead. Check with
+`git grep -n '\$transaction(\[' -- apps/server/src`: measured 2026-11-23, it finds only
+`src/test/stockFake.ts` and `src/test/stockFake.test.ts`, the fake's own refusal and its
+test. (This said "one place: `/e2e/cleanup`" from 2026-11-04, households H3a task 3.10, and
+"four resolvers: import, purge, location, `index.ts`" before that.)
 
 Note also that **no *unit* test executes the resolvers against real SQL** — every server
 test runs against a hand-written stateful Prisma fake. Cloud **E2E** does hit real
@@ -2463,7 +2478,7 @@ await new Promise<void>((resolve, reject) => {
 })
 ```
 
-**`afterEach` teardown** — always clear IndexedDB, localStorage, and sessionStorage. See the root `e2e/tests/shopping.spec.ts` or `e2e/tests/cooking.spec.ts` for the canonical teardown block.
+**`afterEach` teardown** — always clear IndexedDB, localStorage, and sessionStorage. See the root `e2e/tests/shopping.spec.ts` or `e2e/tests/cooking.spec.ts` for the canonical teardown block. **The cloud cleanup is NOT in `afterEach`** (since E2E speed plan task S.3): each cloud test calls `cleanupCloudData` once, in `beforeEach`, with every user it uses. See `e2e/CLAUDE.md`, *Every cloud spec uses `cleanupCloudData`*.
 
 **Test naming** — same "user can ..." convention with Given-When-Then comments as unit tests.
 
