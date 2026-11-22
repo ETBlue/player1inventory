@@ -18,6 +18,7 @@ import {
   getLocationsMock,
   LOC_A,
   LOC_B,
+  markLocationVisitedMock,
 } from '@/test/cloudFixtures'
 import { watchUnhandledRejections } from '@/test/unhandledRejections'
 import {
@@ -100,6 +101,7 @@ const addMock = {
 
 const MOCKS = [
   bootstrapCartsMock,
+  markLocationVisitedMock,
   getLocationsMock,
   pantryMock(LOC_A),
   pantryMock(LOC_B),
@@ -219,6 +221,7 @@ describe('useItemSearchTailWiring (cloud mode)', () => {
       }
       const { result } = renderWiring([
         bootstrapCartsMock,
+        markLocationVisitedMock,
         getLocationsMock,
         pantryMock(LOC_A),
         pantryMock(LOC_B),

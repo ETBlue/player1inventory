@@ -268,6 +268,8 @@ function dynamicMocks(): NonNullable<MockedProviderProps['mocks']> {
               order: 0,
               myRole: 'organizer',
               hasOrganizer: true,
+              dataUpdatedAt: null,
+              lastVisitedAt: null,
             },
             // A location the caller has no role on (owner and manager see it)
             {
@@ -277,6 +279,8 @@ function dynamicMocks(): NonNullable<MockedProviderProps['mocks']> {
               order: 1,
               myRole: null,
               hasOrganizer: true,
+              dataUpdatedAt: null,
+              lastVisitedAt: null,
             },
           ],
         },

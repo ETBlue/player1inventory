@@ -43,10 +43,17 @@ interface LocationListProps {
   onRename: (location: LocationListItem) => void
   onDelete: (location: LocationListItem) => void
   /**
-   * Drag handles and Delete. Off for a household `member`: the server asks
-   * `manager` to delete or reorder a location. Default `true` (local mode).
+   * Delete. Off for a household `member`: the server asks `manager` to
+   * delete a location. Default `true` (local mode).
    */
   canManage?: boolean
+  /**
+   * Drag handles. Since households H7b the order is the person's own
+   * (decision T78), so every household role may drag. The settings page
+   * turns it off when the sort is not **Custom**: a drag in a list sorted by
+   * name would save an order the person cannot see. Default: `canManage`.
+   */
+  canReorder?: boolean
   /**
    * Whether the Rename button shows on a row. The server asks the LOCATION
    * role `organizer` to rename. Default: every row.
@@ -70,6 +77,7 @@ interface LocationRowProps {
   location: LocationListItem
   isDefault: boolean
   canManage: boolean
+  canReorder: boolean
   canRename: boolean
   showRoles: boolean
   canOpen: boolean
@@ -81,6 +89,7 @@ function LocationRow({
   location,
   isDefault,
   canManage,
+  canReorder,
   canRename,
   showRoles,
   canOpen,
@@ -88,7 +97,7 @@ function LocationRow({
   onDelete,
 }: LocationRowProps) {
   const { t } = useTranslation()
-  const canDrag = canManage && !isDefault
+  const canDrag = canReorder && !isDefault
   const {
     attributes,
     listeners,
@@ -108,11 +117,11 @@ function LocationRow({
   return (
     <li ref={setNodeRef} style={style}>
       <Card className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-4 py-1">
-        {/* Drag handle — locked for the default location, absent without
-            the household role to reorder */}
+        {/* Drag handle — locked for the default location, absent when the
+            list may not be dragged (a sort other than Custom) */}
         {isDefault ? (
           <Lock className="h-4 w-4 text-foreground-muted" />
-        ) : !canManage ? (
+        ) : !canReorder ? (
           <span aria-hidden="true" className="w-4" />
         ) : (
           <button
@@ -222,6 +231,7 @@ export function LocationList({
   onRename,
   onDelete,
   canManage = true,
+  canReorder = canManage,
   canRename = () => true,
   showRoles = false,
   canOpen = () => false,
@@ -291,6 +301,7 @@ export function LocationList({
               // deleted, the last one too (since households H5 task F.7).
               isDefault={location.isDefault === true}
               canManage={canManage}
+              canReorder={canReorder}
               canRename={canRename(location)}
               showRoles={showRoles}
               canOpen={canOpen(location)}

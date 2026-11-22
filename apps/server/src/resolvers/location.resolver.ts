@@ -17,8 +17,13 @@ import { displayNamesOf, lockHouseholdOrForbid } from '../lib/household.js'
 import { recordActivity } from '../lib/activity.js'
 import { prisma } from '../lib/prisma.js'
 import { publishChange, publishHouseholdChange } from '../lib/publishChange.js'
+import {
+  DEFAULT_LOCATION_SORT,
+  locationPreferencesOf,
+  VISIT_INTERVAL_MS,
+} from '../lib/locationPreferences.js'
 import type { Location, Resolvers } from '../generated/graphql.js'
-import type { LocationRole, Prisma, Location as PrismaLocation } from '@prisma/client'
+import type { HouseholdRole, LocationRole, Prisma, Location as PrismaLocation } from '@prisma/client'
 
 // Map a Prisma Location row to the GraphQL shape. GraphQL schema types
 // createdAt/updatedAt as String! — Date objects must be explicitly
@@ -31,18 +36,55 @@ import type { LocationRole, Prisma, Location as PrismaLocation } from '@prisma/c
 // `itemStock.resolver.ts` and `shelf.resolver.ts` import `item.resolver.ts`'s
 // `toGraphQL` instead of copying it: a second copy is a second place for the
 // ISO-string bug to come back.
+//
+// `dataUpdatedAt` is nullable (households H7b, decision T82). `?? null` also
+// covers a test fake's fixture row that leaves the column out.
 export function toGraphQL(row: PrismaLocation): Location {
   return {
     ...row,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+    dataUpdatedAt: row.dataUpdatedAt?.toISOString() ?? null,
   } as unknown as Location
 }
 
 /**
- * The locations the caller sees, by `order`: every location of the caller's
- * household on which they hold a location role that still counts (decision
- * H18). Ties are broken by id, so the answer is the same every time.
+ * The rows in the CALLER's own order, with `order` set to the position in
+ * this list, 0 to n-1 (households H7b, decisions T76 and T77). In this order:
+ *
+ *   1. The locations the caller placed (`LocationPreference.customOrder` is
+ *      set), by that number.
+ *   2. Every other location, AFTER those, by the shared `Location.order`.
+ *   3. Ties by id, so the answer is the same every time.
+ *
+ * So a person who never reordered sees the shared order, and a location made
+ * after their last reorder comes last. There is no copy of the shared order
+ * into each person's rows (decision T76).
+ *
+ * The preferences come from `locationPreferencesOf`: ONE read of the
+ * caller's own rows per request, cached on `ctx.requestCache`. That map holds
+ * the caller's rows of every household; only the ids of `rows` are looked up.
+ */
+async function inPersonalOrder(ctx: Context, rows: PrismaLocation[]): Promise<Location[]> {
+  const preferences = await locationPreferencesOf(ctx)
+  const placed = (id: string) => preferences.get(id)?.customOrder ?? null
+  return [...rows]
+    .sort((a, b) => {
+      const pa = placed(a.id)
+      const pb = placed(b.id)
+      if (pa !== null && pb !== null && pa !== pb) return pa - pb
+      if (pa !== null && pb === null) return -1
+      if (pa === null && pb !== null) return 1
+      if (pa === null && a.order !== b.order) return a.order - b.order
+      return byText(a.id, b.id)
+    })
+    .map((row, index) => toGraphQL({ ...row, order: index }))
+}
+
+/**
+ * The locations the caller sees, in the caller's own order (`inPersonalOrder`):
+ * every location of the caller's household on which they hold a location
+ * role that still counts (decision H18).
  *
  * Only ONE household since households H4 task E.5 (decision T15). This is the
  * location switcher and the export's location list. A person in two
@@ -60,11 +102,25 @@ async function visibleLocations(ctx: Context): Promise<Location[]> {
     householdId: await requireHousehold(ctx),
   })
   if (ids.length === 0) return []
-  const rows = await prisma.location.findMany({
-    where: { id: { in: ids } },
-    orderBy: [{ order: 'asc' }, { id: 'asc' }],
-  })
-  return (rows as unknown as PrismaLocation[]).map(toGraphQL)
+  const rows = await prisma.location.findMany({ where: { id: { in: ids } } })
+  return inPersonalOrder(ctx, rows as unknown as PrismaLocation[])
+}
+
+/**
+ * The ids of the caller's settings list (households H7b, decision T78): for a
+ * household owner or manager every location of the household, for a
+ * `member` the locations they hold a counted role on. The same set
+ * `householdLocations` returns. `reorderLocations` checks its list against it.
+ */
+async function settingsListIds(
+  ctx: Context,
+  householdId: string,
+  householdRole: HouseholdRole,
+): Promise<string[]> {
+  if (householdRole === 'member') return locationIdsWithRole(ctx, 'viewer', { householdId })
+  // The household is compared in SQL, here.
+  const rows = await prisma.location.findMany({ where: { householdId }, select: { id: true } })
+  return rows.map((row) => row.id)
 }
 
 /**
@@ -90,8 +146,12 @@ async function householdIdOf(parent: Location): Promise<string | null> {
  * OLD-BUNDLE SHIM. Remove with `Location.isDefault`, in the release after
  * households.
  *
- * The id of the first location, by `order` then `id`, among the locations of
- * `householdId` on which the caller holds a counted role. `null` when there
+ * The id of the first location, by the SHARED `order` then `id`, among the
+ * locations of `householdId` on which the caller holds a counted role. It
+ * does NOT follow the caller's own order (households H7b, task M.3): it keeps
+ * answering what `main`'s server answered, and it goes away in the release
+ * after households. So after a personal reorder the old bundle may mark
+ * another row of its list as the default than the first one. No data is lost. `null` when there
  * is none. Kept on `ctx.requestCache.firstLocationIds`, one entry per
  * household, so `Location.isDefault` on a list of N locations reads it once.
  * `forgetLocationRoles` (lib/authz.ts) clears it with the role caches, so a
@@ -241,18 +301,20 @@ async function lockAndReadRoles(
 
 // ── LIVE EVENTS (households H3c-2 task D.3) ──
 //
-// Every mutation here publishes one household-level `LOCATION` event
-// (`publishHouseholdChange`, `locationId: null`), AFTER its write has
-// committed. Household-level, not per location (decision Q2 of the H3c-2
+// Most mutations here publish one household-level `LOCATION` event
+// (`publishHouseholdChange`, `locationId: null`), AFTER their write has
+// committed. Three publish nothing, because only the caller sees what they
+// write (households H7b): `reorderLocations`, `setLocationSort` and
+// `markLocationVisited`. `removeAllLocationItems` sends location-level
+// `STOCK` and `CART` instead. Household-level, not per location (decision Q2 of the H3c-2
 // plan): a deleted location can pass no `requireLocationRole` check, so an
 // event that named it would reach nobody. On the web `LOCATION` refetches
 // every active query (decision Q3). So `deleteLocation` sends no `CART`,
 // `STOCK` or `LOG` for the rows its cascade removed (decision Q4).
 //
 // The household in the event is the household of the location WRITTEN, read
-// from the saved row. For `createLocation`, `deleteLocation` and
-// `reorderLocations` that is always the caller's household. `updateLocation`
-// checks a location role only, so it can rename a location of a second
+// from the saved row. For `createLocation` and `deleteLocation` that is
+// always the caller's household. `updateLocation` checks a location role only, so it can rename a location of a second
 // household the caller belongs to.
 
 export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Location'> = {
@@ -276,12 +338,22 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Location
       const role = await requireHouseholdRole(ctx, householdId, 'member')
       if (role === 'member') return visibleLocations(ctx)
       // The household is compared in SQL, here. No call site compares a
-      // `householdId`.
-      const rows = await prisma.location.findMany({
-        where: { householdId },
-        orderBy: [{ order: 'asc' }, { id: 'asc' }],
+      // `householdId`. The order is the caller's own (decision T77), the same
+      // as `locations`, with the No access rows in their place.
+      const rows = await prisma.location.findMany({ where: { householdId } })
+      return inPersonalOrder(ctx, rows as unknown as PrismaLocation[])
+    },
+
+    // The caller's own sort choice (households H7b, decision T74). Null in
+    // the database means "never chose": the default of owner decision O52-A.
+    // No household is needed: the choice belongs to the person.
+    myLocationSort: async (_, __, ctx) => {
+      const userId = requireAuth(ctx)
+      const row = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { locationSort: true },
       })
-      return (rows as unknown as PrismaLocation[]).map(toGraphQL)
+      return row?.locationSort ?? DEFAULT_LOCATION_SORT
     },
 
     // The people page of one location (households H5c, decision T39, owner
@@ -331,6 +403,12 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Location
       if (!householdId) return false
       const organized = await locationIdsWithOrganizer(ctx, householdId)
       return organized.has(parent.id)
+    },
+    // The CALLER's own last visit (households H7b, decision T80). Read from
+    // the caller's preference rows, once per request.
+    lastVisitedAt: async (parent, _, ctx) => {
+      const preferences = await locationPreferencesOf(ctx)
+      return preferences.get(parent.id)?.lastVisitedAt?.toISOString() ?? null
     },
     // OLD-BUNDLE SHIM. Remove in the release after households, with the
     // field in `location.graphql` (see the comment there for why it exists).
@@ -554,60 +632,77 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Location
       return true
     },
 
-    // Household role `manager`. Order is one list for the whole household
-    // until H7 brings each person their own (decision H5). The list must hold
-    // every location of the household (decision T6 of the H5 plan).
+    // Any household role (households H7b, decision T78). Writes the CALLER's
+    // own order: one `LocationPreference` row per location, with
+    // `customOrder` = its index. The shared `Location.order` is not written,
+    // so nobody else's list moves. (Until H7 this asked `manager` and wrote
+    // the shared order for the whole household, decisions H5 and T6.)
+    //
+    // Checked in this order, all before any write:
+    //
+    //   1. A repeated id: BAD_USER_INPUT. With ['A', 'A', 'B'] the indexes
+    //      would not be an order of the list.
+    //   2. Every id must be in the caller's settings list (`settingsListIds`):
+    //      FORBIDDEN otherwise. One answer for another household's location,
+    //      an unknown id, and a location of this household that a member has
+    //      no role on, so the request cannot probe which ids exist.
+    //   3. Every location of that list, not a subset: BAD_USER_INPUT. A
+    //      subset would give two locations the same position, the one left
+    //      out keeping an old `customOrder`.
+    //
+    // No lock: the rows belong to the caller alone. The upserts are one
+    // transaction, so a list is never half written.
+    //
+    // Publishes nothing (`publishesNothing` in live-publish.guard.test.ts):
+    // only the caller sees their order. Their other tabs show it on their
+    // next read of the list.
     reorderLocations: async (_, { orderedIds }, ctx) => {
+      const userId = requireAuth(ctx)
       const householdId = await requireHousehold(ctx)
-      await requireHouseholdRole(ctx, householdId, 'manager')
+      const role = await requireHouseholdRole(ctx, householdId, 'member')
+
+      if (new Set(orderedIds).size !== orderedIds.length) {
+        throw new GraphQLError('Each location may appear only once.', {
+          extensions: { code: 'BAD_USER_INPUT' },
+        })
+      }
+      const allowed = new Set(await settingsListIds(ctx, householdId, role))
+      if (orderedIds.some((id) => !allowed.has(id))) throw forbidden()
+      // The ids are distinct and all in the list, so the sizes are equal
+      // only for the full list.
+      if (allowed.size !== orderedIds.length) {
+        throw new GraphQLError('Send every location of your list, in the new order.', {
+          extensions: { code: 'BAD_USER_INPUT' },
+        })
+      }
 
       await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-        // A repeated id is refused. With ['A', 'A', 'B'], A would get order 0
-        // and then 1, and B 2: no order 0 left, and the list the caller sent
-        // is not an order of the locations. The web app never sends one:
-        // `LocationList` sends `arrayMove(locations, …).map((l) => l.id)`, a
-        // new order of the list it shows, and `useReorderLocations` passes it
-        // on unchanged. So a repeated id is a malformed request.
-        if (new Set(orderedIds).size !== orderedIds.length) {
-          throw new GraphQLError('Each location may appear only once.', {
-            extensions: { code: 'BAD_USER_INPUT' },
+        for (const [index, locationId] of orderedIds.entries()) {
+          await tx.locationPreference.upsert({
+            where: { userId_locationId: { userId, locationId } },
+            create: { userId, locationId, customOrder: index },
+            update: { customOrder: index },
           })
-        }
-
-        // Every id must be a location of the caller's household. Checked
-        // before ANY write, so a batch with one foreign or unknown id changes
-        // nothing at all.
-        const found = await tx.location.findMany({
-          where: { id: { in: orderedIds }, householdId },
-          select: { id: true },
-        })
-        if (found.length !== orderedIds.length) throw forbidden()
-
-        // Every location of the household, not a subset (households H5 task
-        // F.2, decision T6). The ids are distinct and all in the household
-        // (checked above), so the counts are equal only for the full set. A
-        // subset would write orders 0..n-1 and leave a location that was
-        // left out sharing one of them (the H3a duplicate-order gap). An
-        // owner or manager may hold no role on some locations, so the web's
-        // settings list must send `householdLocations`, not `locations`
-        // (task F.3).
-        const total = await tx.location.count({ where: { householdId } })
-        if (total !== orderedIds.length) {
-          throw new GraphQLError('Send every location of the household, in the new order.', {
-            extensions: { code: 'BAD_USER_INPUT' },
-          })
-        }
-
-        for (const [index, id] of orderedIds.entries()) {
-          await tx.location.update({ where: { id }, data: { order: index } })
         }
       })
-      // An empty list writes nothing, so it tells nobody. It passes the check
-      // above only for a household with no location (after task F.7).
-      if (orderedIds.length > 0) {
-        await publishHouseholdChange(ctx, ['LOCATION'], householdId)
-      }
+      // Read after the write. The request's preference cache was cleared
+      // before this field ran (`forgetRolesAroundEach`), and nothing in this
+      // field read it before the write, so this read is fresh.
       return visibleLocations(ctx)
+    },
+
+    // The caller's own sort choice (households H7b, decision T74). Writes
+    // only the caller's `User.locationSort`. Takes no household lock: a
+    // `User` row write after a household lock would break the lock order
+    // (H5b decision T16), and none is needed. Publishes nothing.
+    setLocationSort: async (_, { sort }, ctx) => {
+      const userId = requireAuth(ctx)
+      const row = await prisma.user.update({
+        where: { id: userId },
+        data: { locationSort: sort },
+        select: { locationSort: true },
+      })
+      return row.locationSort ?? sort
     },
 
     // ── setLocationRole, removeLocationRole, leaveLocation (households H5c,
@@ -623,6 +718,36 @@ export const locationResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Location
     // Each write that changed a row also writes ONE activity row through
     // `tx`, in the same transaction (households H6 task J.2, decisions T47
     // and T51, owner decision O29-A). Nothing changed, or refused: no row.
+
+    // Location role `viewer`, on a location of the household the caller acts
+    // in (households H7b, decision T80). Writes only the caller's own row.
+    // No transaction and no lock: the row belongs to one person, and two
+    // visits at the same moment write the same kind of value. Publishes
+    // nothing (`publishesNothing` in live-publish.guard.test.ts).
+    markLocationVisited: async (_, { locationId }, ctx) => {
+      const userId = requireAuth(ctx)
+      const householdId = await requireHousehold(ctx)
+      // In the household the caller acts in, then a counted role there. Both
+      // refuse with the same FORBIDDEN, so an id cannot be probed.
+      await requireLocationInHousehold(ctx, locationId, householdId)
+      await requireLocationRole(ctx, locationId, 'viewer')
+
+      const now = new Date()
+      const key = { userId_locationId: { userId, locationId } }
+      const saved = await prisma.locationPreference.findUnique({
+        where: key,
+        select: { lastVisitedAt: true },
+      })
+      if (saved?.lastVisitedAt && now.getTime() - saved.lastVisitedAt.getTime() < VISIT_INTERVAL_MS) {
+        return false
+      }
+      await prisma.locationPreference.upsert({
+        where: key,
+        create: { userId, locationId, lastVisitedAt: now },
+        update: { lastVisitedAt: now },
+      })
+      return true
+    },
 
     // Adds a role or changes it. The same role again writes nothing, sends
     // nothing, and returns the row (decision T38).

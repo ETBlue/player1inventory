@@ -754,3 +754,88 @@ describe('the stock and log imports publish one event per location written', () 
     expect(events()).toEqual([change('LOG', LOC_HOME, 'hh_home')])
   })
 })
+
+// ─── Location.dataUpdatedAt (households H7b task M.2, decision T79) ─────────
+//
+// `publishChange` sets it for STOCK, CART and LOG. One writer of each kind is
+// run through its RESOLVER here, so the path is proved, not only the helper
+// (`publishChange.test.ts`). Both hh_home locations start with an OLD value,
+// so a write that moved every location of the household, or none, is seen.
+
+describe('Location.dataUpdatedAt moves only for the location the write changed', () => {
+  const OLD = new Date('2026-02-02T00:00:00.000Z')
+
+  beforeEach(() => {
+    for (const location of world.stock.state.locations) location.dataUpdatedAt = OLD
+  })
+
+  function dataUpdatedAt(locationId: string): Date | null | undefined {
+    return world.stock.state.locations.find((l) => l.id === locationId)?.dataUpdatedAt
+  }
+
+  function expectMovedOnly(locationId: string) {
+    const moved = dataUpdatedAt(locationId)
+    expect(moved).toBeInstanceOf(Date)
+    expect(moved?.getTime()).toBeGreaterThan(OLD.getTime())
+    for (const other of [LOC_HOME, LOC_GARAGE, LOC_SECOND, LOC_STRANGER]) {
+      if (other !== locationId) expect(dataUpdatedAt(other)).toEqual(OLD)
+    }
+  }
+
+  it('upsertItemStock (STOCK)', async () => {
+    const res = await run(UPSERT_STOCK, { i: 'item_bread', l: LOC_GARAGE, input: { packedQuantity: 2 } }, ALICE)
+
+    expect(res.errors).toBeUndefined()
+    expectMovedOnly(LOC_GARAGE)
+  })
+
+  it('addToCart (CART)', async () => {
+    const res = await run(
+      `mutation M($c: ID!, $i: ID!) { addToCart(cartId: $c, itemId: $i, quantity: 1) { id } }`,
+      { c: `${LOC_HOME}:no-vendor`, i: 'item_bread' },
+      BOB,
+    )
+
+    expect(res.errors).toBeUndefined()
+    expectMovedOnly(LOC_HOME)
+  })
+
+  it('addInventoryLog (LOG)', async () => {
+    const res = await run(ADD_LOG, { i: 'item_milk', l: LOC_GARAGE }, ALICE)
+
+    expect(res.errors).toBeUndefined()
+    expectMovedOnly(LOC_GARAGE)
+  })
+
+  it('bulkCreateItemStocks (an import)', async () => {
+    const res = await run(
+      BULK_CREATE_STOCKS,
+      { rows: [stockImport('st_new_1', 'item_bread', LOC_HOME)] },
+      ALICE,
+      'hh_home',
+    )
+
+    expect(res.errors).toBeUndefined()
+    expectMovedOnly(LOC_HOME)
+  })
+
+  it('removeAllLocationItems', async () => {
+    const res = await run(
+      `mutation M($l: ID!) { removeAllLocationItems(locationId: $l) }`,
+      { l: LOC_GARAGE },
+      ALICE,
+      'hh_home',
+    )
+
+    expect(res.errors).toBeUndefined()
+    expect(res.data).toEqual({ removeAllLocationItems: true })
+    expectMovedOnly(LOC_GARAGE)
+  })
+
+  it('a refused write moves nothing', async () => {
+    const res = await run(UPSERT_STOCK, { i: 'item_milk', l: LOC_HOME, input: { packedQuantity: 1 } }, VERA)
+
+    expect(code(res)).toBe('FORBIDDEN')
+    for (const id of [LOC_HOME, LOC_GARAGE, LOC_SECOND, LOC_STRANGER]) expect(dataUpdatedAt(id)).toEqual(OLD)
+  })
+})

@@ -85,6 +85,7 @@ function user(id: string, displayName: string, activeHouseholdId: string | null)
     deletedAt: null,
     householdSetupAt: T0,
     activeHouseholdId,
+    locationSort: null,
     createdAt: T0,
     updatedAt: T0,
   }
@@ -579,6 +580,41 @@ describe('joinHousehold keeps the joiner’s own household when it is not empty'
     expect(res.errors).toBeUndefined()
     expect(householdIds()).not.toContain('hh_p')
     expect(world.households.state.ownershipOffers.map((o) => o.householdId)).toEqual(['hh_x'])
+  })
+
+  it('location preference rows do not keep it, and go with its location (H7b decision T75)', async () => {
+    // Given PAT's own household holds only "Home", and PAT has a preference
+    // row there: a custom order and a last visit. A person's sort settings
+    // are not data they would lose, so the join must still delete the
+    // household (decision T75), and the row goes with its location
+    // (ON DELETE CASCADE).
+    await world.client.locationPreference.upsert({
+      where: { userId_locationId: { userId: PAT, locationId: LOC_P } },
+      create: { userId: PAT, locationId: LOC_P, customOrder: 0, lastVisitedAt: EARLY },
+      update: {},
+    })
+    // And PAT and YUKI have rows on another household's location, which stay
+    await world.client.locationPreference.upsert({
+      where: { userId_locationId: { userId: YUKI, locationId: LOC_Z } },
+      create: { userId: YUKI, locationId: LOC_Z, customOrder: 0 },
+      update: {},
+    })
+    await world.client.locationPreference.upsert({
+      where: { userId_locationId: { userId: PAT, locationId: LOC_K } },
+      create: { userId: PAT, locationId: LOC_K, lastVisitedAt: LATE },
+      update: {},
+    })
+
+    // When PAT joins hh_h
+    const res = await join(MAIN, PAT)
+
+    // Then the join succeeds and hh_p is deleted
+    expect(res.errors).toBeUndefined()
+    expect(householdIds()).not.toContain('hh_p')
+    // And only the rows on hh_p's location are gone
+    expect(
+      world.locationPreferences.state.rows.map((r) => `${r.userId}@${r.locationId}`).sort(),
+    ).toEqual([`${PAT}@${LOC_K}`, `${YUKI}@${LOC_Z}`])
   })
 
   it("another household's data does not keep it", async () => {

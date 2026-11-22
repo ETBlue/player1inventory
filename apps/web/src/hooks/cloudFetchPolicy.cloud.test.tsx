@@ -41,6 +41,7 @@ import {
   cloudStock,
   getLocationsMock,
   LOC_A,
+  markLocationVisitedMock,
 } from '@/test/cloudFixtures'
 import { DEFAULT_LOCATION_ID, type PantryItem } from '@/types'
 import {
@@ -733,7 +734,11 @@ function makeWrapper(
   )
 }
 
-const baseMocks = [getLocationsMock, bootstrapCartsMock]
+const baseMocks = [
+  getLocationsMock,
+  bootstrapCartsMock,
+  markLocationVisitedMock,
+]
 
 describe.each(CASES)('$name — a stale persisted cache', (c) => {
   beforeEach(() => {

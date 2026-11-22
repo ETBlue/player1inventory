@@ -30,6 +30,7 @@ import {
   getLocationsMock,
   LOC_A,
   LOC_B,
+  markLocationVisitedMock,
 } from '@/test/cloudFixtures'
 
 // The Info tab's unit switch, in CLOUD mode, through the REAL generated hooks.
@@ -222,6 +223,7 @@ const householdManagerMock = {
 const MOCKS = [
   householdManagerMock,
   bootstrapCartsMock,
+  markLocationVisitedMock,
   getLocationsMock,
   getItemMock,
   getItemsMock,

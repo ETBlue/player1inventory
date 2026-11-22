@@ -88,6 +88,8 @@ function mocks({
                   createdAt: '2026-11-01T00:00:00.000Z',
                   updatedAt: '2026-11-01T00:00:00.000Z',
                   myRole,
+                  dataUpdatedAt: null,
+                  lastVisitedAt: null,
                 },
               ]
             : [],
@@ -107,6 +109,8 @@ function mocks({
               order: 0,
               myRole,
               hasOrganizer,
+              dataUpdatedAt: null,
+              lastVisitedAt: null,
             },
           ],
         },

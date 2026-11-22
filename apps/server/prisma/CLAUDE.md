@@ -109,6 +109,21 @@ why the resolvers map an absent input to `NULL` and never to `''` — see
 **It still needs its own `verify-migration.ts` assertions**, and "the column is present" alone
 is a weak claim. See the *ADD COLUMN needs the same two halves* bullet below.
 
+**One named exception: a nullable column that carries real history.**
+`20261122000000_add_location_preferences` (households H7b task M.1, decision T79) adds the
+nullable `"Location"."dataUpdatedAt"` AND fills it once with one `UPDATE`: the newest
+`"ItemStock"."updatedAt"` of each location. A location with no stock row keeps `NULL`. The
+reason is in data terms: the "Last updated" sort reads the column, and that history already
+exists in `ItemStock`. Without the backfill every location would read `NULL` after the
+deploy, and the sort would show no order until each location's next write. There is still
+no `RAISE EXCEPTION` guard: `NULL` is a valid answer, so there is nothing to count. Use this
+exception only when the value is real data that the new column must show from day one, and
+say so in the SQL comment, as that migration does. Its `verify-migration.ts` checks seed
+stock rows with known times BEFORE the last deploy (`seedLocationPreferenceBackfill`) and
+read them back first after it (`assertLocationDataUpdatedAtBackfill`). The same migration's
+other new column, `"User"."locationSort"`, follows the plain rule above: `NULL` means "the
+default", and it gets no backfill.
+
 ## Re-keying a primary key
 
 `20260917000000_rekey_cart_to_location_vendor` rewrote `Cart.id` from the bare vendor id to
@@ -220,6 +235,26 @@ than trusting a number here — it said **four** when there were seven.
   2026-11-20, before task K.8, with the owner's consent: "Migration verified.", every line
   `ok` (H6 plan, the top of task K.8). No file under `apps/server/prisma/` changed after that
   run (`git log --oneline e0b7f585..HEAD -- apps/server/prisma/` is empty at `5cd82bf4`).
+  **Thirteen** entries since households H7b task M.1 (`20261122000000_add_location_preferences`,
+  in the `last` group too: one enum, two nullable columns, one backfill `UPDATE` and one
+  empty table that names `"User"` and `"Location"`). So the fourth `migrate deploy` now
+  applies five migrations. Two things were new for this group. (1) Five `Location` reads and
+  deletes in `verify-migration.ts` run BEFORE the last deploy, and the Prisma client built
+  from the final schema would ask for `dataUpdatedAt` before it exists (`P2022`). Each got a
+  `select`. A later column on a table those early steps read needs the same care.
+  (2) The backfill needs rows with known times before the deploy, so
+  `seedLocationPreferenceBackfill` writes them, and `assertLocationDataUpdatedAtBackfill`
+  runs first after the deploy. `assertLocationPreferences` checks the rest: the enum's four
+  values, the two nullable columns, the table's columns, the primary key
+  `("userId", "locationId")`, the `locationId` index, exactly two `CASCADE` foreign keys, the
+  `23505` and `23503` refusals, and the two deletes. The main session ran the script on the
+  test database on 2026-11-22, at `415cbf02`, with the owner's consent: "Migration
+  verified.", 284 lines `ok`, 0 failed. Removing the backfill `UPDATE` made it fail with
+  `FAIL: a location with two stock rows gets the NEWER "updatedAt" of its own rows,
+  2026-03-04T05:06:07.123Z (read: NULL)` (H7 plan, task M.1). No file under
+  `apps/server/prisma/` or `apps/server/scripts/` changed after that run
+  (`git log --oneline 415cbf02..HEAD -- apps/server/prisma/ apps/server/scripts/` is empty at
+  `14f9501c`).
   The history below said the list was in `scripts/verify-migration.ts`, as a `MIGRATIONS` list —
   **nine** entries since households H3b task B.3 (2026-11-15; eight on 2026-11-11). The
   ninth, `20261114000000_shared_carts`, is applied in a **fourth** `migrate deploy`, after
@@ -241,7 +276,7 @@ than trusting a number here — it said **four** when there were seven.
   old server could write between the two deploys (`seedBetweenDeploys`).
   **Count the array rather than trusting this line.** It said **four** until 2026-10-08:
   ```bash
-  grep -o "'2026[0-9]*_[a-z_]*'" apps/server/scripts/migrationDeploys.ts | wc -l   # 12 since H6b task K.1 (11 since H6 task J.1, 10 since H5b task G.1)
+  grep -o "'2026[0-9]*_[a-z_]*'" apps/server/scripts/migrationDeploys.ts | wc -l   # 13 since H7b task M.1 (12 since H6b task K.1, 11 since H6 task J.1, 10 since H5b task G.1)
   ```
   (The command was `grep -c "^  '2026" apps/server/scripts/verify-migration.ts` until G.1. It
   prints 0 now.)

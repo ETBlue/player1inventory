@@ -714,6 +714,13 @@
       "noOrganizer": "No organizer",
       "yourRole": "Your role:",
       "open": "Open {{name}}",
+      "sortBy": "Sort by",
+      "sort": {
+        "custom": "Custom",
+        "name": "Name",
+        "lastUpdated": "Last updated",
+        "lastVisited": "Last visited"
+      },
       "people": {
         "title": "People",
         "description": "People who have a role on this location",

@@ -858,6 +858,7 @@ describe('a whole import into a new account', () => {
         deletedAt: null,
         householdSetupAt: null,
         activeHouseholdId: null,
+        locationSort: null,
         createdAt: T0,
         updatedAt: T0,
       },

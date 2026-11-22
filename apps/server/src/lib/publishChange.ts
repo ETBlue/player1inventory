@@ -43,6 +43,20 @@ export type ChangedLocation = { locationId: string; householdId?: string }
  * For a household-level change (`LOCATION`, `CATALOG`), use
  * `publishHouseholdChange` instead.
  *
+ * SETS `Location.dataUpdatedAt` (households H7b, decision T79). When `kinds`
+ * holds `STOCK`, `CART` or `LOG`, every location named gets
+ * `dataUpdatedAt = now`, in ONE `location.updateMany`, after the events have
+ * gone out. The web's "Last updated" sort reads it. `LOCATION` and `CATALOG`
+ * do not set it. Every writer of a location's stock, carts or logs already
+ * calls this function, and `live-publish.guard.test.ts` makes every mutation
+ * say what it publishes, so there is no second list of writers to keep.
+ *
+ * The write runs outside the mutation's transaction, on purpose: it must not
+ * hold a lock on the `Location` row inside every stock write. If it fails,
+ * the events have still gone out, the error is logged by name only, and the
+ * only cost is a sort that is a little out of date. Prisma's `updateMany`
+ * also moves `Location.updatedAt` (an `@updatedAt` column).
+ *
  * `bus` is for tests that want their own bus. Resolvers use the default.
  */
 export async function publishChange(
@@ -51,6 +65,9 @@ export async function publishChange(
   locations: Iterable<ChangedLocation>,
   bus: LiveEvents = liveEvents,
 ): Promise<void> {
+  // The locations whose `dataUpdatedAt` moves. Filled before anything can
+  // fail, so a failed household lookup still sets it.
+  let dataChanged: string[] = []
   try {
     const distinctKinds = [...new Set(kinds)]
     if (distinctKinds.length === 0) return
@@ -63,6 +80,7 @@ export async function publishChange(
       }
     }
     if (byLocation.size === 0) return
+    if (distinctKinds.some((kind) => DATA_KINDS.has(kind))) dataChanged = [...byLocation.keys()]
 
     const unknown = [...byLocation].filter(([, h]) => h === undefined).map(([id]) => id)
     if (unknown.length > 0) {
@@ -86,6 +104,30 @@ export async function publishChange(
     }
   } catch (err) {
     logPublishError(err)
+  } finally {
+    if (dataChanged.length > 0) await markDataUpdated(dataChanged)
+  }
+}
+
+/** The kinds that change a location's own data (decision T79). */
+const DATA_KINDS: ReadonlySet<ChangeKind> = new Set<ChangeKind>(['STOCK', 'CART', 'LOG'])
+
+/**
+ * `dataUpdatedAt = now` on these locations, in one query. Never throws: a
+ * location deleted in the meantime matches no row, and any other failure is
+ * logged by name only (a Prisma message can carry data).
+ */
+async function markDataUpdated(locationIds: string[]): Promise<void> {
+  try {
+    await prisma.location.updateMany({
+      where: { id: { in: locationIds } },
+      data: { dataUpdatedAt: new Date() },
+    })
+  } catch (err) {
+    console.error(
+      'publishChange: could not set dataUpdatedAt:',
+      err instanceof Error ? err.name : 'unknown error',
+    )
   }
 }
 

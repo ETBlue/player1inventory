@@ -325,11 +325,16 @@ export function locationRolesByLocation(
 /**
  * Forget the role caches of this request: `householdId`
  * (`requireHousehold`), `locationRoles` (`locationRolesByLocation`),
- * `organizedLocations` (`locationIdsWithOrganizer`) and, until the old-bundle
- * shim goes,
+ * `organizedLocations` (`locationIdsWithOrganizer`), `locationPreferences`
+ * (`locationPreferencesOf` in lib/locationPreferences.ts, households H7b) and,
+ * until the old-bundle shim goes,
  * `firstLocationIds` (`firstLocationIdOf` in resolvers/location.resolver.ts).
- * A create, delete or reorder changes which location is first, so the old
- * bundle's `isDefault` must be read again after one.
+ * A create or delete changes which location is first, so the old bundle's
+ * `isDefault` must be read again after one. (A reorder no longer does:
+ * since households H7b it writes only the caller's own order, and
+ * `isDefault` keeps the shared order.) A `reorderLocations` or
+ * `markLocationVisited` changes the caller's preference rows, so
+ * `locationPreferences` must be read again after one.
  *
  * The root fields of a mutation run one after another in ONE request, so
  * they share the cache. Without a forget,
@@ -360,6 +365,12 @@ export function forgetLocationRoles(ctx: Context): void {
   delete cache.organizedLocations
   // OLD-BUNDLE SHIM. Remove with `Location.isDefault`.
   delete cache.firstLocationIds
+  // The caller's own location preferences (households H7b, decision T77).
+  // `reorderLocations` and `markLocationVisited` write them, and a later
+  // root field of the same mutation must read the new value. Pinned by
+  // "a second reorder in the same request sees the first one" in
+  // resolvers/location-order.resolver.test.ts.
+  delete cache.locationPreferences
 }
 
 /**

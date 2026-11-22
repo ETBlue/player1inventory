@@ -147,16 +147,24 @@ session ran `verify:migration` there, which applies `drop_user_scope`: `Location
 catalog models have no `userId` column, and `Location` has no `isDefault`. So **`main`'s
 cloud E2E cannot run on this database until H3a merges**: `main`'s server writes and reads
 those columns. A cloud location is no longer "the default" (see below), and `/e2e/cleanup`
-deletes **21** models since households H6b task K.1 added `OwnershipOffer` (20 since
+deletes **22** models since households H7b task M.1 added `LocationPreference` (21 since
+households H6b task K.1 added `OwnershipOffer`, 20 since
 households H6 task J.1 added `HouseholdActivity`, 19 since households H5b task G.6 added
 `HouseholdInvite`; count the distinct `deleteMany` models in `lib/e2eCleanup.ts`, measured
-21 on 2026-11-20).
+22 on 2026-11-22).
 
 The last E2E counts on the H3a branch, 2026-11-11, from **three separate runs** (not one
 `pnpm test:e2e:all`): `cloud` **126 passed / 7 skipped**, `local` **178 passed / 6 skipped**,
 `pwa` **73 passed**. Re-measure rather than quote.
 
-The last whole gate, `pnpm test:e2e:all` on `feature/households-h7a` at `82426224` on
+The last whole gate, `pnpm test:e2e:all` on `feature/households-h7b` at `14f9501c` on
+2026-11-22 (households H7 task M.6), first try, no retry, **all green**: `local` **179
+passed / 11 skipped** in 3m46s, `cloud` **210 passed / 8 skipped** in 65m39s, `pwa` **73
+passed** in 1m36s. Load average 11.2 at the start (falling, from the `pnpm test` run just
+before it), then 1.6 to 2.9 for the rest of the run. The `location-switcher.spec.ts` wait for
+"Home" (below) did not fail this time.
+
+The gate before it, `pnpm test:e2e:all` on `feature/households-h7a` at `82426224` on
 2026-11-21 (households H7 task L.7), first run: `local` **178 passed / 11 skipped** in
 3m42s, `cloud` **201 passed / 7 skipped / 2 failed** in 67m53s, `pwa` **73 passed** in
 1m34s. Load average between 1.7 and 3.4 during the run. Neither failure was caused by H7a:
@@ -332,7 +340,9 @@ specs below run against real Postgres.
 ## `cleanup-endpoint.spec.ts` — the behavioural guard on `/e2e/cleanup`
 
 `e2e/tests/cleanup-endpoint.spec.ts` (added 2026-09-25, one cloud test) seeds **one row of
-every model `/e2e/cleanup` deletes** — all 21 since households H6b task K.8 (the
+every model `/e2e/cleanup` deletes** — all 22 since households H7b task M.5 (the
+preference row is written by a real `markLocationVisited` on the user's own location, and
+the count `locationPreferences` must be at least 1), 21 since households H6b task K.8 (the
 ownership offer is a real `offerOwnership` from the user, the owner, to a second member who
 joined through a second invite; it is in the user's own household and TO someone else, so
 only the `householdId: owned` half of the offer filter can delete it), 20 since households
@@ -1100,6 +1110,46 @@ measured limits:
   turned off), it stays green, because the page reloads and the cart page filters by the
   active location.
 
+**`location-sort.spec.ts` joined on 2026-11-22 (households H7 task M.5).** Cloud only, in
+`local`'s `testIgnore`, up to two browsers. The first real-SQL run of `LocationPreference`,
+the personal `order` in `locations` and `householdLocations`, `reorderLocations` writing the
+person's own order, `dataUpdatedAt` set by `publishChange`, `markLocationVisited`,
+`myLocationSort` and `setLocationSort`. Page object: `e2e/pages/settings/LocationsPage.ts`
+(new). The fixture is three locations, Cellar, Attic and Dock, with "Home" deleted, so the
+shared order (Cellar, Attic, Dock) and the name order (Attic, Cellar, Dock) differ, and each
+test expects a third order. 7 tests:
+
+| Test | What it proves |
+|---|---|
+| 1 | Mia (owner) and Bea (member), two browsers: Mia drags her own order; Bea's list keeps the shared order |
+| 2 | stock changed at Cellar, then at Dock (last by name and by shared order) gives Dock, Cellar, Attic under **Last updated** |
+| 3 | the location picked last on the pantry comes first under **Last visited**, read after a new page load |
+| 4 | **Name** sorts the list and the switcher |
+| 5 | the sort chosen in one browser shows in a second browser of the same person; the test polls `myLocationSort` on the server |
+| 6, 7 | axe, light and dark: the page, and the open **Sort by** list |
+
+A local test, `user can sort locations by name in local mode` (owner decision O54-B), is in
+`settings/locations.spec.ts` and skipped in cloud: after a reload the list is still by name,
+and the switcher agrees.
+
+Three traps the spec found:
+
+- **The settings pages have no location switcher.** They show the household sidebar. Test 3
+  makes the pick on the pantry.
+- **A `true` answer from `markLocationVisited` writes `lastVisitedAt` into the cache**, so
+  the same page sorts right even when the server stored nothing. Test 3 reads the order
+  after a new page load.
+- **`allTextContents()` on the switcher rows right after the click once gave `[]`.** The
+  page object waits for each expected row first.
+
+"Last updated" does not move while a page is open (owner decision O58-A): the location lists
+refetch only on `LOCATION`. Test 2 makes its stock changes BEFORE it opens the page.
+
+Proved by mutation on 2026-11-22, each in `cloud`, restored from a copy: all red. The table
+is in the H7 plan, task M.5. No existing test of `settings/locations.spec.ts` or
+`location-switcher.spec.ts` needed a change: the only cloud reorder test reads the person's
+own order back after a reload.
+
 **`DataModeCard`'s Switch flow renders in E2E mode — since households H4 task E.6.** A
 production change made for a test, like `PostLoginMigrationDialog`'s below. The cloud
 section used to be left out in E2E mode because its Sign Out flow calls `useClerk()`.
@@ -1135,7 +1185,8 @@ What the number has been, so you can see how fast it moves rather than reuse a f
 | 2026-11-19 | `feature/households-h5c`, after task H.8 (`location-people.spec.ts`, 9). `local` still collects 189 in 23 files | 186 |
 | 2026-11-20 | `feature/households-h6a`, after task J.8 (`household-activity-purges.spec.ts`, 7; `purge-two-households.spec.ts`, 2 more). `local` still collects 189 in 23 files | 195 |
 | 2026-11-20 | `feature/households-h6b`, after task K.8 (`household-ownership.spec.ts`, 9). `local` still collects 189 in 23 files | 204 (38 files) |
-| 2026-11-21 | `feature/households-h7a`, after task L.6 (`household-switch.spec.ts`, 6). `local` still collects 189 in 23 files | **210** (39 of 43 files) |
+| 2026-11-21 | `feature/households-h7a`, after task L.6 (`household-switch.spec.ts`, 6). `local` still collects 189 in 23 files | 210 (39 of 43 files) |
+| 2026-11-22 | `feature/households-h7b`, after task M.5 (`location-sort.spec.ts`, 7; 1 more in `settings/locations.spec.ts`, which runs in `local` only). `local` collects 190 in 23 files, `pwa` 73 in 2 | **218** (40 of 44 files) |
 
 H5a added 9 tests and removed 1. All of them RUN only in `cloud`; the six in the two
 shared spec files are also collected (and skipped) in `local`, which went 184 → 189: 3 in `location-switcher.spec.ts` (task

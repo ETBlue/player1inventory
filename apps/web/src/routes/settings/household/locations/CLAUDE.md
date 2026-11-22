@@ -26,14 +26,25 @@ role). What each row shows and allows:
 | role text ("Organizer", "Participant", "Viewer"; `roles.location.*`) | cloud only (`showRoles`) | the row's `myRole` |
 | "No access" (`settings.locations.noAccess`) | cloud, a row with `myRole: null` | the row |
 | "No organizer" (`settings.locations.noOrganizer`) | cloud, a row with `hasOrganizer: false` | the row |
-| drag handle and Delete | household `owner` or `manager` (`canManageLocations`) | `usePermissions()` |
+| Delete | household `owner` or `manager` (`canManageLocations`) | `usePermissions()` |
+| drag handle | every household role (`canReorderLocations`, households H7b decision T78: the order is the person's own), and only while **Sort by** is **Custom** | `usePermissions()` and `useLocationSort()` |
+| **Sort by** (`LocationSortSelect`, households H7b task M.4) | everyone. Cloud: Custom, Name, Last updated, Last visited, saved per person (`myLocationSort` / `setLocationSort`). Local: Custom and Name only, in `localStorage['location-sort']` (owner decision O54-B) | `useLocationSort()` |
 | Rename | `organizer` of THAT location (`isOrganizerAt`) | `usePermissions()` |
 | Add | everyone (the server asks household `member`) | — |
 | the name is a link to the people page, `/settings/household/locations/$id`, named "Open {name}" (`settings.locations.open`) | cloud: a household `owner` or `manager` on every row, "No access" rows too (owner decision O24-A); anyone else only where they hold a role. Local: never (no people page, decision T41) | `usePermissions().canOpenLocationPage`, passed as `LocationList`'s `canOpen` (households H5c task H.6) |
 
+**The page sorts the rows itself** (households H7b, decision T81): `useLocationSort().sorted`
+calls `sortLocations` (`lib/locationSort.ts`) with the person's sort and the app language
+(`zh-TW` names for `tw`). The switcher uses the same hook (owner decision O53-A). In cloud,
+each list's `order` is the row's place in the list the server sent, not the cached field
+(`useLocations`, `useHouseholdLocations`): both lists share one `Location` entity, and
+their positions differ when the settings list holds "No access" rows.
+
 **A reorder sends every row of this list.** Since H5 task F.2 the server refuses a list
 that leaves out a location of the household (`BAD_USER_INPUT`), so an owner or manager
 with a "No access" row could not reorder until this page moved to `householdLocations`.
+Since H7b the order is per person (decision T78): the server saves it for the caller
+only, and a household `member` may reorder their own list.
 `useReorderLocations` writes the server's answer into `GetLocations` and puts the
 cached `GetHouseholdLocations` rows in the order that was sent, because the answer holds
 only the caller's own locations. Create, rename and delete refetch
@@ -51,7 +62,7 @@ announce it as a list.
 | Error | Toast (`settings.locations.*`) | The hook reloads |
 |---|---|---|
 | `BAD_USER_INPUT` (the list was not the household's full set) | `reorderError`: "The location list changed. Reloading it now. Try again." | `GetHouseholdLocations` and `GetLocations` |
-| `FORBIDDEN` (no longer an owner or manager) | `reorderFailed`: "Could not save the new order. Please try again." | `GetHousehold`, so the drag handles go away |
+| `FORBIDDEN` (since H7b: the list holds a location that is no longer in the caller's own list, after a lost role or a lower household role) | `reorderError` | `GetHouseholdLocations`, `GetLocations` and `GetHousehold`. Until H7b this was "no longer an owner or manager", with `reorderFailed` and only `GetHousehold` |
 | `OfflineWriteError` | none from the page (the same rule as delete) | nothing |
 | anything else (a network error) | `reorderFailed` | nothing |
 

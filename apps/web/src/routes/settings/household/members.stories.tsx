@@ -136,6 +136,8 @@ function pageMocks(
               order: 0,
               myRole: 'organizer',
               hasOrganizer: true,
+              dataUpdatedAt: null,
+              lastVisitedAt: null,
             },
             {
               __typename: 'Location',
@@ -144,6 +146,8 @@ function pageMocks(
               order: 1,
               myRole: null,
               hasOrganizer: true,
+              dataUpdatedAt: null,
+              lastVisitedAt: null,
             },
           ],
         },

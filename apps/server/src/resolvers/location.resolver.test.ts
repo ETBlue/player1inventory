@@ -190,11 +190,13 @@ describe('locations', () => {
     // When the caller lists locations
     const res = await run(`query { locations { id order } }`)
 
-    // Then the tie is broken by id: 'loc-kitchen' < 'loc-pantry'
+    // Then the tie is broken by id: 'loc-kitchen' < 'loc-pantry'. Since
+    // households H7b (decision T77) `order` is the caller's position in the
+    // list, 0 to n-1, so the two no longer share a number.
     expect(res.errors).toBeUndefined()
     expect(res.data?.locations).toEqual([
       { id: 'loc-kitchen', order: 0 },
-      { id: 'loc-pantry', order: 0 },
+      { id: 'loc-pantry', order: 1 },
     ])
   })
 
@@ -248,6 +250,7 @@ describe('locations', () => {
         deletedAt: null,
         householdSetupAt: null,
         activeHouseholdId: null,
+        locationSort: null,
         createdAt: T,
         updatedAt: T,
       },
@@ -510,31 +513,52 @@ describe('deleteLocation', () => {
 })
 
 describe('reorderLocations', () => {
-  it('household manager can reorder every location of the household', async () => {
+  // Since households H7b (task M.3, decision T78) `reorderLocations` writes
+  // the caller's own order, not the shared `Location.order`. The personal
+  // order is tested in full in `location-order.resolver.test.ts`.
+
+  it('household manager can reorder every location of the household, in their own order only', async () => {
     // Given the caller manages hh-1, and has no role on loc-garage
     seed({ callerHouseholdRole: 'manager' })
 
     // When they reorder all three
     const res = await run(REORDER, { ids: ['loc-garage', 'loc-kitchen', 'loc-pantry'] })
 
-    // Then every order is written, loc-garage's too
+    // Then the caller's own row is written for each, loc-garage's too
     expect(res.errors).toBeUndefined()
-    expect([location('loc-garage')?.order, location('loc-kitchen')?.order, location('loc-pantry')?.order]).toEqual(
-      [0, 1, 2],
+    expect(
+      world.locationPreferences.state.rows.map((r) => [r.userId, r.locationId, r.customOrder]),
+    ).toEqual(
+      expect.arrayContaining([
+        ['caller', 'loc-garage', 0],
+        ['caller', 'loc-kitchen', 1],
+        ['caller', 'loc-pantry', 2],
+      ]),
     )
-    // And the answer is what `locations` returns: the caller's, by order
+    // And the shared order is not written
+    expect([location('loc-garage')?.order, location('loc-kitchen')?.order, location('loc-pantry')?.order]).toEqual(
+      [3, 1, 0],
+    )
+    // And the answer is what `locations` returns: the caller's, in their order
     expect(res.data?.reorderLocations).toEqual([
-      { id: 'loc-kitchen', order: 1 },
-      { id: 'loc-pantry', order: 2 },
+      { id: 'loc-kitchen', order: 0 },
+      { id: 'loc-pantry', order: 1 },
     ])
   })
 
-  it('household member cannot reorder, and nothing is written', async () => {
+  it('household member can reorder the locations they have a role on', async () => {
+    // Given the caller is a member with roles on loc-kitchen and loc-pantry
     seed({ callerHouseholdRole: 'member' })
 
+    // When they reorder those two (the shared order has loc-pantry first)
     const res = await run(REORDER, { ids: ['loc-kitchen', 'loc-pantry'] })
 
-    expect(errorCode(res)).toBe('FORBIDDEN')
+    // Then their own order is written, and the shared order stays
+    expect(res.errors).toBeUndefined()
+    expect(res.data?.reorderLocations).toEqual([
+      { id: 'loc-kitchen', order: 0 },
+      { id: 'loc-pantry', order: 1 },
+    ])
     expect(location('loc-kitchen')?.order).toBe(1)
     expect(location('loc-pantry')?.order).toBe(0)
   })

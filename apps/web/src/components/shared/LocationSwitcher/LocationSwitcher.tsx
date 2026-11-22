@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useActiveLocation } from '@/hooks/useActiveLocation'
+import { useLocationSort } from '@/hooks/useLocationSort'
 import { useLocations } from '@/hooks/useLocations'
 import { usePermissions } from '@/hooks/usePermissions'
 import { cn } from '@/lib/utils'
@@ -53,6 +54,11 @@ interface LocationSwitcherProps {
  * role still loading (`null`) show no badge. A badge only tells; the server
  * refuses a viewer's writes either way.
  *
+ * **Sort (households H7b).** The rows follow the person's **Sort by**
+ * choice from Settings › Locations (`useLocationSort`, owner decision
+ * O53-A): Custom, Name, Last updated or Last visited in cloud; Custom or
+ * Name in local mode (O54-B).
+ *
  * Vendor-name display rule applies: location names render as-stored (no forced
  * casing), in the menu and in the `full` trigger alike. The `compact`
  * single-letter trigger uppercases the first character so it reads naturally as
@@ -77,7 +83,10 @@ export function LocationSwitcher({
     ? t('locationSwitcher.triggerLabelViewOnly', { name: activeName })
     : t('locationSwitcher.triggerLabel', { name: activeName })
 
-  const ordered = [...locations].sort((a, b) => a.order - b.order)
+  // The person's own sort, the same as Settings › Locations (households H7b,
+  // owner decision O53-A). Custom is the default (O52-A).
+  const { sorted } = useLocationSort()
+  const ordered = sorted(locations)
 
   return (
     <DropdownMenu>

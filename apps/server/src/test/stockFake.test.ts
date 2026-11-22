@@ -649,6 +649,50 @@ describe('stockFake location calls for location.resolver.ts', () => {
     expect(sorted.map((l) => l.id)).toEqual(['loc_y', 'loc_z'])
   })
 
+  it('location.updateMany writes dataUpdatedAt on the matching rows only, and moves updatedAt (households H7b)', async () => {
+    const fake = createStockFake()
+    const old = new Date('2026-01-01T00:00:00.000Z')
+    fake.reset(
+      rows().map((r) => ({ ...r, updatedAt: old, createdAt: old })),
+      [],
+    )
+    const T = new Date('2026-05-05T05:05:05.000Z')
+
+    const result = await fake.client.location.updateMany({
+      where: { id: { in: ['loc_a', 'loc_c', 'loc_gone'] } },
+      data: { dataUpdatedAt: T },
+    })
+
+    expect(result).toEqual({ count: 2 })
+    const byId = new Map(fake.state.locations.map((l) => [l.id, l]))
+    expect(byId.get('loc_a')?.dataUpdatedAt).toEqual(T)
+    expect(byId.get('loc_c')?.dataUpdatedAt).toEqual(T)
+    expect(byId.get('loc_b')?.dataUpdatedAt).toBeUndefined()
+    // Prisma's updateMany sets an @updatedAt column too.
+    expect(byId.get('loc_a')?.updatedAt).not.toEqual(old)
+    expect(byId.get('loc_b')?.updatedAt).toEqual(old)
+  })
+
+  it('location.updateMany refuses a column Location does not have, and an unknown where key', async () => {
+    const fake = createStockFake()
+    fake.reset(rows(), [])
+
+    await expect(
+      fake.client.location.updateMany({ where: { id: 'loc_a' }, data: { lastVisitedAt: new Date() } }),
+    ).rejects.toThrow(/not a column of Location/)
+    await expect(
+      fake.client.location.updateMany({ where: { name: 'A' } as never, data: { dataUpdatedAt: null } }),
+    ).rejects.toThrow()
+  })
+
+  it('location.create starts dataUpdatedAt at null', async () => {
+    const fake = createStockFake()
+
+    const row = await fake.client.location.create({ data: { householdId: 'hh_1', name: 'N', order: 0 } })
+
+    expect(row.dataUpdatedAt).toBeNull()
+  })
+
   it('location.findMany refuses an orderBy it does not model', async () => {
     const fake = createStockFake()
     fake.reset(rows(), [])

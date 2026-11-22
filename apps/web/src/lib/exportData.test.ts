@@ -406,6 +406,8 @@ const CLOUD_LOCATIONS = [
     // Selected by `GetLocations` since households H5 task F.1. A backup
     // must not carry it: it is the EXPORTER's role, not the location's.
     myRole: 'organizer',
+    dataUpdatedAt: null,
+    lastVisitedAt: null,
   },
   {
     __typename: 'Location',
@@ -417,6 +419,8 @@ const CLOUD_LOCATIONS = [
     // Selected by `GetLocations` since households H5 task F.1. A backup
     // must not carry it: it is the EXPORTER's role, not the location's.
     myRole: 'organizer',
+    dataUpdatedAt: null,
+    lastVisitedAt: null,
   },
 ]
 
@@ -606,6 +610,9 @@ describe('fetchCloudPayload — the cloud backup is lossless', () => {
       expect(location).not.toHaveProperty('__typename')
       expect(location).not.toHaveProperty('isDefault')
       expect(location).not.toHaveProperty('myRole')
+      // The caller's own dates (households H7b) are not catalog data either
+      expect(location).not.toHaveProperty('dataUpdatedAt')
+      expect(location).not.toHaveProperty('lastVisitedAt')
     }
     expect(locations.find((l) => l.id === 'loc-home')?.order).toBe(0)
     expect(locations.find((l) => l.id === 'loc-office')?.order).toBe(1)

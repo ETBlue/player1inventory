@@ -27,8 +27,18 @@ export interface Permissions {
   roleKnown: boolean
   /** Cloud: household role `owner` or `manager`. */
   canEditCatalog: boolean
-  /** Cloud: household role `owner` or `manager`. Delete and reorder locations. */
+  /**
+   * Cloud: household role `owner` or `manager`. Delete locations. (Until
+   * households H7b it also gated the reorder; see `canReorderLocations`.)
+   */
   canManageLocations: boolean
+  /**
+   * Drag the locations into the caller's own order (households H7b, decision
+   * T78). Since H7b the order is personal, so every household role may
+   * reorder its own list, a `member` too. Cloud: `true` once the household
+   * role is known (`roleKnown`). Local: `true`.
+   */
+  canReorderLocations: boolean
   /**
    * Cloud: household role `owner` or `manager`. Invite people, see open
    * invites, remove a `member` (households H5b, task G.9). Which ROW an owner
@@ -102,6 +112,7 @@ const LOCAL: Permissions = {
   roleKnown: true,
   canEditCatalog: true,
   canManageLocations: true,
+  canReorderLocations: true,
   // Local mode has one person and no members page.
   canManageMembers: false,
   isHouseholdOwner: false,
@@ -211,6 +222,8 @@ export function permissionsFor({
     roleKnown: !isLoading && householdRole != null,
     canEditCatalog: canManage,
     canManageLocations: canManage,
+    // Any household role (decision T78): the order is the caller's own.
+    canReorderLocations: !isLoading && householdRole != null,
     canManageMembers: canManage,
     isHouseholdOwner: !isLoading && householdRole === 'owner',
     roleAt,

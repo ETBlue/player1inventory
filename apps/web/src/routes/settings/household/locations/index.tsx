@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { OfflineWriteError } from '@/apollo/offlineWriteLink'
 import { LocationList } from '@/components/location/LocationList'
+import { LocationSortSelect } from '@/components/location/LocationSortSelect'
 import { AddNameDialog } from '@/components/shared/AddNameDialog'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
@@ -12,6 +13,7 @@ import { Toolbar } from '@/components/shared/Toolbar'
 import { Button } from '@/components/ui/button'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useDataMode } from '@/hooks/useDataMode'
+import { useLocationSort } from '@/hooks/useLocationSort'
 import {
   useCreateLocation,
   useDeleteLocation,
@@ -39,9 +41,19 @@ export function LocationSettingsPage() {
   //
   // While the first load runs there is no list yet. The page shows a spinner,
   // not "No locations yet", so the empty state does not flash.
-  const { data: locations = [], isLoading } = useHouseholdLocations()
-  const { canManageLocations, isOrganizerAt, canOpenLocationPage } =
-    usePermissions()
+  const { data: unsorted = [], isLoading } = useHouseholdLocations()
+  const {
+    canManageLocations,
+    canReorderLocations,
+    isOrganizerAt,
+    canOpenLocationPage,
+  } = usePermissions()
+  // The person's own sort (households H7b, decision T81). The same hook and
+  // the same function sort the switcher (owner decision O53-A). Rows can be
+  // dragged only with Custom: a drag in a list sorted by name would save an
+  // order the person cannot see.
+  const { sort, options, setSort, sorted } = useLocationSort()
+  const locations = sorted(unsorted)
   const createLocation = useCreateLocation()
   const updateLocation = useUpdateLocation()
   const deleteLocation = useDeleteLocation()
@@ -89,13 +101,15 @@ export function LocationSettingsPage() {
   }
 
   // A refused reorder must say so, and the row then goes back to its place.
-  // Since H5 task F.2 the server refuses any list that is not exactly the
-  // household's full set (`BAD_USER_INPUT`): another member created or
-  // deleted a location while this list was out of date. `useReorderLocations`
-  // then reloads both location lists, and this message says so. Any other
-  // failure (`FORBIDDEN`, a network error) gets the general message: the list
-  // was not the problem, so "the list changed" would not be true. Offline,
-  // `offlineWriteLink` has already shown its own toast (see `handleDelete`).
+  // The server refuses a list that is not exactly the caller's own settings
+  // list: `BAD_USER_INPUT` when a location was created or deleted, and since
+  // households H7b `FORBIDDEN` when the list holds a location the caller no
+  // longer has in it (a lost role, or a lower household role). Every
+  // household role may reorder since H7b, so `FORBIDDEN` no longer means
+  // "not allowed". Both get "the list changed", and `useReorderLocations`
+  // reloads the lists. Any other failure (a network error) gets the general
+  // message. Offline, `offlineWriteLink` has already shown its own toast
+  // (see `handleDelete`).
   //
   // No message once the user has left the page: it would talk about a list
   // they no longer see. The reload still runs.
@@ -111,7 +125,8 @@ export function LocationSettingsPage() {
       onError: (err: unknown) => {
         if (err instanceof OfflineWriteError || !mounted.current) return
         toast.error(
-          hasGraphQLErrorCode(err, 'BAD_USER_INPUT')
+          hasGraphQLErrorCode(err, 'BAD_USER_INPUT') ||
+            hasGraphQLErrorCode(err, 'FORBIDDEN')
             ? t('settings.locations.reorderError')
             : t('settings.locations.reorderFailed'),
         )
@@ -156,15 +171,22 @@ export function LocationSettingsPage() {
           </Button>
           <h1>{t('settings.locations.title')}</h1>
         </div>
-        <Button
-          size="icon"
-          className="lg:w-auto lg:px-3"
-          aria-label={t('settings.locations.addLabel')}
-          onClick={() => setAddOpen(true)}
-        >
-          <Plus />
-          <span className="hidden lg:inline">{t('common.add')}</span>
-        </Button>
+        <div className="flex items-center gap-2">
+          <LocationSortSelect
+            value={sort}
+            options={options}
+            onChange={setSort}
+          />
+          <Button
+            size="icon"
+            className="lg:w-auto lg:px-3"
+            aria-label={t('settings.locations.addLabel')}
+            onClick={() => setAddOpen(true)}
+          >
+            <Plus />
+            <span className="hidden lg:inline">{t('common.add')}</span>
+          </Button>
+        </div>
       </Toolbar>
 
       <div className="overflow-y-auto [container-type:size] space-y-px pb-4">
@@ -180,6 +202,7 @@ export function LocationSettingsPage() {
             locations={locations}
             onReorder={handleReorder}
             canManage={canManageLocations}
+            canReorder={canReorderLocations && sort === 'custom'}
             canRename={(location) => isOrganizerAt(location.id)}
             showRoles={mode === 'cloud'}
             // The name links to the people page (households H5c, task H.6,

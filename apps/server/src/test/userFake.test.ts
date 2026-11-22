@@ -29,6 +29,7 @@ function userRow(id: string, extra: Partial<UserRow> = {}): UserRow {
     deletedAt: null,
     householdSetupAt: null,
     activeHouseholdId: null,
+    locationSort: null,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     ...extra,
@@ -884,5 +885,26 @@ describe('userFake findMany honours select (households H5b, task G.3)', () => {
     await expect(
       fake.client.findMany({ where: { id: 'user_a' }, select: { notAColumn: true } }),
     ).rejects.toThrow(/select key 'notAColumn/)
+  })
+})
+
+describe('userFake models locationSort (households H7b, task M.1, decision T74)', () => {
+  it('a created row starts with locationSort null, which means "the default sort"', async () => {
+    const fake = createUserFake()
+    const row = await fake.client.create({ data: { id: 'user_a', displayName: 'A' } })
+    // `toBeNull`, not `toBeUndefined`: the column exists and is NULL, as
+    // after the add_location_preferences migration.
+    expect(row.locationSort).toBeNull()
+    expect(fake.state.rows[0]?.locationSort).toBeNull()
+  })
+
+  it('findUnique can select locationSort', async () => {
+    const fake = createUserFake()
+    await fake.client.create({ data: { id: 'user_a', displayName: 'A', locationSort: 'custom' } })
+    const row = await fake.client.findUnique({
+      where: { id: 'user_a' },
+      select: { locationSort: true },
+    })
+    expect(row).toEqual({ locationSort: 'custom' })
   })
 })

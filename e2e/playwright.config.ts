@@ -202,7 +202,11 @@ export default defineConfig({
       // hand-over (households H6b task K.8): local mode has no owner.
       // household-switch.spec.ts tests Switch to…, Create new, the stale-tab
       // refusal and the copy into a chosen household (households H7 task
-      // L.6): local mode has no households.
+      // L.6): local mode has no households. location-sort.spec.ts tests the
+      // personal location order and the four sorts (households H7b task
+      // M.5): local mode has no second person, no "last updated" date and no
+      // visits. Local mode's Name and Custom are tested in
+      // settings/locations.spec.ts.
       testIgnore: [
         '**/settings/import-export-cloud.spec.ts',
         '**/pwa-offline.spec.ts',
@@ -224,6 +228,7 @@ export default defineConfig({
         '**/household-activity-purges.spec.ts',
         '**/household-ownership.spec.ts',
         '**/household-switch.spec.ts',
+        '**/location-sort.spec.ts',
       ],
       use: { ...devices['Desktop Chrome'], baseURL: LOCAL_WEB_URL },
     },
@@ -286,6 +291,7 @@ export default defineConfig({
         '**/household-activity-purges.spec.ts',
         '**/household-ownership.spec.ts',
         '**/household-switch.spec.ts',
+        '**/location-sort.spec.ts',
       ],
     },
     {

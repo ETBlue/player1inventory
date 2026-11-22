@@ -56,6 +56,10 @@ const mockHouseholdLocationsLoading = vi.fn<() => boolean>()
 // The Apollo client the reorder mutation hands back. A refused reorder
 // reloads the location lists through it.
 const mockRefetchQueries = vi.fn()
+// The caller's saved sort (`myLocationSort`, households H7b task M.4), and
+// the write that saves a new one.
+const mockMyLocationSort = vi.fn<() => string | undefined>()
+const mockSetLocationSort = vi.fn()
 
 vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
@@ -156,6 +160,19 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
     ],
+    // Households H7b task M.4: the sort and the visit.
+    useMyLocationSortQuery: () => {
+      const sort = mockMyLocationSort()
+      return {
+        ...emptyQuery,
+        data: sort ? { myLocationSort: sort } : undefined,
+      }
+    },
+    useSetLocationSortMutation: () => [mockSetLocationSort, {}],
+    useMarkLocationVisitedMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
     usePantryDataQuery: () => ({
       ...emptyQuery,
       networkStatus: 7,
@@ -203,6 +220,7 @@ describe('Settings locations page — cloud mode', () => {
     mockHouseholdRole.mockReturnValue('owner')
     mockHouseholdLocations.mockReturnValue(undefined)
     mockHouseholdLocationsLoading.mockReturnValue(false)
+    mockMyLocationSort.mockReturnValue(undefined)
     mockRefetchQueries.mockResolvedValue([])
     mockReorderLocations.mockResolvedValue({ data: undefined })
     queryClient = new QueryClient({
@@ -345,6 +363,7 @@ describe('Settings locations page — cloud roles (households H5 task F.3)', () 
     localStorage.setItem(activeLocationStorageKey('cloud'), LOC_A)
     mockHouseholdRole.mockReturnValue('owner')
     mockHouseholdLocationsLoading.mockReturnValue(false)
+    mockMyLocationSort.mockReturnValue(undefined)
     mockRefetchQueries.mockResolvedValue([])
     mockReorderLocations.mockResolvedValue({ data: undefined })
     queryClient = new QueryClient({
@@ -480,25 +499,38 @@ describe('Settings locations page — cloud roles (households H5 task F.3)', () 
     expect(within(kitchen).queryByText('No organizer')).not.toBeInTheDocument()
   })
 
-  it('household member does not see Delete or drag handles', async () => {
+  it('household member does not see Delete, and can drag their own order', async () => {
     // Given a household member who organizes the Kitchen and helps in the
     // Garage. The server answers a member with only their own locations.
+    // Since households H7b the order is personal (decision T78), so a member
+    // may reorder their own list.
     given('member', [
       row(LOC_A, 'Cloud Kitchen', 0, 'organizer'),
       row(LOC_B, 'Cloud Garage', 1, 'participant'),
     ])
+    stubRowLayout()
     renderPage()
 
-    // Then no row has Delete or a drag handle, the Kitchen included
+    // Then no row has Delete, and every row has a drag handle
     for (const name of ['Cloud Kitchen', 'Cloud Garage']) {
       const r = await rowNamed(name)
       expect(
         within(r).queryByRole('button', { name: `Delete ${name}` }),
       ).not.toBeInTheDocument()
       expect(
-        within(r).queryByRole('button', { name: `Drag to reorder ${name}` }),
-      ).not.toBeInTheDocument()
+        within(r).getByRole('button', { name: `Drag to reorder ${name}` }),
+      ).toBeInTheDocument()
     }
+
+    // When the member moves the Kitchen down one place
+    await moveDownOne('Cloud Kitchen')
+
+    // Then their own list is sent in the new order
+    await waitFor(() =>
+      expect(mockReorderLocations).toHaveBeenCalledWith({
+        variables: { orderedIds: [LOC_B, LOC_A] },
+      }),
+    )
   })
 
   it('household member sees their role on each row', async () => {
@@ -722,17 +754,18 @@ describe('Settings locations page — cloud roles (households H5 task F.3)', () 
     expect(screen.queryByText(REORDER_FAILED_MESSAGE)).not.toBeInTheDocument()
   })
 
-  it('household member whose manager role was taken away sees a general message, and the household role reloads', async () => {
+  it('household member whose manager role was taken away is told the list changed, and the lists and the role reload', async () => {
     // Given a person the page still believes is a manager. Their role was
-    // lowered in another tab, so the server refuses with FORBIDDEN. They
-    // organize the Kitchen, view the Garage and have no role on the Shed.
+    // lowered in another tab, so the "No access" Shed is not in their own
+    // list any more and the server refuses with FORBIDDEN (households H7b:
+    // every role may reorder, so FORBIDDEN means an out-of-date list).
     given('manager', [
       row(LOC_A, 'Cloud Kitchen', 0, 'organizer'),
       row(LOC_C, 'Cloud Shed', 1, null),
       row(LOC_B, 'Cloud Garage', 2, 'viewer'),
     ])
     mockReorderLocations.mockRejectedValue(
-      serverRefusal('FORBIDDEN', 'You do not have the household role.'),
+      serverRefusal('FORBIDDEN', 'Not allowed.'),
     )
     stubRowLayout()
     renderPage()
@@ -740,13 +773,12 @@ describe('Settings locations page — cloud roles (households H5 task F.3)', () 
     // When they move the Kitchen down one place
     await moveDownOne('Cloud Kitchen')
 
-    // Then the page shows the general message, not "the list changed"
-    expect(await screen.findByText(REORDER_FAILED_MESSAGE)).toBeInTheDocument()
-    expect(screen.queryByText(REORDER_MESSAGE)).not.toBeInTheDocument()
-    // And only the household role is fetched again, so the drag handles go
-    // away once it says member. The lists are not reloaded.
+    // Then the page says the list changed, not the general message
+    expect(await screen.findByText(REORDER_MESSAGE)).toBeInTheDocument()
+    expect(screen.queryByText(REORDER_FAILED_MESSAGE)).not.toBeInTheDocument()
+    // And both lists and the household role are fetched again
     expect(mockRefetchQueries.mock.calls).toEqual([
-      [{ include: ['GetHousehold'] }],
+      [{ include: ['GetHouseholdLocations', 'GetLocations', 'GetHousehold'] }],
     ])
   })
 
@@ -868,5 +900,146 @@ describe('Settings locations page — cloud roles (households H5 task F.3)', () 
     expect(
       await within(main).findByText('No locations yet'),
     ).toBeInTheDocument()
+  })
+
+  // ── Households H7b task M.4: Sort by ──
+  //
+  // The shared order is Kitchen, Shed, Garage. Each sort gives another
+  // order, so a page that ignored the sort could not pass:
+  //   name        → Garage, Kitchen, Shed
+  //   lastUpdated → Shed, Garage, Kitchen (Kitchen has no date)
+  //   custom      → Kitchen, Shed, Garage
+  const SORT_ROWS = () => [
+    {
+      ...row(LOC_A, 'Cloud Kitchen', 0, 'organizer'),
+      dataUpdatedAt: null,
+    },
+    {
+      ...row(LOC_C, 'Cloud Shed', 1, null),
+      dataUpdatedAt: '2026-03-01T00:00:00.000Z',
+    },
+    {
+      ...row(LOC_B, 'Cloud Garage', 2, 'viewer'),
+      dataUpdatedAt: '2026-02-01T00:00:00.000Z',
+    },
+  ]
+
+  /** The names of the settings list, top to bottom. */
+  async function listedNames() {
+    const main = await screen.findByRole('main')
+    const list = await within(main).findByRole('list')
+    return within(list)
+      .getAllByRole('listitem')
+      .map(
+        (r) =>
+          ['Cloud Kitchen', 'Cloud Shed', 'Cloud Garage'].find(
+            (n) => within(r).queryByText(n) !== null,
+          ) ?? '?',
+      )
+  }
+
+  it('user sees Sort by with four choices, the current one from their saved sort', async () => {
+    // Given an owner whose saved sort is Name
+    given('owner', SORT_ROWS())
+    mockMyLocationSort.mockReturnValue('name')
+    renderPage()
+
+    // Then the control shows Name
+    const control = await screen.findByRole('combobox', { name: 'Sort by' })
+    expect(control).toHaveTextContent('Name')
+
+    // And opening it offers the four sorts
+    await userEvent.setup().click(control)
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual([
+      'Custom',
+      'Name',
+      'Last updated',
+      'Last visited',
+    ])
+  })
+
+  it('user with no saved sort sees Custom, the shared order, with drag handles', async () => {
+    // Given an owner who never chose a sort (owner decision O52-A)
+    given('owner', SORT_ROWS())
+    mockMyLocationSort.mockReturnValue(undefined)
+    renderPage()
+
+    expect(
+      await screen.findByRole('combobox', { name: 'Sort by' }),
+    ).toHaveTextContent('Custom')
+    expect(await listedNames()).toEqual([
+      'Cloud Kitchen',
+      'Cloud Shed',
+      'Cloud Garage',
+    ])
+    expect(
+      within(await rowNamed('Cloud Shed')).getByRole('button', {
+        name: 'Drag to reorder Cloud Shed',
+      }),
+    ).toBeInTheDocument()
+  })
+
+  it('user sees the list by name, with no drag handles, under the Name sort', async () => {
+    // Given an owner whose saved sort is Name
+    given('owner', SORT_ROWS())
+    mockMyLocationSort.mockReturnValue('name')
+    renderPage()
+
+    // Then the list is by name
+    await waitFor(async () =>
+      expect(await listedNames()).toEqual([
+        'Cloud Garage',
+        'Cloud Kitchen',
+        'Cloud Shed',
+      ]),
+    )
+    // And no row can be dragged: a drag would save an order nobody sees
+    for (const name of ['Cloud Kitchen', 'Cloud Shed', 'Cloud Garage']) {
+      expect(
+        within(await rowNamed(name)).queryByRole('button', {
+          name: `Drag to reorder ${name}`,
+        }),
+      ).not.toBeInTheDocument()
+    }
+  })
+
+  it('user sees the location changed last first under Last updated', async () => {
+    given('owner', SORT_ROWS())
+    mockMyLocationSort.mockReturnValue('lastUpdated')
+    renderPage()
+
+    await waitFor(async () =>
+      expect(await listedNames()).toEqual([
+        'Cloud Shed',
+        'Cloud Garage',
+        'Cloud Kitchen',
+      ]),
+    )
+  })
+
+  it('user changing the sort saves it on the server, with an answer shown at once', async () => {
+    // Given an owner on Custom
+    given('owner', SORT_ROWS())
+    mockMyLocationSort.mockReturnValue('custom')
+    mockSetLocationSort.mockResolvedValue({
+      data: { setLocationSort: 'lastVisited' },
+    })
+    renderPage()
+    const user = userEvent.setup()
+
+    // When they pick Last visited
+    await user.click(await screen.findByRole('combobox', { name: 'Sort by' }))
+    await user.click(screen.getByRole('option', { name: 'Last visited' }))
+
+    // Then the choice is sent, with an optimistic answer so the lists
+    // re-sort before the server answers
+    await waitFor(() =>
+      expect(mockSetLocationSort).toHaveBeenCalledWith(
+        expect.objectContaining({
+          variables: { sort: 'lastVisited' },
+          optimisticResponse: { setLocationSort: 'lastVisited' },
+        }),
+      ),
+    )
   })
 })

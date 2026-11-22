@@ -331,6 +331,7 @@ everywhere.
 | O55 | **A.** When it becomes the active location, at most once a minute (2026-11-21) |
 | O56 | **A.** The reload message names both households and says a change being saved was not saved (2026-11-21). Applied in L.7 |
 | O57 | **B, with the role rule.** The copy list offers a household joined on this device whenever `canCopyInto` allows it (2026-11-21). The automatic question after sign-in still skips joined households (O12-A). Applied in L.7 |
+| O58 | **A.** "Last updated" does not move while a page is open. The location lists refetch only on `LOCATION`; they show new dates when they mount again (open or reload). A list that reorders itself while in use could make a person tap the wrong location (2026-11-22) |
 
 ---
 
@@ -767,6 +768,10 @@ their tests), `src/lib/e2eCleanup.ts` and test, `resolvers/purge-coverage.test.t
 
 **E2E:** none in this task.
 
+**Done 2026-11-22** at `77e1103c` (one commit). Baseline at `8a0aa7f1`: web 3840 / 373, server 2767 / 87, `scripts/spec` 70. After: web 3840 / 373, server 2795 / 88, `scripts/spec` 70. The full gate is green without E2E. Migration `20261122000000_add_location_preferences`: the enum `LocationSort`, the nullable `User.locationSort` and `Location.dataUpdatedAt`, one backfill from the newest `ItemStock.updatedAt`, and the table `LocationPreference` (primary key `(userId, locationId)`, two `CASCADE` foreign keys, an index on `locationId`). Every statement except the backfill matches `prisma migrate diff` from schema to schema. Relations: `Location.preferences` and `User.locationPreferences`. It is in the `last` group of `migrationDeploys.ts`. `verify-migration.ts` has `seedLocationPreferenceBackfill`, `assertLocationDataUpdatedAtBackfill` (first after the last deploy) and `assertLocationPreferences`. It also narrows 5 `Location` reads that run before the last deploy (they would ask for `dataUpdatedAt` before it exists, `P2022`). **`verify:migration` was not run; it is owed (M.6).** A new `src/test/locationPreferenceFake.ts` (19 tests) is joined into `householdWorld` (6 tests), with the cascade from `location.delete`, `location.deleteMany` and `household.deleteMany`. `/e2e/cleanup` deletes 22 models (`locationPreferences` before `locations` and `user`). `cloudTeardown.ts` and `purge-coverage.test.ts` were updated. `deleteHouseholdData` keeps the model, because the rows go by cascade. The `emptyHouseholdWhere` comment was updated, and the T75 join test added. `userFake` knows `locationSort` (2 tests), and 21 test files' `UserRow` fixtures set `locationSort: null`. Mutations: the fake's `where` check removed → 2 red; the cleanup delete removed → 6 red (key count included); `preferences: { none: {} }` in `emptyHouseholdWhere` → the T75 test red (with every join test: the fake throws on the key); and 3 more (household cascade, `upsert` branches, the `userFake` column). `cleanup-endpoint.spec.ts` reports `locationPreferences: 0` and fails until M.5.
+
+**`verify:migration`, run by the main session on 2026-11-22** on the TEST database, at `415cbf02`, with the owner's consent given after Prisma's warning (a new consent for each run): **"Migration verified."**, 284 lines `ok`, 0 failed. Every new check passed, among them the backfill (two stock rows give the newer time, one row gives its time, no row keeps `NULL`, all 19 locations follow the rule), the enum's four values, the five columns, the primary key, the index, the two `CASCADE` foreign keys and the deletes. The 5 narrowed `Location` reads worked. Mutation (the second run, its own consent): the backfill `UPDATE` deleted from the migration → `FAIL: a location with two stock rows gets the NEWER "updatedAt" of its own rows, 2026-03-04T05:06:07.123Z (read: NULL)`, exit 1. The file was restored from a copy and checked with `cmp`. The TEST database is left with the migration applied without its backfill; the next `verify:migration` resets it, and no E2E reads `dataUpdatedAt` before M.2.
+
 ---
 
 ## Task M.2 — server: `dataUpdatedAt`, `lastVisitedAt` and `markLocationVisited`
@@ -806,6 +811,8 @@ their tests), `src/lib/e2eCleanup.ts` and test, `resolvers/purge-coverage.test.t
 | `lastVisitedAt` read without the caller's `userId` | the two-people test |
 
 **E2E:** M.5 tests 2 and 3.
+
+**Done 2026-11-22** at `41abcbee` (two commits: `e8c50e33` `publishChange` and `stockFake`, `41abcbee` the fields and the mutation). Baseline at `20d8dc00`: server 2795 / 88. After: web 3840 / 373, server 2820 / 89, `scripts/spec` 70. The full gate is green without E2E; esbuild `dist/index.js 263.7 KiB`, 15 `.graphql` files. Live guard: 78 in `publishes`, **5** in `publishesNothing` (`markLocationVisited` added). `publishChange` sets `dataUpdatedAt = now` with ONE `location.updateMany` when `kinds` holds `STOCK`, `CART` or `LOG`. It runs in `finally`, after the events, in its own guard (it logs `publishChange: could not set dataUpdatedAt: <name>`), and it still runs when the household lookup fails. `stockFake` got `location.updateMany` and the `dataUpdatedAt` column (3 tests). Five writers are proved through their resolvers in `stock-live-publish.resolver.test.ts`: `upsertItemStock`, `addToCart`, `addInventoryLog`, `bulkCreateItemStocks`, `removeAllLocationItems`. Each moves only its own location. `Location.dataUpdatedAt` is set in `toGraphQL`. `Location.lastVisitedAt` reads `locationPreferencesOf(ctx)` (new `lib/locationPreferences.ts`), cached as `RequestCache.locationPreferences`, ONE read of the caller's own rows per request, cleared by `forgetLocationRoles`. `markLocationVisited` runs `requireHousehold`, `requireLocationInHousehold`, then `requireLocationRole(viewer)`; it writes nothing and answers `false` under 60 seconds (`VISIT_INTERVAL_MS`), and its `upsert` updates `lastVisitedAt` only. The new `location-order.resolver.test.ts` has 10 tests. Mutations, all red: every kind sets it; `updateMany` before the events and allowed to throw; the 60-second skip removed; no `userId` filter on the preference read; `publishChange` never sets it; `updateMany` on every location; `requireLocationInHousehold` removed; the role check removed; `toGraphQL` always null; the fake's `updateMany` ignores `where`. **Not tested yet: the cache clear in `forgetLocationRoles`** (no M.2 mutation returns a `Location`); M.3's two-root-fields test must cover it.
 
 ---
 
@@ -853,6 +860,8 @@ them with `git grep -ln reorderLocations -- apps/server/src`), `lib/authz.ts`
 | `myLocationSort` returns `null` instead of the default | the default test |
 
 **E2E:** M.5 tests 1 and 4.
+
+**Done 2026-11-22** at `83923a08` (one commit). Baseline at `aaacd264`: server 2820 / 89. After: web 3840 / 373, server 2834 / 89, `scripts/spec` 70. The full gate is green without E2E; esbuild `dist/index.js 266.6 KiB`, 15 `.graphql` files. Live guard: **77** in `publishes`, **7** in `publishesNothing` (`reorderLocations` moved there, `setLocationSort` added). `inPersonalOrder` in `location.resolver.ts` sorts by the caller's `customOrder` first, then the unplaced rows by the shared `order`, then by `id`, and sets `order` to the index. `locations` and `householdLocations` use it, reading the M.2 map (`locationPreferencesOf`). `reorderLocations` takes any household role. It checks a repeated id (`BAD_USER_INPUT`), then every id against `settingsListIds` (`FORBIDDEN`; Bea's `[B, A, C]` is `FORBIDDEN`, the same answer as an unknown id, so a member cannot probe the ids of their household), then the full set (`BAD_USER_INPUT`). It then upserts one `LocationPreference` per id in one transaction and returns `locations`. The shared `Location.order` is no longer written by it. New: enum `LocationSort`, `myLocationSort` (`custom` when null, `DEFAULT_LOCATION_SORT` in `lib/locationPreferences.ts`), `setLocationSort`. `firstLocationIdOf` stays on the shared order. `location-order.resolver.test.ts` has 14 new tests. Older tests changed: the member reorder test (a member may reorder), the tie test (positions 0 and 1), the live-publish reorder test (no event), and two `isDefault` tests in `location-roles.resolver.test.ts`. `oldBundleCompat` is 7 of 7 green. Mutations, all red: reorder writes `Location.order` (5); set check uses the household list for everyone (3); `locationPreferences` not cleared by `forgetLocationRoles` (the two-root-fields test, closing the M.2 gap); unplaced rows first (the "comes last" test); `myLocationSort` returns null (2); no `FORBIDDEN` check (7); no repeat check (2); no subset check (6); reorder publishes `LOCATION` (2); `setLocationSort` writes nothing (1); unplaced rows ignore the shared order (9); preferences read without `userId` (3). Known gap passed to M.4: a single `Location` returned by `createLocation`, `updateLocation` or an import carries the stored shared `order`, which can overwrite the cached personal `order` of that id until the next list read.
 
 ---
 
@@ -908,6 +917,21 @@ and tests, `routes/settings/household/locations/index.tsx` and its tests and sto
 
 **E2E:** M.5.
 
+**Done 2026-11-22** at `a8712a6d` (two commits: `45b57843` the feature, `a8712a6d` the area guides).
+
+- **Counts.** Baseline at `82d35f56`: web 3840 / 373. After: web **3899 / 378**, server 2834 / 89 (unchanged), `scripts/spec` 70. The full gate is green without E2E; esbuild `dist/index.js 266.6 KiB`, 15 `.graphql` files.
+- **Sort.** `sortLocations` (`lib/locationSort.ts`) sorts both lists. Names use `localeCompare` in the app language (`zh-TW` for `tw`) with `sensitivity: 'base'`. Dates go newest first, `null` last. Ties go by name, then id.
+- **`useLocationSort()`.** Cloud: `myLocationSort`, and `setLocationSort` with an optimistic answer. Local: `localStorage['location-sort']` through `useSyncExternalStore`, `name` or `custom` only; anything else gives `custom`. Both give `sorted(list)`.
+- **Settings › Locations** has `LocationSortSelect` in the toolbar.
+- **Drag handles** show for every household role (`usePermissions().canReorderLocations`) and only with Custom. Delete stays `canManageLocations`.
+- **`LocationSwitcher`** uses the same sort (O53-A).
+- **Visits.** `ActiveLocationProvider` sends `markLocationVisited` once per change of the active id, in cloud only, and only for an id in the loaded list. The first active location after a load counts (O55-A). An answer of `true` sets the cached `lastVisitedAt`.
+- **List-position order.** In cloud, `useLocations` and `useHouseholdLocations` set `order` to the row's place in the list the server sent. Both lists share one cached `Location`, and a single `Location` from create, rename or import carries the shared order. Create, rename and delete already refetch both lists; an import ends with `resetStore()`.
+- **`FORBIDDEN` reorder.** It now reloads both lists and `GetHousehold`, and the page shows `reorderError` ("The location list changed…").
+- **Test stubs.** The three new hooks are stubbed in `setup.ts` and in 9 per-file factories. `markLocationVisitedMock` is in `cloudFixtures.ts`. `dataUpdatedAt` and `lastVisitedAt` were added to every real-Apollo Location fixture; without them, 17 tests read incomplete cache data.
+- **Mutations.** All red except M11: name without `base` (case-tie test), `null` first, handles for every sort, reorder still manager, switcher by `order` only, local ignores the stored sort, local offers four, no visit, visit in local, visit not gated, cached `order` used, `FORBIDDEN` reloads only the role, `FORBIDDEN` general message, no optimistic answer, local store tells no listener, no `lastVisitedAt` write, `canDrag` from `canManage`. M11 (`visitedRef` removed) stays green; the code comment says so.
+- **Not done:** "Last updated" does not move live, because location lists refetch only on `LOCATION`. A cloud export now writes the caller's personal order as `order`.
+
 ---
 
 ## Task M.5 — E2E: personal order and the sorts on real SQL
@@ -936,6 +960,8 @@ because their reorder tests now write a personal order in cloud.
 - [ ] Step 4: `cleanup-endpoint.spec.ts` now seeds one preference row through
   `markLocationVisited` and expects a count of at least 1.
 
+**Done 2026-11-22** at `33fa3160` (three commits: `4dc9ea07` the spec, its page object and the config; `795f657c` the local test; `33fa3160` the cleanup seed). New `e2e/tests/location-sort.spec.ts`, cloud only (cloud `testMatch`, local `testIgnore`), with 7 tests: own order (Mia the owner and Bea a member, two browsers), last updated, last visited, by name (list and switcher), the same sort in a second browser, and axe scans of the page and of the open Sort by list, in light and dark. The fixture is Cellar, Attic and Dock with "Home" deleted, so the shared order (Cellar, Attic, Dock) and the name order (Attic, Cellar, Dock) differ, and each test expects a third order. New page object `e2e/pages/settings/LocationsPage.ts`. Test 7 (local Name survives a reload, and the switcher agrees) is in `settings/locations.spec.ts` and skipped in cloud. `cleanup-endpoint.spec.ts` seeds one preference row through `markLocationVisited` and checks `locationPreferences` is at least 1; it is green again. `--list`: local 189 to 190 tests (23 files), cloud 210 to 218 (39 to 40 files), pwa 73. Runs: `location-sort.spec.ts` 7 passed in 1.9m (load 2.4); step 3 local (`settings/locations`, `location-switcher`) 20 passed, 6 skipped in 24.7s; step 3 cloud (the same two files and `cleanup-endpoint`) 25 passed, 2 skipped in 4.9m. No existing test changed. Mutations, all red: reorder writes `Location.order` (Bea gets Dock first); `publishChange` never sets `dataUpdatedAt` (name order shown); `markLocationVisited` answers `true` and writes nothing; `name` sorts like `custom`; `setLocationSort` kept in the browser only (server poll `"custom"`, and with the poll off, the second browser shows `Custom`); local `location-sort` never read back (red after the reload); the cleanup's preference filter matches nobody (`locationPreferences: 0`). `pnpm lint`, `pnpm check` and `pnpm build` are green; no source under `apps/` changed. `pnpm test:e2e:all` is owed (M.6).
+
 ---
 
 ## Task M.6 — H7b docs, deploy notes and the final gate
@@ -952,13 +978,12 @@ household write any more), `components/CLAUDE.md`, the design (*Data model*, *Wr
 **section 14, H7b**: one additive migration with one backfill, server first, checks after
 deploy), and this plan's *What this plan got wrong* and *Status*.
 
-- [ ] Step 1: the docs. Re-measure every count.
-- [ ] Step 2: **the main session**, not a subagent, runs `pnpm --filter server
-  verify:migration` against the TEST database, with the owner's consent, and records each
-  new check in a table here and in section 14 of the runbook. Run it BEFORE M.5, so the E2E
-  runs on a proved schema.
-- [ ] Step 3: the full gate, then `pnpm test:e2e:all`.
-- [ ] Step 4: `git status` clean; `git show --stat` for each commit.
+- [x] Step 1: the docs. Done in `d1ae170a` (prisma guide), `babd8321` (root and routes guides), `606e2296` (e2e guide), `bbc8f4a1` (design, phase plan, INDEX), `1729056e` (H4 runbook section 14), `74c21fd1` (the E2E gate in the e2e guide). Every count re-measured with its command.
+- [x] Step 2: done by the main session before M.5 (see the M.1 *Done* block). Copied into section 14.2 of the H4 runbook. `git log --oneline 415cbf02..HEAD -- apps/server/prisma/ apps/server/scripts/` is empty.
+- [x] Step 3: the full gate, then `pnpm test:e2e:all`, at `14f9501c`. All green on the first try.
+- [x] Step 4: `git status` clean; `git show --stat` checked for each commit.
+
+**Done 2026-11-22** at `74c21fd1` (six docs commits; no source change). Counts at `14f9501c`: web 3899 / 378, server 2834 / 89, `scripts/spec` 70 (before M.1: 3840 / 373, 2767 / 87, 70). Live guard 77 in `publishes`, 7 in `publishesNothing`; `/e2e/cleanup` 22 models; 22 migration folders; 15 `.graphql` files; esbuild `dist/index.js 266.6 KiB`. `--list`: local 190 in 23 files, cloud 218 in 40, pwa 73 in 2; cloud spec files 40 of 44. Gate, each command alone: `pnpm lint`, `pnpm build`, `build-storybook`, `pnpm check` exit 0; no `TS6385`; `pnpm test` exit 0. `pnpm test:e2e:all` at `14f9501c`, first try, no retry, all green: local 179 passed / 11 skipped (3m46s), cloud 210 passed / 8 skipped (65m39s), pwa 73 passed (1m36s). Load 11.2 at the start (falling, from `pnpm test`), then 1.6 to 2.9. Deploy notes: section 14 of the H4 runbook.
 
 ---
 
@@ -1089,6 +1114,37 @@ Filled in from the task reports and reviews.
 | O57 | the copy list skips a household joined on this device | owner decision O57-B: the list is decided by `canCopyInto` alone; the skip list stops only the automatic question (O12-A). No E2E covers it: the spec joins through an API helper |
 | L.7 | step 3 ends with a green `pnpm test:e2e:all` | the first run failed 2 cloud tests, neither caused by H7a; `location-switcher.spec.ts` waits 3–5 s of a 5 s budget on `develop` too |
 | L.7 | "Copy `test-results/` aside before re-running" | `run-all.sh` runs `pwa` right after `cloud`, and that deletes the cloud `test-results/`. A cloud failure late in the run survives only in the log, unless you copy the folder while the gate is still running |
+| M.1 | mutation: `locationPreferences: { none: {} }` "(or the relation's real name)" in `emptyHouseholdWhere` | the relation is `Location.preferences` (and `User.locationPreferences`); the key goes inside `locations: { every }` |
+| M.1 | files: the fakes, cleanup, `invite.ts` | a new `User` column breaks every typed `UserRow` fixture: 24 type errors in 23 files at the root build. `userFake` needed the column, and 21 test files needed `locationSort: null` |
+| M.1 | step 4: assertions in `verify-migration.ts` | 5 `Location` reads and deletes there run BEFORE the last deploy, and the client from the final schema would ask for `dataUpdatedAt` (`P2022`). Each got a `select` |
+| M.1 | step 4: "a location with stock rows has `dataUpdatedAt` equal to its newest `ItemStock.updatedAt`" | the fixture had no stock rows with known times before the last deploy; a seed step (`seedLocationPreferenceBackfill`) writes them, and the check runs first after the deploy |
+| M.1 | step 2 "run: red" | the `deleteHouseholdData` coverage case is green at once, because the model goes into its `kept` list |
+| M.2 | not named | `stockFake`'s `LOCATION_COLUMNS` has no `dataUpdatedAt`; `publishChange`'s `updateMany` needs it added |
+| T77 | the preferences are read "once per request per household" | M.2 reads them once per request for the caller (`where: { userId }`), keyed by location id. A per-household read needs one more query for the household's location ids, because the fake refuses a `location: { householdId }` filter, and the rows are the caller's own anyway. M.3 filters this one map |
+| T79 | (not said) | Prisma's `updateMany` also sets `Location.updatedAt` (`@updatedAt`), so every STOCK, CART or LOG write now moves `Location.updatedAt` too. `stockFake.location.updateMany` models it |
+| M.2 *Files* | the writer tests go in `location-order.resolver.test.ts` | they are in `stock-live-publish.resolver.test.ts`, which already models every writer. The new file tests the fields and `markLocationVisited` |
+| M.1 note, `stockFake` | (M.1 Done) | `stockFake` lacked both `dataUpdatedAt` in `LOCATION_COLUMNS` and `location.updateMany`. M.2 added both. A hand-made `location` mock without `updateMany` only logs, so `catalog-ownership.resolver.test.ts` got a counting `updateMany` |
+| M.3 | step 1: "a repeated id `BAD_USER_INPUT`" with no fixture shape | with more ids than the list, the subset check refuses it too, and the test stays green with the repeat check removed. The test sends `[B, B, C]`, as many ids as the list |
+| M.3 | step 2 "run: red" | 5 of the new tests are green before the code (the refusals, "comes last", two root fields): the old code gives the same answers. Only the mutations prove them |
+| M.3 | *Files*: the existing `reorderLocations` tests | two `isDefault` tests in `location-roles.resolver.test.ts` moved the default with a reorder. A reorder no longer changes the shared order, so one now checks that the default stays, and the cache test uses `deleteLocation` |
+| T77 | `order` is 0 to n−1 "over the list being returned" | true for `locations`, `householdLocations` and `reorderLocations`. A single row from `createLocation`, `updateLocation` or an import carries the stored shared `order`, which can overwrite the cached personal one until the next list read |
+| M.3 | step 4: the comment at `location.resolver.ts:557–559` | it was at line 568 after M.2. The live-events header above the resolver map also named `reorderLocations` as a publisher, and M.2 had left the `setLocationRole` comment above `markLocationVisited` |
+| M.3 | Bea's `[B, A, C]`: "`FORBIDDEN` or `BAD_USER_INPUT`" | `FORBIDDEN`: C is not in Bea's list, and one answer for "not yours" and "unknown" stops a member from learning which ids are locations of their household |
+| M.4 mutation table | "`name` sort without `sensitivity: 'base'` → the Apple/banana test" | ICU ignores case at its first level, so Apple/banana stays green. Only a case-only tie ("apple" and "Apple", broken by id) goes red |
+| M.4 Step 3 | "`canReorderLocations` … (it was `manager`)" | No such field existed. Reorder used `canManageLocations`, which also gates Delete. M.4 added `canReorderLocations` and kept the other for Delete |
+| M.3 / M.4 | the gap was "a single `Location` from a write overwrites the cached `order`" | The larger race is between the two LIST queries. Since T77 each gives a position in its own list, and both write one cached `Location`. M.4 reads `order` from the array position instead |
+| M.4 | nothing about refusals | Once every role may reorder, `FORBIDDEN` means "your list is out of date", not "no right". The hook and the page had to change |
+| M.4 | nothing about live updates | "Last updated" needs the location lists to refetch on `STOCK`, `CART` and `LOG`. Not done: owner decision O58-A keeps it so |
+| M.5 | test 3: "Mia picks the third in the switcher" | the settings pages show the household sidebar, which has no location switcher; the pick is made on the pantry (`openPantry`) |
+| M.5 | test 3 mutation: `markLocationVisited` "a no-op that answers `true`" | it goes red only when the order is read after a new page load: a `true` answer writes `lastVisitedAt` into the cache, which would sort the same page correctly |
+| M.5 | test 5 mutation: "`setLocationSort` replaced by a `localStorage` write" | a wait for the `SetLocationSort` response makes it fail as a timeout; the test polls `myLocationSort` on the server instead, so it fails on the value |
+| M.5 | *Files*: "`e2e/pages/LocationsPage.ts` (or the existing page object)" | there was none; the new one is `e2e/pages/settings/LocationsPage.ts` |
+| M.5 | step 3: "Fix a cloud test that expected a shared order" | none needed a change: the only cloud reorder test reads back the person's own order after a reload |
+| M.5 | not named | reading the switcher's rows with `allTextContents()` right after the click once gave `[]`; the page object waits for each expected row first |
+| M.6 | *Files*: the CLAUDE.md files to update | `apps/web/src/routes/CLAUDE.md` was not named; it now says the switcher uses the chosen sort and records visits. `hooks/CLAUDE.md` and `components/CLAUDE.md` were already done in M.4 (`a8712a6d`) |
+| M.6 (brief) | find stale claims with `git grep -n reorderLocations -- '*.md'` | two stale claims in the root `CLAUDE.md` do not name the field: "an empty reorder" in the "changes nothing" sentence, and the `LOCATION` row's "the location mutations". A grep for `reorder` found them |
+| *Deploy notes* | "The backfill `UPDATE` touches every `Location` row once" | only locations with at least one stock row. The others keep `NULL` |
+| M.6 | (not said) | the rehearsal check "`dataUpdatedAt` equals the newest stock time" holds only right after the migration; a cart or log write moves it later. The runbook runs it before any server points at the branch |
 
 ## Status
 
@@ -1096,7 +1152,8 @@ Filled in from the task reports and reviews.
 (plus `5cc4e741`, which records H6b as merged). Owner decisions O49–O55 answered 2026-11-21: all A, except **O54-B** (Name and Custom in
 local mode, saved on the device). Nothing built.
 
-**H7a built 2026-11-21** on `feature/households-h7a` (tasks L.1–L.7), not merged, not deployed. Owner decisions O56-A and O57-B applied in L.7. No migration. Deploy notes: section 13 of the H4 runbook. The first `pnpm test:e2e:all` failed 2 cloud tests not caused by H7a; the second, at `ef8982fb`, was green in all three projects (see L.7). H7b (M.1–M.6) not built.
+**H7a built 2026-11-21** on `feature/households-h7a` (tasks L.1–L.7), merged into `develop` (2026-11-22, #394, merge `bf71f485`), not deployed. Owner decisions O56-A and O57-B applied in L.7. No migration. Deploy notes: section 13 of the H4 runbook. The first `pnpm test:e2e:all` failed 2 cloud tests not caused by H7a; the second, at `ef8982fb`, was green in all three projects (see L.7).
+**H7b built 2026-11-22** on `feature/households-h7b` (tasks M.1–M.6), from `develop` at `bf71f485`. Not merged, not deployed. One additive migration with one backfill, `20261122000000_add_location_preferences`, proved by `verify:migration` on the TEST database (main session, 2026-11-22, 284 `ok`, 0 failed). Owner decision O58-A added 2026-11-22. Deploy notes: section 14 of the H4 runbook. `pnpm test:e2e:all` at `14f9501c` was green on the first try in all three projects (see M.6).
 
 ---
 

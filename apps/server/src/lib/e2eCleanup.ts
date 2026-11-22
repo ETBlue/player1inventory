@@ -36,7 +36,13 @@ import { forgetSeenToday } from './userRow.js'
 //    second half anyway; deleting them here makes the count show them. An
 //    offer the user MADE in a household they do not own stays: `fromUserId`
 //    has no foreign key, so it does not block the `User` delete.
-// 6. The `User` row, last.
+// 6. Every location preference row on the owned households' locations, and
+//    the user's OWN preference rows on any other location (households H7b,
+//    task M.1, decision T75). Both foreign keys are ON DELETE CASCADE, so the
+//    `location` and `User` deletes would remove them anyway; deleting them
+//    here makes the count show them. Other people's rows on locations of a
+//    household the user does not own stay.
+// 7. The `User` row, last.
 //
 // **It never deletes a household the user only belongs to.** Two-user specs
 // run this route once for each user. If the first call emptied a household
@@ -48,9 +54,10 @@ import { forgetSeenToday } from './userRow.js'
 
 /**
  * The one key per model in the `deleted` object this route returns, in the
- * order the transaction deletes them. 21 models (19 until households H6
+ * order the transaction deletes them. 22 models (19 until households H6
  * task J.1 added `householdActivities`, 20 until households H6b task K.1
- * added `ownershipOffers`). The names match
+ * added `ownershipOffers`, 21 until households H7b task M.1 added
+ * `locationPreferences`). The names match
  * `CLEANUP_MODEL_KEYS` in e2e/helpers/cloudTeardown.ts, which checks that
  * every one of them is present in the body.
  */
@@ -69,6 +76,7 @@ export const CLEANUP_MODEL_KEYS = [
   'recipes',
   'shelves',
   'locationMembers',
+  'locationPreferences',
   'locations',
   'householdInvites',
   'householdActivities',
@@ -119,7 +127,7 @@ export async function e2eCleanupHandler(req: Request, res: Response): Promise<vo
   // table before `household`: `householdId` is ON DELETE CASCADE on all of
   // them, `HouseholdInvite` included.
   //
-  // This is the ARRAY form of `$transaction`: Prisma runs the 21 statements
+  // This is the ARRAY form of `$transaction`: Prisma runs the 22 statements
   // in this order, in one transaction, and returns their results in the
   // same order.
   const [
@@ -137,6 +145,7 @@ export async function e2eCleanupHandler(req: Request, res: Response): Promise<vo
     recipes,
     shelves,
     locationMembers,
+    locationPreferences,
     locations,
     householdInvites,
     householdActivities,
@@ -165,6 +174,14 @@ export async function e2eCleanupHandler(req: Request, res: Response): Promise<vo
     // Every role row on the owned households' locations (anybody's), and
     // the user's own role rows on any other location.
     prisma.locationMember.deleteMany({
+      where: { OR: [{ userId }, { location: { householdId: owned } }] },
+    }),
+    // Every preference row on the owned households' locations (anybody's),
+    // and the user's own rows on any other location (households H7b, task
+    // M.1). BEFORE `location` and `user`, for the counts: both foreign keys
+    // are ON DELETE CASCADE, so after either delete the rows would be gone
+    // already and the count would read 0.
+    prisma.locationPreference.deleteMany({
       where: { OR: [{ userId }, { location: { householdId: owned } }] },
     }),
     prisma.location.deleteMany({ where: { householdId: owned } }),
@@ -228,6 +245,7 @@ export async function e2eCleanupHandler(req: Request, res: Response): Promise<vo
     recipes: recipes.count,
     shelves: shelves.count,
     locationMembers: locationMembers.count,
+    locationPreferences: locationPreferences.count,
     locations: locations.count,
     householdInvites: householdInvites.count,
     householdActivities: householdActivities.count,

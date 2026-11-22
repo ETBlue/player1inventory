@@ -1035,6 +1035,194 @@ the person's other tabs learn of a switch only on their next request;
 every `BAD_USER_INPUT`, so an `ALREADY_IN_HOUSEHOLD` refusal would show that text (no
 current server path sends it to this dialog).
 
+## 14. Households H7b (personal location order and the four sorts)
+
+Added 2026-11-22 by H7 task M.6. **H7b is built on `feature/households-h7b`, from `develop`
+at `bf71f485` (after H7a, #394). It is NOT merged and NOT deployed.** Plan:
+[`../permissions/2026-11-21-households-plan-h7.md`](../permissions/2026-11-21-households-plan-h7.md),
+tasks M.1 to M.6, *Deploy notes*, *What a deployed old web bundle sees* and *Known gaps*.
+
+In short: **one additive migration with one backfill, the server first, then the web. No
+new env value and no Clerk change.**
+
+### 14.1 What changes
+
+| Part | What is new |
+|---|---|
+| Database | **one migration**, `20261122000000_add_location_preferences`. In order: one enum, `"LocationSort"` (`name`, `lastUpdated`, `lastVisited`, `custom`); one nullable column, `"User"."locationSort"` (no backfill: `NULL` means the default, Custom, owner decision O52-A); one nullable column, `"Location"."dataUpdatedAt"`, and **one backfill `UPDATE`** that sets it to the newest `"ItemStock"."updatedAt"` of each location (a location with no stock row keeps `NULL`); one new, empty table, `"LocationPreference"` (primary key `("userId", "locationId")`, two foreign keys to `User` and `Location`, both `ON DELETE CASCADE`, an index on `"locationId"`). Nothing is dropped. `"Location"."order"` stays |
+| Server env, web build env, Clerk | nothing new |
+| GraphQL schema | 1 new enum (`LocationSort`), 2 new nullable fields on `Location` (`dataUpdatedAt`, `lastVisitedAt`), 1 new query (`myLocationSort`), 2 new mutations (`setLocationSort`, `markLocationVisited`). No field, argument or input field is removed or changed. `oldBundleCompat.test.ts` passes with the same list of known changes (in `pnpm test`, 2026-11-22) |
+| Server behaviour | `Location.order` now answers the CALLER's own position (0 to n−1). `locations` and `householdLocations` come back in the caller's own order: their `customOrder` first, then the locations they have not placed, by the shared order. `reorderLocations` writes the caller's own order (one `LocationPreference` row per id), for **any household role** (it needed `manager`). It never writes the shared `Location.order` again; `createLocation` and imports still do. `publishChange` sets `Location.dataUpdatedAt` after every `STOCK`, `CART` or `LOG` event (this also moves `Location.updatedAt`) |
+| Live updates | `reorderLocations` moved from `publishes` to `publishesNothing`: only this person sees the change. `setLocationSort` and `markLocationVisited` send nothing. The live guard holds 84 mutation fields: 77 in `publishes`, 7 in `publishesNothing` |
+| Web behaviour | **Sort by** on Settings › Locations (Name, Last updated, Last visited, Custom; Custom first); drag handles for every household role, only with Custom; the location switcher uses the same sort (O53-A); in cloud, a visit is recorded when a location becomes the active one, at most once a minute (O55-A); local mode offers Name and Custom only, saved on the device (O54-B) |
+| Export | a cloud export now writes the person's OWN order as each location's `order`, because `GetLocations` answers it. A later import of that file into a new household gives that order as the shared order |
+
+### 14.2 The migration deploys with the server
+
+The migration runs in Railway's release command, like every other one. H7a had no
+migration, so in the households release this is the **seventh** migration. The numbers in
+12.2 grow by one more:
+
+| Runbook step | Section 12.2 says | With H7b in the release |
+|---|---|---|
+| H3b runbook 3.1 (the pending list) | exactly six pending migrations | **exactly seven**: the six in 12.2, then `20261122000000_add_location_preferences`. If it lists more, stop and find out why |
+| H3b runbook 4.2 (the release log) | six `Applying migration` lines | **seven** lines, the seventh `Applying migration \`20261122000000_add_location_preferences\`` |
+| H3b runbook 5, check 1 | `LIMIT 7` | `LIMIT 8`: all seven new migrations have `finished_at` and no `rolled_back_at` |
+
+**The backfill `UPDATE` touches every `Location` row that has a stock row, once.** Production
+had 5 locations on 2026-10-05. It runs inside the migration's transaction, so it is part of
+the same all-or-nothing step.
+
+**Proved on the test database on 2026-11-22.** The main session ran
+`pnpm --filter server verify:migration` against the TEST database before task M.5, at
+`415cbf02`, with the owner's explicit consent (given after Prisma's AI-agent warning).
+Result: "Migration verified.", **284** lines `ok`, **0** failed. The checks for
+`add_location_preferences` (`seedLocationPreferenceBackfill` writes stock rows with known
+times before the last deploy; `assertLocationDataUpdatedAtBackfill` runs first after it;
+then `assertLocationPreferences`):
+
+| Check | Result |
+|---|---|
+| a location with two stock rows gets the NEWER `"updatedAt"` of its own rows | ok |
+| a second location gets the time of its own stock row | ok |
+| a location with no stock row keeps `NULL` | ok |
+| every one of the 19 locations reads the newest `"updatedAt"` of its own stock rows, or `NULL` when it has none | ok |
+| `"LocationSort"` holds exactly `name, lastUpdated, lastVisited, custom` | ok |
+| `"User"."locationSort"` is a nullable `"LocationSort"`, and every existing `"User"` row reads `NULL` (no backfill) | ok |
+| `"Location"."dataUpdatedAt"` is a nullable timestamp | ok |
+| `"dataUpdatedAt"` is not on `"ItemStock"`, and `"locationSort"` is not on `"Household"` | ok |
+| `"LocationPreference"` has exactly the planned columns, each with its type and nullability | ok |
+| `"LocationPreference_pkey"` is the primary key on `("userId", "locationId")` | ok |
+| `"LocationPreference_locationId_idx"` is a plain index on `("locationId")`, and the table has exactly two indexes | ok |
+| exactly two foreign keys, `"locationId"` → `Location` and `"userId"` → `User`, both `ON DELETE CASCADE` (read from the catalog, not with `LIKE`) | ok |
+| four rows (two people × two locations) are accepted; a new row reads `"customOrder"` and `"lastVisitedAt"` `NULL` | ok |
+| a second row for the same person and location is refused (`23505`); a row for an unknown location or an unknown person is refused (`23503`) | ok |
+| deleting a location deletes its preference rows and keeps another location's; deleting a `"User"` deletes theirs and keeps another person's | ok |
+| the 5 `Location` reads and deletes that run BEFORE the last deploy still work (each now has a `select`, so they never ask for `dataUpdatedAt` before it exists) | ok |
+
+**Mutation, run by the main session the same day, with its own consent:** the backfill
+`UPDATE` deleted from the migration. Result: `FAIL: a location with two stock rows gets the
+NEWER "updatedAt" of its own rows, 2026-03-04T05:06:07.123Z (read: NULL)`, exit 1. The file
+was restored from a copy and checked with `cmp`. So the backfill check can fail.
+
+No file under `apps/server/prisma/` or `apps/server/scripts/` changed after that run
+(checked in task M.6 with `git log --oneline 415cbf02..HEAD -- apps/server/prisma/
+apps/server/scripts/`, which is empty at `14f9501c`). That proves the migration on a
+database built from the committed history. It does NOT prove it on production data. That
+is 14.3.
+
+### 14.3 Rehearse on a FRESH Neon branch of production
+
+**Main session, with the owner's consent.** Do this inside the same release rehearsal as
+11.3 and 12.3, on the same fresh branch, after all seven migrations are applied. The rules
+of 9.3 hold.
+
+```sql
+-- H7b-1. The new table exists and holds nothing. Expect 0.
+SELECT count(*) AS preferences FROM "LocationPreference";
+
+-- H7b-2. The enum. Expect four rows: name, lastUpdated, lastVisited, custom.
+SELECT e.enumlabel
+FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
+WHERE t.typname = 'LocationSort' ORDER BY e.enumsortorder;
+
+-- H7b-3. The two foreign keys. Expect exactly two rows, both confdeltype c (CASCADE):
+--        LocationPreference_locationId_fkey and LocationPreference_userId_fkey
+SELECT conname, confdeltype
+FROM pg_constraint
+WHERE conrelid = '"LocationPreference"'::regclass AND contype = 'f'
+ORDER BY conname;
+
+-- H7b-4. The backfill. Expect 0: no location whose "dataUpdatedAt" differs from the
+--        newest "updatedAt" of its own stock rows (NULL when it has none).
+SELECT count(*) AS wrong
+FROM "Location" l
+LEFT JOIN (SELECT "locationId", max("updatedAt") AS m FROM "ItemStock" GROUP BY 1) s
+  ON s."locationId" = l.id
+WHERE l."dataUpdatedAt" IS DISTINCT FROM s.m;
+
+-- H7b-5. No sort is stored yet. Expect 0.
+SELECT count(*) AS with_sort FROM "User" WHERE "locationSort" IS NOT NULL;
+```
+
+| Check | Expected | Result |
+|---|---|---|
+| H7b-1 | 0 | `TBD after rehearsal` |
+| H7b-2 | `name`, `lastUpdated`, `lastVisited`, `custom` | `TBD after rehearsal` |
+| H7b-3 | two rows, both `c` | `TBD after rehearsal` |
+| H7b-4 | 0 | `TBD after rehearsal` |
+| H7b-5 | 0 | `TBD after rehearsal` |
+
+**Stop rule:** any other answer means the migration did not apply as written. Do not
+deploy. Find out why with the main session.
+
+**H7b-4 is true only right after the migration.** Once the new server runs, every stock,
+cart or log write moves `dataUpdatedAt` to "now", which is later than the stock row's time
+for a cart or log write. Run it on the rehearsal branch, before any server points at it.
+
+### 14.4 The order: server first, then the web
+
+This is the order of the whole households release (section 8.3). H7b does not change it.
+
+- **New web on an old server does not work.** The new bundle selects
+  `Location.dataUpdatedAt` and `Location.lastVisitedAt` in `GetLocations` and
+  `GetHouseholdLocations`, and `myLocationSort`. An old server fails GraphQL validation, so
+  the location switcher and Settings › Locations fail on every cloud page.
+- **Old web on the new server works, with three changes the old bundle cannot see:**
+
+| What the old bundle does | What it gets from the new server |
+|---|---|
+| its switcher sorts by `Location.order` | the person's OWN order. For a person who never reordered, that is the shared order, the same as before |
+| its drag on Settings › Locations calls `reorderLocations` | the drag now saves the person's OWN order, for any household role. It no longer changes what other people see. The answer has the same type |
+| it reads `Location.isDefault` | `isDefault` still follows the SHARED order (the old-bundle shim, `firstLocationIdOf`). After a person reorders, the location marked default may not be first in their own list |
+
+- **Visits made with an old bundle are not recorded.** Nothing calls `markLocationVisited`.
+- **After the server deploy, the shared order is frozen.** Only `createLocation` (at the
+  end) and imports write it. A person who reorders gets their own order; everyone else keeps
+  the order they saw.
+
+### 14.5 Checks after the deploy
+
+**Owner, after the web deploy.** Use one TEST household with two TEST people (A, an owner
+or manager, and B, a `member`) and at least three locations whose names are not in the
+shared order. Not the real household.
+
+1. A, **Settings › Locations**: **Sort by** shows **Custom**. Drag one location to another
+   place. Reload: the new order stays.
+2. B, on another device: the list keeps the old order (A's drag did not change it). B also
+   sees drag handles, and can drag B's own order.
+3. A: choose **Name**. The list is by name, and so is the location switcher. Open the app
+   on a second device as A: it shows **Name** too.
+4. A: change the stock of an item at the location that is LAST by name. Open
+   Settings › Locations again (or reload), choose **Last updated**: that location is first.
+   It does not move while the page stays open (owner decision O58-A); that is expected.
+5. A: pick a location in the switcher on the pantry. Open Settings › Locations again, choose
+   **Last visited**: that location is first.
+6. A: choose **Custom** again to leave the household as it was.
+
+Result: `TBD on deploy day`.
+
+### 14.6 If something is wrong
+
+| Symptom | Likely cause | What to do |
+|---|---|---|
+| the location switcher and Settings › Locations fail on every cloud page | the web is new and the server is old, or the server was rolled back | check the Railway deployment is the new commit |
+| "Last updated" puts every location in name order | `dataUpdatedAt` is `NULL` everywhere: the backfill did not run, and nothing was written since | run H7b-4 on production with the main session. Each location fixes itself on its next stock, cart or log write |
+| "Last updated" does not change after a stock change | the page was open; the lists refetch only on `LOCATION` (O58-A) | reload the page. Not a bug |
+| one person's drag changes another person's list | an old server, or a bug in `reorderLocations` | check the deployment; report it |
+
+**Rollback.** The migration is additive, so an older server runs on the new schema: it
+ignores the new table and columns. But roll back the web FIRST (or together): an H7b bundle
+on an older server loses the location lists (14.4). After a server rollback, every person
+sees the SHARED order again, and a drag writes the shared order again, `manager` only. The
+`LocationPreference` rows stay, unused, until the server comes back.
+
+**Known gaps** (from the plan): "Last updated" does not move live (O58-A); a reorder does not
+reach the person's other open tabs live (`publishesNothing`); `dataUpdatedAt` is written
+after the commit, so a crash between the two loses one timestamp; visits made with an old
+bundle or in local mode are not recorded; the shared `Location.order` stays until the
+release after households.
+
 ## Where this file lives, and why
 
 In `docs/global/backend/`, beside the H3a, H3b and H3c-1 runbooks. A person who opens a

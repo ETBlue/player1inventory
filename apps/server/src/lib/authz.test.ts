@@ -516,6 +516,7 @@ describe('requireHousehold', () => {
         deletedAt: null,
         householdSetupAt: null,
         activeHouseholdId: null,
+        locationSort: null,
         createdAt: T,
         updatedAt: T,
       },
@@ -972,6 +973,7 @@ function markAccountDeleted(userId: string) {
     deletedAt: T,
     householdSetupAt: T,
     activeHouseholdId: null,
+    locationSort: null,
     createdAt: T,
     updatedAt: T,
   })

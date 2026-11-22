@@ -2,6 +2,8 @@
 
 One app-wide **active location** scopes every stock-bearing page. It is held by `useActiveLocation()` (provider in `__root.tsx`, persisted in localStorage under a per-mode key, `active-location-id:local` / `active-location-id:cloud`, and validated against the loaded location list (a stale id falls back to the `isDefault` location in local mode and to the first location in cloud mode)) and switched from the `LocationSwitcher`. The active id is part of the TanStack Query keys, so switching it refetches rather than reusing another location's cache.
 
+**The switcher's order and the visits (households H7b, task M.4).** The switcher lists the locations in the person's chosen sort, the same one as Settings › Locations (`useLocationSort().sorted`, owner decision O53-A). In cloud, each change of the active location, the first one after a page load included, sends `markLocationVisited` once (O55-A); the server writes at most once a minute per location. Local mode never sends it. See `apps/web/src/hooks/CLAUDE.md` (`useLocationSort`, `useActiveLocation`).
+
 **Where the switcher lives depends on the breakpoint.** At `lg+` it is in the desktop `Sidebar` (`variant="full"`, showing the location name); below `lg` there is no sidebar and it stays in the pantry/shopping/cooking page toolbars (`variant="compact"`, the single-letter glyph, each site passing `className="lg:hidden"`). Exactly one copy is visible at any width, and the set of pages that have a switcher is unchanged. See `components/CLAUDE.md` for the jsdom duplicate-accessible-name hazard this creates in tests.
 
 | Page | What the active location decides |

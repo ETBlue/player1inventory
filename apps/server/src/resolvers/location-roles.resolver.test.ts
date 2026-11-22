@@ -401,7 +401,10 @@ describe('Location.isDefault for an old web bundle', () => {
     expect(res.data?.locations).toEqual([{ id: 'loc-g', isDefault: true }])
   })
 
-  it('follows the order: after a reorder the new first location is the default', async () => {
+  it('stays on the shared order: a personal reorder does not move the default', async () => {
+    // Since households H7b task M.3 a reorder writes only the caller's own
+    // order. `isDefault` keeps the SHARED order, as `main`'s server answered
+    // (`firstLocationIdOf`), until the shim is removed.
     // Given the owner creates a location. It goes last.
     const created = await run(`mutation { createLocation(name: "Garage") { id isDefault } }`, 'owner')
     expect(created.errors).toBeUndefined()
@@ -414,12 +417,12 @@ describe('Location.isDefault for an old web bundle', () => {
       'owner',
     )
 
-    // Then the reorder's answer already names it the default, and loc-k is not
-    // any more
+    // Then the garage is first in the owner's own list, and loc-k, first by
+    // the shared order, is still the default
     expect(res.errors).toBeUndefined()
     expect(res.data?.reorderLocations).toEqual([
-      { id: garage.id, isDefault: true },
-      { id: 'loc-k', isDefault: false },
+      { id: garage.id, isDefault: false },
+      { id: 'loc-k', isDefault: true },
     ])
   })
 
@@ -443,28 +446,28 @@ describe('Location.isDefault for an old web bundle', () => {
     expect(spy).toHaveBeenCalledTimes(2)
   })
 
-  it('after a reorder in the same request, the returned list names the new first location the default', async () => {
+  it('after a delete in the same request, the returned list names the new first location the default', async () => {
     // Given the owner created a location. It goes last.
     const created = await run(`mutation { createLocation(name: "Garage") { id } }`, 'owner')
     const garage = (created.data?.createLocation as { id: string }).id
 
     // When ONE document first reads isDefault (which fills the request's
-    // cache with loc-k as the first) and then moves the garage first
+    // cache with loc-k as the first), then deletes loc-k, then returns the
+    // list. (Until households H7b task M.3 this test moved the garage first
+    // with a reorder. A reorder no longer changes the shared order.)
     const res = await run(
       `mutation {
         a: updateLocation(id: "loc-k", input: { name: "Kitchen" }) { isDefault }
-        b: reorderLocations(orderedIds: ["${garage}", "loc-k", "loc-g"]) { id isDefault }
+        b: deleteLocation(id: "loc-k")
+        c: reorderLocations(orderedIds: ["${garage}", "loc-g"]) { id isDefault }
       }`,
       'owner',
     )
 
-    // Then `a` saw loc-k first, and `b` names the garage. A first id kept
-    // from `a` would still name loc-k.
+    // Then `a` saw loc-k first, and `c` names the garage, the owner's only
+    // location left. A first id kept from `a` would still name loc-k.
     expect(res.errors).toBeUndefined()
     expect(res.data?.a).toEqual({ isDefault: true })
-    expect(res.data?.b).toEqual([
-      { id: garage, isDefault: true },
-      { id: 'loc-k', isDefault: false },
-    ])
+    expect(res.data?.c).toEqual([{ id: garage, isDefault: true }])
   })
 })

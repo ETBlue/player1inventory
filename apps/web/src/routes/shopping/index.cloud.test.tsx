@@ -100,6 +100,20 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     useReorderLocationsMutation: mutationStub,
     // `ActiveLocationProvider` calls this on every render (Rules of Hooks).
     useBootstrapCartsMutation: mutationStub,
+    // Households H7b task M.4: the switcher's sort and the visit.
+    useMyLocationSortQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useSetLocationSortMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useMarkLocationVisitedMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
     // `PostLoginMigrationDialog` in `__root.tsx` offers the copy into another
     // household (households H7 task L.5), so in cloud mode it calls these.
     // This factory replaces `src/test/setup.ts`'s, so they are stubbed here

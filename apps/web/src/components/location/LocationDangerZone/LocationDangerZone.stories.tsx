@@ -55,6 +55,8 @@ function Zone({ mocks }: { mocks: NonNullable<MockedProviderProps['mocks']> }) {
                   createdAt: '2026-11-01T00:00:00.000Z',
                   updatedAt: '2026-11-01T00:00:00.000Z',
                   myRole: 'organizer',
+                  dataUpdatedAt: null,
+                  lastVisitedAt: null,
                 },
               ],
             },

@@ -27,8 +27,17 @@
 //  10. 20261118000000_add_household_invites            (households H5b, task G.1) —
 //      a new, empty "HouseholdInvite" table and a nullable
 //      "User"."activeHouseholdId". Additive only
-// Ten migrations, then. This count and the list in migrationDeploys.ts must agree.
-// (It said "Eight" until H3b task B.3, and "Nine" until H5b task G.1, while
+//  11. 20261120000000_add_household_activity           (households H6, task J.1) —
+//      one enum and a new, empty "HouseholdActivity" table. Additive only
+//  12. 20261120100000_add_ownership_offers             (households H6b, task K.1) —
+//      one enum and a new, empty "OwnershipOffer" table. Additive only
+//  13. 20261122000000_add_location_preferences         (households H7b, task M.1) —
+//      one enum, the nullable "User"."locationSort" and "Location"."dataUpdatedAt",
+//      ONE backfill of "dataUpdatedAt" from "ItemStock", and a new, empty
+//      "LocationPreference" table
+// Thirteen migrations, then. This count and the list in migrationDeploys.ts must agree.
+// (It said "Ten" until H7b task M.1, after H6 and H6b had added two more
+// without changing it. It said "Eight" until H3b task B.3, and "Nine" until H5b task G.1, while
 // the line above it already said "Eight" again.) The comment said "Four"
 // for a while after entry 5 was added, so check the array rather than trusting
 // this line.
@@ -613,7 +622,13 @@ async function assertHouseholdsBackfill(): Promise<void> {
 
   // ── Step 6: every location has its owner as organizer, and no one else ──
   const ownerOf = new Map(legacy.map((l) => [l.id, l.userId]))
-  const locations = await prisma.location.findMany({ include: { members: true } })
+  // An explicit `select` on every "Location" read that runs before the LAST
+  // deploy (households H7b task M.1). The Prisma client is generated from the
+  // FINAL schema, so a read or a delete with no `select` asks for
+  // "dataUpdatedAt", which add_location_preferences adds, and Postgres refuses
+  // it (P2022) at this point. The same rule as for "User" in
+  // assertHouseholdsBackfill.
+  const locations = await prisma.location.findMany({ select: { id: true, members: true } })
   const badLocations = locations.filter(
     (l) =>
       l.members.length !== 1 ||
@@ -987,7 +1002,9 @@ async function assertLocationMigrationsBeforeDrop(): Promise<void> {
   )
 
   const stocks = await prisma.itemStock.findMany({
-    include: { location: true },
+    // Only the id: "dataUpdatedAt" is not there yet (see
+    // assertHouseholdsBackfill). Nothing below reads the relation.
+    include: { location: { select: { id: true } } },
     orderBy: { itemId: 'asc' },
   })
   assert(stocks.length === 3, 'one ItemStock per Item')
@@ -1046,7 +1063,8 @@ async function assertLocationMigrationsBeforeDrop(): Promise<void> {
 
   // FK cascade: deleting a Location must cascade-delete its ItemStock rows.
   const riceLocationId = rice!.locationId
-  await prisma.location.delete({ where: { id: riceLocationId } })
+  // `select`: a delete returns the row, and "dataUpdatedAt" is not there yet.
+  await prisma.location.delete({ where: { id: riceLocationId }, select: { id: true } })
   assert(
     (await prisma.itemStock.count({ where: { locationId: riceLocationId } })) === 0,
     'deleting a Location cascades to delete its ItemStock rows',
@@ -1060,7 +1078,8 @@ async function assertLocationMigrationsBeforeDrop(): Promise<void> {
   // missed row would have failed the migration itself; these assertions are
   // about WHICH location each row got.
   const logs = await prisma.inventoryLog.findMany({
-    include: { location: true },
+    // Only the id, for the same reason as the ItemStock read above.
+    include: { location: { select: { id: true } } },
     orderBy: { id: 'asc' },
   })
   assert(logs.length === 2, 'both seeded InventoryLog rows survive the migration')
@@ -1224,7 +1243,7 @@ async function assertLocationMigrationsBeforeDrop(): Promise<void> {
 
   // FK cascade from Location. Deleting user-i's location must take cart-i and,
   // through Cart -> CartItem, cartitem-h with it.
-  await prisma.location.delete({ where: { id: cartI!.locationId } })
+  await prisma.location.delete({ where: { id: cartI!.locationId }, select: { id: true } })
   assert(
     (await prisma.cart.count({ where: { id: cartI!.id } })) === 0,
     'deleting a Location cascades to delete its Cart rows',
@@ -1236,7 +1255,7 @@ async function assertLocationMigrationsBeforeDrop(): Promise<void> {
 
   // Deleting user-j's location must take log-j with it, and must leave
   // user-a's log alone.
-  await prisma.location.delete({ where: { id: logJ!.locationId } })
+  await prisma.location.delete({ where: { id: logJ!.locationId }, select: { id: true } })
   assert(
     (await prisma.inventoryLog.count({ where: { id: 'log-j' } })) === 0,
     'deleting a Location cascades to delete its InventoryLog rows',
@@ -1490,7 +1509,10 @@ async function assertDropUserScope(): Promise<void> {
   )
 
   const householdIdOf = (userId: string) => householdOf(userId)[0]?.id
-  const locations = await prisma.location.findMany({ include: { members: true } })
+  // "dataUpdatedAt" is not there yet: see the note in assertHouseholdsBackfill.
+  const locations = await prisma.location.findMany({
+    select: { id: true, name: true, order: true, householdId: true, members: true },
+  })
   const lateLocations = locations.filter((l) => l.householdId === householdIdOf(LATE_USER))
   assert(
     lateLocations.length === 1 &&
@@ -2074,6 +2096,7 @@ const SHARED_CARTS_MIGRATION = '20261114000000_shared_carts'
 const HOUSEHOLD_INVITES_MIGRATION = '20261118000000_add_household_invites'
 const HOUSEHOLD_ACTIVITY_MIGRATION = '20261120000000_add_household_activity'
 const OWNERSHIP_OFFERS_MIGRATION = '20261120100000_add_ownership_offers'
+const LOCATION_PREFERENCES_MIGRATION = '20261122000000_add_location_preferences'
 
 const PARKED_ROOT = join(SERVER_DIR, '.migration-under-test')
 const migrationDir = (name: string) => join(SERVER_DIR, 'prisma/migrations', name)
@@ -3042,6 +3065,325 @@ async function assertOwnershipOffers(): Promise<void> {
   await prisma.$executeRaw`DELETE FROM "User" WHERE "id" LIKE 'oo-%'`
 }
 
+// ══════════════════════════════════════════════════════════════════════
+// 20261122000000_add_location_preferences (households H7b, task M.1,
+// decisions T74, T75 and T79). Written on 2026-11-22 and NOT run yet when it
+// was written: no subagent may reach a database. The main session runs it
+// with the owner's consent.
+// ══════════════════════════════════════════════════════════════════════
+//
+// The migration has ONE backfill: "Location"."dataUpdatedAt" gets the newest
+// "ItemStock"."updatedAt" of the location, and a location with no stock row
+// keeps NULL. To prove that, the database needs, BEFORE the deploy, a
+// location with several stock rows of different times, a second location
+// with a stock row of its own (so the newest time must be read per
+// location, not over the whole table), and a location with no stock row.
+// seedLocationPreferenceBackfill writes them, with fixed times.
+const LP_HOUSEHOLD_OWNER = 'user-a'
+const LP_LOC_STOCK = 'lp-loc-stock'
+const LP_LOC_OTHER = 'lp-loc-other'
+const LP_LOC_EMPTY = 'lp-loc-empty'
+// The newest of lp-loc-stock's two rows, and lp-loc-other's only row.
+// lp-loc-other's row is NEWER than both of lp-loc-stock's, so a backfill that
+// took the newest time of the whole table, or of the wrong location, gives
+// lp-loc-stock the wrong value. A backfill that took the OLDEST time gives
+// 2026-01-02, which is wrong too.
+// The same times are written as SQL literals in seedLocationPreferenceBackfill.
+const LP_STOCK_NEWEST = new Date('2026-03-04T05:06:07.123Z')
+const LP_OTHER_ONLY = new Date('2026-05-06T00:00:00.000Z')
+
+async function seedLocationPreferenceBackfill(): Promise<void> {
+  console.log('Seeding stock rows for the add_location_preferences backfill...')
+  const household = await prisma.household.findFirstOrThrow({
+    where: { ownerId: LP_HOUSEHOLD_OWNER },
+    select: { id: true },
+  })
+  // Raw SQL: the Prisma client knows "dataUpdatedAt", which is not there yet.
+  await prisma.$executeRaw`
+    INSERT INTO "Location" ("id","name","order","householdId","createdAt","updatedAt") VALUES
+      (${LP_LOC_STOCK}, 'LP stock', 20, ${household.id}, NOW(), NOW()),
+      (${LP_LOC_OTHER}, 'LP other', 21, ${household.id}, NOW(), NOW()),
+      (${LP_LOC_EMPTY}, 'LP empty', 22, ${household.id}, NOW(), NOW())
+  `
+  await prisma.$executeRaw`
+    INSERT INTO "Item" ("id","name","targetUnit","consumeAmount","expirationMode","householdId","createdAt","updatedAt") VALUES
+      ('item-lp-1', 'LP one', 'package', 1, 'disabled', ${household.id}, NOW(), NOW()),
+      ('item-lp-2', 'LP two', 'package', 1, 'disabled', ${household.id}, NOW(), NOW())
+  `
+  // The times are SQL literals, not `Date` parameters, so the session's time
+  // zone cannot shift them. A "timestamp without time zone" reads back as
+  // that time in UTC, which is what the three constants above say.
+  await prisma.$executeRaw`
+    INSERT INTO "ItemStock" ("id","itemId","locationId","createdAt","updatedAt") VALUES
+      ('lp-stock-1', 'item-lp-1', ${LP_LOC_STOCK}, '2026-01-02 00:00:00', '2026-03-04 05:06:07.123'),
+      ('lp-stock-2', 'item-lp-2', ${LP_LOC_STOCK}, '2026-01-02 00:00:00', '2026-01-02 00:00:00'),
+      ('lp-stock-3', 'item-lp-1', ${LP_LOC_OTHER}, '2026-01-02 00:00:00', '2026-05-06 00:00:00')
+  `
+}
+
+// Runs right after the last deploy, BEFORE every other block, so no later
+// write has moved an "ItemStock"."updatedAt" yet.
+async function assertLocationDataUpdatedAtBackfill(): Promise<void> {
+  console.log('add_location_preferences — the backfill of "dataUpdatedAt":')
+  const rows = await prisma.$queryRaw<{ id: string; dataUpdatedAt: Date | null }[]>`
+    SELECT "id", "dataUpdatedAt" FROM "Location"
+    WHERE "id" IN (${LP_LOC_STOCK}, ${LP_LOC_OTHER}, ${LP_LOC_EMPTY})
+  `
+  const at = (id: string) => rows.find((r) => r.id === id)?.dataUpdatedAt
+  const show = (value: Date | null | undefined) =>
+    value === undefined ? 'row missing' : value === null ? 'NULL' : value.toISOString()
+  assert(
+    at(LP_LOC_STOCK)?.getTime() === LP_STOCK_NEWEST.getTime(),
+    `a location with two stock rows gets the NEWER "updatedAt" of its own rows, ${LP_STOCK_NEWEST.toISOString()} (read: ${show(at(LP_LOC_STOCK))})`,
+  )
+  assert(
+    at(LP_LOC_OTHER)?.getTime() === LP_OTHER_ONLY.getTime(),
+    `a second location gets the time of its own stock row, ${LP_OTHER_ONLY.toISOString()} (read: ${show(at(LP_LOC_OTHER))})`,
+  )
+  assert(
+    at(LP_LOC_EMPTY) === null,
+    `a location with no stock row keeps NULL (read: ${show(at(LP_LOC_EMPTY))})`,
+  )
+
+  // And the same rule for EVERY location of the fixture, not only the three
+  // seeded above. IS DISTINCT FROM treats NULL = NULL as equal, so a location
+  // with no stock row passes only when it reads NULL.
+  const wrong = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT l."id" FROM "Location" l
+    WHERE l."dataUpdatedAt" IS DISTINCT FROM (
+      SELECT max(s."updatedAt") FROM "ItemStock" s WHERE s."locationId" = l."id"
+    )
+  `
+  const total = await prisma.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS n FROM "Location"`
+  assert(
+    wrong.length === 0,
+    `every one of the ${total[0]?.n ?? '?'} locations reads the newest "updatedAt" of its own stock rows, or NULL when it has none (wrong: ${wrong.map((r) => r.id).join(', ') || 'none'})`,
+  )
+
+  // Clean up the seeded rows, so no later block counts them.
+  await prisma.$executeRaw`DELETE FROM "ItemStock" WHERE "id" LIKE 'lp-stock-%'`
+  await prisma.$executeRaw`DELETE FROM "Item" WHERE "id" LIKE 'item-lp-%'`
+  await prisma.$executeRaw`DELETE FROM "Location" WHERE "id" LIKE 'lp-loc-%'`
+}
+
+async function assertLocationPreferences(): Promise<void> {
+  console.log('add_location_preferences — the shape:')
+
+  // ── 1. The enum holds exactly the four sorts, in that order ──
+  const enumValues = await prisma.$queryRaw<{ value: string }[]>`
+    SELECT e.enumlabel::text AS value
+    FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
+    WHERE t.typname = 'LocationSort'
+    ORDER BY e.enumsortorder
+  `
+  const enumText = enumValues.map((v) => v.value).join(',')
+  assert(
+    enumText === 'name,lastUpdated,lastVisited,custom',
+    `"LocationSort" holds exactly name, lastUpdated, lastVisited, custom (read: ${enumText || 'no type'})`,
+  )
+
+  // ── 2. The two new columns on existing tables are nullable, and on the
+  //       right table ──
+  const sortMeta = await columnMetaOf('User', 'locationSort')
+  const sortType = await prisma.$queryRaw<{ udt_name: string }[]>`
+    SELECT udt_name::text AS udt_name FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name::text = 'User' AND column_name::text = 'locationSort'
+  `
+  assert(
+    sortMeta?.dataType === 'USER-DEFINED' &&
+      sortMeta.isNullable === 'YES' &&
+      sortType[0]?.udt_name === 'LocationSort',
+    `"User"."locationSort" is a nullable "LocationSort" (read: ${sortMeta ? `${sortMeta.dataType} ${sortType[0]?.udt_name ?? '?'}, nullable=${sortMeta.isNullable}` : 'column missing'})`,
+  )
+  const userRows = await prisma.user.count()
+  const withSort = await prisma.user.count({ where: { locationSort: { not: null } } })
+  assert(
+    withSort === 0,
+    `every existing "User" row reads "locationSort" NULL — no backfill, the server fills in the default (read: ${withSort} of ${userRows} set)`,
+  )
+  const dataMeta = await columnMetaOf('Location', 'dataUpdatedAt')
+  assert(
+    dataMeta?.dataType === 'timestamp without time zone' && dataMeta.isNullable === 'YES',
+    `"Location"."dataUpdatedAt" is a nullable timestamp (read: ${dataMeta ? `${dataMeta.dataType}, nullable=${dataMeta.isNullable}` : 'column missing'})`,
+  )
+  assert(
+    !(await columnNamesOf('ItemStock')).has('dataUpdatedAt') &&
+      !(await columnNamesOf('Household')).has('locationSort'),
+    '"dataUpdatedAt" is NOT on "ItemStock" and "locationSort" is NOT on "Household" — each is on its own table only',
+  )
+
+  // ── 3. The table, its columns, types and nullability ──
+  const expected: Record<string, { type: string; nullable: 'YES' | 'NO' }> = {
+    userId: { type: 'text', nullable: 'NO' },
+    locationId: { type: 'text', nullable: 'NO' },
+    customOrder: { type: 'integer', nullable: 'YES' },
+    lastVisitedAt: { type: 'timestamp without time zone', nullable: 'YES' },
+    updatedAt: { type: 'timestamp without time zone', nullable: 'NO' },
+  }
+  const columns = await columnNamesOf('LocationPreference')
+  assert(
+    columns.size === Object.keys(expected).length,
+    `"LocationPreference" has exactly ${Object.keys(expected).length} columns (read: ${[...columns].sort().join(', ') || 'no table'})`,
+  )
+  for (const [column, want] of Object.entries(expected)) {
+    const meta = await columnMetaOf('LocationPreference', column)
+    assert(
+      meta?.dataType === want.type && meta.isNullable === want.nullable,
+      `"LocationPreference"."${column}" is ${want.type}, nullable=${want.nullable} (read: ${meta ? `${meta.dataType}, nullable=${meta.isNullable}` : 'column missing'})`,
+    )
+  }
+
+  // ── 4. The primary key and the index on "locationId" ──
+  const indexes = await prisma.$queryRaw<{ indexname: string; indexdef: string }[]>`
+    SELECT indexname::text AS indexname, indexdef
+    FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'LocationPreference'
+  `
+  const pkey = indexes.find((i) => i.indexname === 'LocationPreference_pkey')?.indexdef
+  assert(
+    !!pkey && pkey.includes('UNIQUE') && pkey.includes('("userId", "locationId")'),
+    `"LocationPreference_pkey" is the primary key on ("userId", "locationId") (read: ${pkey ?? 'missing'})`,
+  )
+  const byLocation = indexes.find((i) => i.indexname === 'LocationPreference_locationId_idx')?.indexdef
+  assert(
+    !!byLocation && !byLocation.includes('UNIQUE') && byLocation.includes('("locationId")'),
+    `"LocationPreference_locationId_idx" is a plain index on ("locationId") (read: ${byLocation ?? 'missing'})`,
+  )
+  assert(
+    indexes.length === 2,
+    `"LocationPreference" has exactly two indexes (read: ${indexes.map((i) => i.indexname).join(', ') || 'none'})`,
+  )
+
+  // ── 5. Foreign keys: exactly TWO, both CASCADE ──
+  //
+  // Read from information_schema by COLUMN NAME, never with `LIKE '%Id%'`:
+  // the H3a rehearsal matched an unrelated foreign key that way and reported
+  // a false FAIL (apps/server/prisma/CLAUDE.md).
+  const foreignKeys = await prisma.$queryRaw<
+    { column_name: string; foreign_table: string; delete_rule: string }[]
+  >`
+    SELECT kcu.column_name::text AS column_name,
+           ccu.table_name::text AS foreign_table,
+           rc.delete_rule::text AS delete_rule
+    FROM information_schema.table_constraints tc
+    JOIN information_schema.key_column_usage kcu
+      ON kcu.constraint_name = tc.constraint_name AND kcu.table_schema = tc.table_schema
+    JOIN information_schema.referential_constraints rc
+      ON rc.constraint_name = tc.constraint_name AND rc.constraint_schema = tc.table_schema
+    JOIN information_schema.constraint_column_usage ccu
+      ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema
+    WHERE tc.table_schema = 'public'
+      AND tc.table_name::text = 'LocationPreference'
+      AND tc.constraint_type = 'FOREIGN KEY'
+    ORDER BY kcu.column_name
+  `
+  const fkText = foreignKeys.map((f) => `${f.column_name}->${f.foreign_table} ${f.delete_rule}`).join(', ')
+  assert(
+    fkText === 'locationId->Location CASCADE, userId->User CASCADE',
+    `"LocationPreference" has exactly two foreign keys: "locationId" to "Location" and "userId" to "User", both ON DELETE CASCADE (read: ${fkText || 'none'})`,
+  )
+
+  // ── Fixture: one household, two locations, two people ──
+  await prisma.$executeRaw`
+    INSERT INTO "Household" ("id","name","createdAt","updatedAt")
+    VALUES ('lp-house','Preferences',NOW(),NOW())
+  `
+  await prisma.$executeRaw`
+    INSERT INTO "Location" ("id","name","order","householdId","createdAt","updatedAt") VALUES
+      ('lp-loc-1','One',0,'lp-house',NOW(),NOW()),
+      ('lp-loc-2','Two',1,'lp-house',NOW(),NOW())
+  `
+  await prisma.$executeRaw`
+    INSERT INTO "User" ("id","displayName","createdAt","updatedAt") VALUES
+      ('lp-mia','Mia',NOW(),NOW()),
+      ('lp-bea','Bea',NOW(),NOW())
+  `
+
+  console.log('add_location_preferences — the writes and the deletes:')
+
+  // ── 6. A new row: NULL order and visit; one row per person per location ──
+  const first = await postgresCodeOf(
+    () => prisma.$executeRaw`
+      INSERT INTO "LocationPreference" ("userId","locationId","updatedAt") VALUES
+        ('lp-mia','lp-loc-1',NOW()),
+        ('lp-mia','lp-loc-2',NOW()),
+        ('lp-bea','lp-loc-1',NOW()),
+        ('lp-bea','lp-loc-2',NOW())
+    `,
+  )
+  assert(first === undefined, `four preference rows, two people x two locations, are accepted (read: ${first ?? 'no error'})`)
+  const bare = await prisma.$queryRaw<{ customOrder: number | null; lastVisitedAt: Date | null }[]>`
+    SELECT "customOrder", "lastVisitedAt" FROM "LocationPreference"
+    WHERE "userId" = 'lp-mia' AND "locationId" = 'lp-loc-1'
+  `
+  assert(
+    bare.length === 1 && bare[0]?.customOrder === null && bare[0]?.lastVisitedAt === null,
+    `a new row reads "customOrder" and "lastVisitedAt" NULL (read: ${JSON.stringify(bare)})`,
+  )
+  const samePair = await postgresCodeOf(
+    () => prisma.$executeRaw`
+      INSERT INTO "LocationPreference" ("userId","locationId","customOrder","updatedAt")
+      VALUES ('lp-mia','lp-loc-1',3,NOW())
+    `,
+  )
+  assert(
+    samePair === '23505',
+    `a second row for the same person and location is refused with 23505 (read: ${samePair ?? 'no error'})`,
+  )
+  const noLocation = await postgresCodeOf(
+    () => prisma.$executeRaw`
+      INSERT INTO "LocationPreference" ("userId","locationId","updatedAt")
+      VALUES ('lp-mia','lp-no-such-location',NOW())
+    `,
+  )
+  assert(
+    noLocation === '23503',
+    `a row for a location that does not exist is refused with 23503 (read: ${noLocation ?? 'no error'})`,
+  )
+  const noPerson = await postgresCodeOf(
+    () => prisma.$executeRaw`
+      INSERT INTO "LocationPreference" ("userId","locationId","updatedAt")
+      VALUES ('lp-no-such-user','lp-loc-1',NOW())
+    `,
+  )
+  assert(
+    noPerson === '23503',
+    `a row for a person with no "User" row is refused with 23503 (read: ${noPerson ?? 'no error'})`,
+  )
+
+  // ── 7. The two cascades ──
+  const prefKeys = async () =>
+    (
+      await prisma.$queryRaw<{ k: string }[]>`
+        SELECT "userId" || '@' || "locationId" AS k FROM "LocationPreference"
+        WHERE "userId" LIKE 'lp-%' ORDER BY 1
+      `
+    )
+      .map((r) => r.k)
+      .join(',')
+
+  // A location goes: its rows go, the other location's stay.
+  await prisma.$executeRaw`DELETE FROM "Location" WHERE "id" = 'lp-loc-1'`
+  const afterLocation = await prefKeys()
+  assert(
+    afterLocation === 'lp-bea@lp-loc-2,lp-mia@lp-loc-2',
+    `deleting a location deletes its preference rows and keeps another location's (read: ${afterLocation || 'none'})`,
+  )
+
+  // A person goes: their rows go, the other person's stay.
+  await prisma.$executeRaw`DELETE FROM "User" WHERE "id" = 'lp-mia'`
+  const afterUser = await prefKeys()
+  assert(
+    afterUser === 'lp-bea@lp-loc-2',
+    `deleting a "User" deletes their preference rows and keeps another person's (read: ${afterUser || 'none'})`,
+  )
+
+  // ── Clean up every row this block wrote ──
+  await prisma.$executeRaw`DELETE FROM "LocationPreference" WHERE "userId" LIKE 'lp-%'`
+  await prisma.$executeRaw`DELETE FROM "Location" WHERE "id" LIKE 'lp-loc-%'`
+  await prisma.$executeRaw`DELETE FROM "Household" WHERE "id" = 'lp-house'`
+  await prisma.$executeRaw`DELETE FROM "User" WHERE "id" LIKE 'lp-%'`
+}
+
 async function main(): Promise<void> {
   // Self-heal: if a previous run was killed between parking and restoring,
   // recover instead of throwing on the renameSync below.
@@ -3112,6 +3454,10 @@ async function main(): Promise<void> {
 
     // Duplicate cart rows, which only a database before shared_carts can hold.
     await seedSharedCartDuplicates()
+
+    // Stock rows with fixed times, which add_location_preferences' backfill
+    // reads (households H7b task M.1). Raw SQL only: see the function.
+    await seedLocationPreferenceBackfill()
   } finally {
     restoreIfParked()
     parked = false
@@ -3121,6 +3467,11 @@ async function main(): Promise<void> {
   // and `migrationDeploys.ts` says those are exactly this group.
   console.log(`Applying the "last" deploy: ${migrationsOfDeploy('last').join(', ')}...`)
   execSync('pnpm exec prisma migrate deploy', { cwd: SERVER_DIR, env, stdio: 'inherit' })
+
+  // FIRST after the deploy: it compares "dataUpdatedAt" with the stock rows'
+  // times, so it must run before any later block writes a stock row.
+  console.log(`Asserting the backfill of ${LOCATION_PREFERENCES_MIGRATION}...`)
+  await assertLocationDataUpdatedAtBackfill()
 
   console.log(`Asserting, after ${SHARED_CARTS_MIGRATION}...`)
   await assertSharedCarts()
@@ -3135,6 +3486,9 @@ async function main(): Promise<void> {
 
   console.log(`Asserting, after ${OWNERSHIP_OFFERS_MIGRATION}...`)
   await assertOwnershipOffers()
+
+  console.log(`Asserting, after ${LOCATION_PREFERENCES_MIGRATION}...`)
+  await assertLocationPreferences()
 
   // ══════════════════════════════════════════════════════════════════════
   // PR 5 — Item's five stock state columns are gone, ItemStock's are not

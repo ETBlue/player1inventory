@@ -140,6 +140,8 @@ function locationRow(id: string, order: number) {
     order,
     myRole: roles[server.me] ?? null,
     hasOrganizer: Object.values(roles).includes('organizer'),
+    dataUpdatedAt: null,
+    lastVisitedAt: null,
   }
 }
 

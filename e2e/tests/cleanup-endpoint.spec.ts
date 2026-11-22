@@ -18,7 +18,8 @@ import { makeGql } from '../utils/cloud'
 // user OWNS, plus the user's own role rows, and returns 18 counts (19 since
 // households H5b task G.6 added `householdInvites`, 20 since households H6
 // task J.1 added `householdActivities`, 21 since households H6b task K.1
-// added `ownershipOffers`). The seed
+// added `ownershipOffers`, 22 since households H7b task M.1 added
+// `locationPreferences`). The seed
 // below makes the user's household on the first request (first sign-in), so
 // the three new counts — `locationMembers`, `householdMembers` and
 // `households` — are at least 1 too. The rule "never delete a household the
@@ -328,6 +329,21 @@ test.describe('the /e2e/cleanup endpoint really deletes', () => {
     }>(`query { household { pendingTransfer { toUserId } } }`)
     expect(household.pendingTransfer?.toUserId).toBe(OFFER_MEMBER)
 
+    // LocationPreference — one row, written by the real `markLocationVisited`
+    // mutation (households H7b task M.2): the user's visit to Home. It is
+    // the user's own row, so the `userId` half of the cleanup's filter can
+    // delete it; the delete runs before the location delete, which would
+    // take it by cascade. `true` means the row was written.
+    const { markLocationVisited } = await gql<{
+      markLocationVisited: boolean
+    }>(
+      `mutation ($locationId: ID!) { markLocationVisited(locationId: $locationId) }`,
+      {
+        locationId: home.id,
+      },
+    )
+    expect(markLocationVisited).toBe(true)
+
     // ── The seed really wrote rows ───────────────────────────────────────────
     //
     // A seed that quietly wrote nothing would leave every readback empty, so the
@@ -377,6 +393,10 @@ test.describe('the /e2e/cleanup endpoint really deletes', () => {
     expect(deleted.householdActivities).toBeGreaterThanOrEqual(1)
     // And for the model households H6b task K.1 added.
     expect(deleted.ownershipOffers).toBeGreaterThanOrEqual(1)
+    // And for the model households H7b task M.1 added. The seed's visit
+    // above wrote its row (task M.5). Between tasks M.1 and M.5 nothing
+    // seeded one, and this spec failed on `"locationPreferences":0`.
+    expect(deleted.locationPreferences).toBeGreaterThanOrEqual(1)
 
     // ── And nothing of the user's is left ────────────────────────────────────
     const after = await gql<ReadBack>(READ_BACK, { itemId })

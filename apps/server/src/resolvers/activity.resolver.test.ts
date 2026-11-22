@@ -79,6 +79,7 @@ function user(
     deletedAt,
     householdSetupAt: T0,
     activeHouseholdId,
+    locationSort: null,
     createdAt: T0,
     updatedAt: T0,
   }

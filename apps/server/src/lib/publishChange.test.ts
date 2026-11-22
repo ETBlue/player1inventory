@@ -1,7 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('./prisma.js', () => ({
-  prisma: { location: { findMany: vi.fn() } },
+  prisma: { location: { findMany: vi.fn(), updateMany: vi.fn() } },
 }))
 
 import { prisma } from './prisma.js'
@@ -9,6 +9,7 @@ import { type ChangeEvent, createLiveEvents } from './liveEvents.js'
 import { publishChange, publishHouseholdChange } from './publishChange.js'
 
 const findMany = prisma.location.findMany as unknown as ReturnType<typeof vi.fn>
+const updateMany = prisma.location.updateMany as unknown as ReturnType<typeof vi.fn>
 
 // Each test gets its own bus, through `publishChange`'s `bus` argument, so no
 // listener of the default bus can see these events.
@@ -184,5 +185,115 @@ describe('publishHouseholdChange (households H3c-2)', () => {
 
     expect(log).toHaveBeenCalledWith('publishChange: could not publish a change:', 'TypeError')
     log.mockRestore()
+  })
+})
+
+describe('publishChange sets Location.dataUpdatedAt (households H7b, decision T79)', () => {
+  const NOW = new Date('2026-11-22T10:00:00.000Z')
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(NOW)
+    updateMany.mockResolvedValue({ count: 0 })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('STOCK at one location and CART at another set dataUpdatedAt on both, in ONE updateMany', async () => {
+    const { bus } = recordingBus()
+
+    await publishChange({ userId: 'u' }, ['STOCK'], [{ locationId: 'a', householdId: 'h1' }], bus)
+    await publishChange({ userId: 'u' }, ['CART'], [{ locationId: 'b', householdId: 'h1' }], bus)
+    await publishChange(
+      { userId: 'u' },
+      ['LOG', 'CART'],
+      [
+        { locationId: 'a', householdId: 'h1' },
+        { locationId: 'b', householdId: 'h1' },
+        { locationId: 'a', householdId: 'h1' },
+      ],
+      bus,
+    )
+
+    expect(updateMany.mock.calls).toEqual([
+      [{ where: { id: { in: ['a'] } }, data: { dataUpdatedAt: NOW } }],
+      [{ where: { id: { in: ['b'] } }, data: { dataUpdatedAt: NOW } }],
+      // Two kinds, two locations, one named twice: still one call.
+      [{ where: { id: { in: ['a', 'b'] } }, data: { dataUpdatedAt: NOW } }],
+    ])
+  })
+
+  it('LOCATION and CATALOG set nothing', async () => {
+    const { bus, seen } = recordingBus()
+
+    await publishChange(
+      { userId: 'u' },
+      ['LOCATION', 'CATALOG'],
+      [{ locationId: 'a', householdId: 'h1' }],
+      bus,
+    )
+    await publishHouseholdChange({ userId: 'u' }, ['LOCATION', 'CATALOG'], 'h1', bus)
+
+    expect(updateMany).not.toHaveBeenCalled()
+    // The events still go out.
+    expect(seen).toHaveLength(4)
+  })
+
+  it('a mix of kinds sets it only because of the data kinds', async () => {
+    const { bus } = recordingBus()
+
+    await publishChange({ userId: 'u' }, ['CATALOG', 'STOCK'], [{ locationId: 'a', householdId: 'h1' }], bus)
+
+    expect(updateMany).toHaveBeenCalledTimes(1)
+  })
+
+  it('an updateMany that throws does not stop the events, and does not throw', async () => {
+    updateMany.mockRejectedValue(new TypeError('database down'))
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const { bus, seen } = recordingBus()
+
+    await expect(
+      publishChange(
+        { userId: 'u', clientId: 'tab' },
+        ['STOCK'],
+        [
+          { locationId: 'a', householdId: 'h1' },
+          { locationId: 'b', householdId: 'h1' },
+        ],
+        bus,
+      ),
+    ).resolves.toBeUndefined()
+
+    expect(seen).toStrictEqual([
+      { kind: 'STOCK', householdId: 'h1', locationId: 'a', sourceClientId: 'tab' },
+      { kind: 'STOCK', householdId: 'h1', locationId: 'b', sourceClientId: 'tab' },
+    ])
+    // The error's name only, never its message.
+    expect(log).toHaveBeenCalledWith('publishChange: could not set dataUpdatedAt:', 'TypeError')
+    log.mockRestore()
+  })
+
+  it('still sets dataUpdatedAt when the household lookup fails', async () => {
+    findMany.mockRejectedValue(new Error('database down'))
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const { bus } = recordingBus()
+
+    await publishChange({ userId: 'u' }, ['LOG'], [{ locationId: 'a' }], bus)
+
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['a'] } },
+      data: { dataUpdatedAt: NOW },
+    })
+    log.mockRestore()
+  })
+
+  it('reads and writes nothing for an empty list', async () => {
+    const { bus } = recordingBus()
+
+    await publishChange({ userId: 'u' }, ['STOCK'], [], bus)
+
+    expect(updateMany).not.toHaveBeenCalled()
   })
 })

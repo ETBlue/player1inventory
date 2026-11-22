@@ -14,6 +14,7 @@ import { bootstrapCarts, getLocations } from '@/db/operations'
 import {
   type LocationRole,
   useBootstrapCartsMutation,
+  useMarkLocationVisitedMutation,
 } from '@/generated/graphql'
 import { useLocations } from '@/hooks/useLocations'
 import i18n from '@/i18n'
@@ -120,6 +121,7 @@ export function ActiveLocationProvider({ children }: { children: ReactNode }) {
   // Always called (Rules of Hooks). Safe in local mode: main.tsx wraps every
   // render with a no-op ApolloProvider, and the cloud effect below never fires.
   const [cloudBootstrapCarts] = useBootstrapCartsMutation()
+  const [cloudMarkVisited] = useMarkLocationVisitedMutation()
   const [activeLocationId, setActiveLocationIdState] = useState<string>(() =>
     readStoredLocationId(mode),
   )
@@ -404,6 +406,57 @@ export function ActiveLocationProvider({ children }: { children: ReactNode }) {
     activeLocationIsWritable,
     cloudBootstrapCarts,
   ])
+
+  // ── THE VISIT (households H7b, decision T80, owner decision O55-A) ──
+  //
+  // A location counts as visited when it BECOMES the active location: picked
+  // in the switcher, opened from a link, or picked by the app because the
+  // old one is gone. The first active location after a page load counts
+  // too. O55-A names "picked by the app", and opening the app on a location
+  // is a visit in the plain sense. The server writes at most once a minute
+  // per person and location (it answers `false` and writes nothing when the
+  // last visit is under 60 seconds old), so a reload or a burst of switches
+  // costs no extra rows.
+  //
+  // Cloud only: local mode has no visits (owner decision O54-B). Gated on
+  // the id being in the loaded list, like the cart bootstrap above: the
+  // `'local'` sentinel of a fresh session names no cloud location and would
+  // be refused with FORBIDDEN. A location in the list has a role, and the
+  // server asks only `viewer`, so a viewer's visit counts too.
+  //
+  // `visitedRef` holds the last id sent. The effect's deps are already
+  // stable (a boolean, not the `locations` array, which is new on every
+  // render; see the cart bootstrap), so the ref only covers the list going
+  // unknown and known again with the same active id, for example during the
+  // `resetStore()` at the end of an import. Without it that would send one
+  // more visit, which the server's 60-second rule then mostly skips. No test
+  // pins the ref: removing it leaves every test green. When the server wrote
+  // the visit, the cached
+  // `Location.lastVisitedAt` is set to now, so a list sorted by "Last
+  // visited" moves at once. A failed call changes nothing and is not
+  // retried; the next change of location sends again.
+  const visitedRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (mode !== 'cloud') return
+    if (!activeLocationIsKnown) return
+    if (visitedRef.current === activeLocationId) return
+    visitedRef.current = activeLocationId
+    const locationId = activeLocationId
+    cloudMarkVisited({
+      variables: { locationId },
+      update: (cache, { data }) => {
+        if (!data?.markLocationVisited) return
+        const id = cache.identify({ __typename: 'Location', id: locationId })
+        if (!id) return
+        cache.modify({
+          id,
+          fields: { lastVisitedAt: () => new Date().toISOString() },
+        })
+      },
+    }).catch(() => {
+      // A lost visit only moves a sort; nothing to tell the person.
+    })
+  }, [mode, activeLocationId, activeLocationIsKnown, cloudMarkVisited])
 
   const activeLocation = useMemo(
     () => locations?.find((loc) => loc.id === activeLocationId),

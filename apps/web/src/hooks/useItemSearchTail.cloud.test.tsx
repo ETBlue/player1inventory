@@ -14,6 +14,7 @@ import {
   getLocationsMock,
   LOC_A,
   LOC_B,
+  markLocationVisitedMock,
 } from '@/test/cloudFixtures'
 import {
   ActiveLocationProvider,
@@ -73,6 +74,7 @@ const pantryMock = (locationId: string) => ({
 
 const MOCKS = [
   bootstrapCartsMock,
+  markLocationVisitedMock,
   getLocationsMock,
   pantryMock(LOC_A),
   pantryMock(LOC_B),

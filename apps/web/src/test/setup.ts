@@ -401,6 +401,23 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
     ],
+    // Households H7b task M.4. `useLocationSort` (the switcher and Settings ›
+    // Locations) calls the first two on every render, and
+    // `ActiveLocationProvider` calls the third on every render, in both data
+    // modes (Rules of Hooks).
+    useMyLocationSortQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useSetLocationSortMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useMarkLocationVisitedMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
     useGetHouseholdQuery: () => ({
       data: undefined,
       loading: false,

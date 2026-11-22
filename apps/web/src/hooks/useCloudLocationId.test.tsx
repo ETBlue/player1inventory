@@ -45,6 +45,8 @@ const location = (id: string, name: string, order: number) => ({
   name,
   order,
   myRole: 'organizer' as const,
+  dataUpdatedAt: null,
+  lastVisitedAt: null,
 })
 
 function wrapperWith(mocks: NonNullable<MockedProviderProps['mocks']>) {

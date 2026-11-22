@@ -363,11 +363,13 @@ describe('the deleteLocation event reaches the right people', () => {
 // ─── reorderLocations ────────────────────────────────────────────────────────
 
 describe('reorderLocations', () => {
-  it('publishes one LOCATION for the household, after the commit', async () => {
+  // Since households H7b (task M.3, decision T78) the order is the caller's
+  // own, so a reorder publishes nothing. It published one household-level
+  // LOCATION until then.
+  it('publishes nothing: only the caller sees their order', async () => {
     const res = await run(REORDER, { ids: [LOC_GARAGE, LOC_HOME] }, ALICE)
     expect(res.errors).toBeUndefined()
-    expect(events()).toEqual([household('LOCATION', 'hh_home')])
-    expect(seen[0]?.inTransaction).toBe(false)
+    expect(events()).toEqual([])
   })
 
   it('an empty list writes nothing and publishes nothing', async () => {

@@ -47,7 +47,7 @@ force-push, and a merge breaks the repo's rebase-only rule.
 | H4 Import and export | Outline. Detailed plan: [2026-11-16-households-plan-h4.md](2026-11-16-households-plan-h4.md) ✅ merged into `develop` (#382, merge `bf87e839`), not deployed; deploy: [runbook](../backend/2026-11-17-deploy-runbook-households-h4.md) | 4 |
 | H5 Invites, join, members, read-only views | Outline. Split into H5a, H5b and H5c; detailed plan for H5a: [2026-11-17-households-plan-h5.md](2026-11-17-households-plan-h5.md) (H5a ✅ merged into `develop` (#384, merge `4307d30a`), not deployed; H5b ✅ merged into `develop` (#385, merge `938fa2aa`), not deployed: [2026-11-18-households-plan-h5b.md](2026-11-18-households-plan-h5b.md); H5c ✅ merged into `develop` (#391, merge `7dbaeca9`), not deployed: [2026-11-19-households-plan-h5c.md](2026-11-19-households-plan-h5c.md)) | 5 |
 | H6 Transfer, hand-over, purges, activity | Outline. Detailed plan: [2026-11-20-households-plan-h6.md](2026-11-20-households-plan-h6.md), split into H6a and H6b (O32-A). H6a ✅ merged into `develop` (2026-11-20, #392, merge `c0f096ed`), not deployed; H6b ✅ merged into `develop` (2026-11-21, #393, merge `9701ddff`), not deployed | 6 |
-| H7 Personal location order, household switch and create | Outline. Detailed plan: [2026-11-21-households-plan-h7.md](2026-11-21-households-plan-h7.md), split into H7a and H7b (O49-A). H7a ✅ built 2026-11-21 on `feature/households-h7a`, not merged, not deployed; H7b not built | 7 |
+| H7 Personal location order, household switch and create | Outline. Detailed plan: [2026-11-21-households-plan-h7.md](2026-11-21-households-plan-h7.md), split into H7a and H7b (O49-A). H7a ✅ merged into `develop` (2026-11-22, #394, merge `bf71f485`), not deployed; H7b built on `feature/households-h7b`, not merged, not deployed | 7 |
 
 **Why only H1 and H2 are detailed now.** H3–H7 will change code that H1 and H2 have not
 written yet. A detailed task written today would name files, lines and test counts that are
@@ -825,8 +825,8 @@ PRs (owner decision O49-A).
 
 | Part | Content | State |
 |---|---|---|
-| **H7a** (tasks L.1–L.7) | no migration; the `x-household-id` header and `HOUSEHOLD_CHANGED` in `requireHousehold` (O21 fixed); `myHouseholds`, `setActiveHousehold`, `createHousehold(alsoWhenMember:)`; **Switch to…** and **Create new**; the reload message (O51-A, wording O56-A); the copy into a chosen household or a new one (O22-A, O57-B); `household-switch.spec.ts` | ✅ built 2026-11-21 on `feature/households-h7a`, not merged, not deployed. Deploy notes: section 13 of the [H4 runbook](../backend/2026-11-17-deploy-runbook-households-h4.md) |
-| **H7b** (tasks M.1–M.6) | one additive migration (`LocationPreference`, `User.locationSort`, `Location.dataUpdatedAt`); personal order; the four sorts | not built |
+| **H7a** (tasks L.1–L.7) | no migration; the `x-household-id` header and `HOUSEHOLD_CHANGED` in `requireHousehold` (O21 fixed); `myHouseholds`, `setActiveHousehold`, `createHousehold(alsoWhenMember:)`; **Switch to…** and **Create new**; the reload message (O51-A, wording O56-A); the copy into a chosen household or a new one (O22-A, O57-B); `household-switch.spec.ts` | ✅ merged into `develop` (2026-11-22, #394, merge `bf71f485`), not deployed. Deploy notes: section 13 of the [H4 runbook](../backend/2026-11-17-deploy-runbook-households-h4.md) |
+| **H7b** (tasks M.1–M.6) | one additive migration with one backfill (`LocationPreference`, `User.locationSort`, `Location.dataUpdatedAt`); personal order; `reorderLocations` for every household role, writing the person's own order; the four sorts; `markLocationVisited`; `location-sort.spec.ts` | built on `feature/households-h7b`, not merged, not deployed (2026-11-22); deploy notes in section 14 of the H4 runbook |
 
 **What changed from this outline.** The copy into another household needs NO household input
 on `importCheck`, `clearAllData` or the 22 bulk import mutations (H7 decision T71). The web

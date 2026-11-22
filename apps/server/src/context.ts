@@ -115,6 +115,22 @@ export interface RequestCache {
    * because a create, delete or reorder changes which location is first.
    */
   firstLocationIds?: Map<string, Promise<string | null>>
+  /**
+   * The caller's own `LocationPreference` rows, by location id (households
+   * H7b, decision T77). Set by `locationPreferencesOf`
+   * (lib/locationPreferences.ts), so a list of N locations reads them once.
+   * ONE read for the caller, not one per household: the rows are the
+   * caller's own, and the field resolvers look them up by location id.
+   * Cleared by `forgetLocationRoles`, so a write earlier in the same
+   * mutation is seen.
+   */
+  locationPreferences?: Promise<Map<string, LocationPreferenceValues>>
+}
+
+/** The values of one `LocationPreference` row the resolvers read. */
+export interface LocationPreferenceValues {
+  customOrder: number | null
+  lastVisitedAt: Date | null
 }
 
 export interface Context {

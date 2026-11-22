@@ -55,6 +55,8 @@ const cloudLocation = (id: string, name: string, order: number) => ({
   updatedAt: '2026-08-02T11:00:00.000Z',
   // `GetLocations` selects the caller's role (households H5 task F.1).
   myRole: 'organizer' as const,
+  dataUpdatedAt: null,
+  lastVisitedAt: null,
 })
 
 const getLocationsMock = {
