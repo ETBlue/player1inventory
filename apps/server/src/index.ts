@@ -8,6 +8,7 @@ import { expressMiddleware } from '@as-integrations/express5'
 import { DEFAULT_CLIENT_ORIGIN, DEFAULT_PORT, GRAPHQL_PATH } from './constants.js'
 import { clerkWebhookHandler } from './lib/clerkWebhook.js'
 import { e2eCleanupHandler, errorCodeOf, installE2eCleanupFunction } from './lib/e2eCleanup.js'
+import { e2eDatabaseHandler } from './lib/e2eDatabase.js'
 import { e2eAddHouseholdMemberHandler } from './lib/e2eHouseholds.js'
 import {
   e2eCreateUserHandler,
@@ -79,6 +80,13 @@ if (E2E_TEST_MODE) {
   // roles (lib/e2eHouseholds.ts, households H3a task 3.11). It adds anybody to
   // anybody's household with no check of who asks, so it must stay in here.
   app.post('/e2e/household-members', e2eAddHouseholdMemberHandler)
+
+  // Which E2E database this server uses (`local` or `neon`, from
+  // E2E_DATABASE) and how many migrations it has (lib/e2eDatabase.ts, E2E
+  // speed plan task S.6). It never answers a URL or a host. The E2E run's
+  // globalSetup reads it, so a run on the wrong or a stale database stops at
+  // the start.
+  app.get('/e2e/database', e2eDatabaseHandler)
 }
 
 // Where ensureUser takes a new User row's name and email. E2E mode never
