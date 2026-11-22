@@ -1308,6 +1308,11 @@ pass. The `cloud-neon` row covers the pooler, the live socket and the lock races
 PR; the checkpoint gate covers the rest. See `e2e/CLAUDE.md`, *Which database each cloud
 project uses*.
 
+Measured 2026-11-23 (E2E speed plan task S.9), all green: the per-PR gate **21m44s** and
+**21m24s** (two runs; `cloud` 4m16s and 4m04s, `cloud-neon` 12m01s and 11m51s), the
+checkpoint gate **44m33s** (`cloud-neon` with all 40 files, 39m10s). Before the plan: 69m26s.
+The numbers per row are in `e2e/CLAUDE.md`, *Cloud E2E is not database-isolated*.
+
 **The per-PR gate needs the local E2E database on this machine**, migrated to the newest
 migration. One-time setup and the rule "run `pnpm --filter server e2e:db:migrate` after
 every new migration" are in `e2e/CLAUDE.md`, *The local E2E database*. A database that is

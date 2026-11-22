@@ -185,7 +185,27 @@ The last E2E counts on the H3a branch, 2026-11-11, from **three separate runs** 
 `pnpm test:e2e:all`): `cloud` **126 passed / 7 skipped**, `local` **178 passed / 6 skipped**,
 `pwa` **73 passed**. Re-measure rather than quote.
 
-The last whole gate, `pnpm test:e2e:all` on `chore/e2e-speed` at `9e439f00` on 2026-11-23
+The last whole gates, on `chore/e2e-speed-b` at `aa327e69` on 2026-11-23 (E2E speed plan task
+S.9, after PR B: `cloud` on the local database, `cloud-neon` on Neon), each first try, no
+retry, no flaky test, **all green**. Two `pnpm test:e2e:all` runs in a row, then one
+`pnpm test:e2e:all:neon`:
+
+| Row | Database | Gate run 1 | Gate run 2 | `test:e2e:all:neon` |
+|---|---|---|---|---|
+| `local` | — | 3m49s, 179 passed / 11 skipped | 3m51s, 179 / 11 | 3m47s, 179 / 11 |
+| `cloud` | local Postgres | **4m16s** (255.0 s), 212 passed / 8 skipped | **4m04s** (243.3 s), 212 / 8 | — |
+| `cloud-neon` | Neon test branch | 12m01s (720.5 s), 40 passed (8 files) | 11m51s (710.6 s), 40 passed | **39m10s** (2348.6 s), 212 passed / 8 skipped (all 40 files) |
+| `pwa` | — | 1m38s, 73 passed | 1m37s, 73 passed | 1m36s, 73 passed |
+| wall clock | | **21m44s** | **21m24s** | **44m33s** |
+
+Load average (1 min, every 60 s): gate run 1 min 2.34, max 6.55, mean 4.26; gate run 2 min
+2.20, max 7.33, mean 3.94; the Neon run min 2.30, max 6.32, mean 3.51. "Inactive" memory
+never fell below 5.67 GB. Each `cloud` run's `globalSetup` deleted 35 E2E users left by the
+run before (each test cleans in `beforeEach`, so a spec's last test leaves its rows). The
+slowest `cloud-neon` file in the gate is `settings/import-export-cloud.spec.ts`, 290.1 s and
+272.2 s.
+
+The whole gate before PR B, `pnpm test:e2e:all` on `chore/e2e-speed` at `9e439f00` on 2026-11-23
 (E2E speed plan task S.5, after PR A: one-trip cleanup, one cleanup per test, `globalSetup`),
 first try, no retry, **all green**, 45m52s wall clock:
 

@@ -1260,8 +1260,9 @@ Copy `e2e-results/` (it holds `test-results-cloud-neon/`) aside before any re-ru
 real failure from a phantom with the three proofs there. A test that fails on Neon and
 passes on the local database is a real difference, not noise.
 
-**Measured on `chore/e2e-speed-b`, 2026-11-23:** see the E2E speed plan, task S.9, for the
-time. Expect about 40 minutes for the `cloud-neon` row.
+**Measured on `chore/e2e-speed-b` at `aa327e69`, 2026-11-23** (E2E speed plan task S.9):
+all green, **44m33s** wall clock. `local` 3m47s (179 passed / 11 skipped), `cloud-neon`
+39m10s (212 passed / 8 skipped), `pwa` 1m36s (73 passed).
 
 ## Where this file lives, and why
 
