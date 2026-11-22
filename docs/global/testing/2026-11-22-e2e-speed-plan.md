@@ -295,14 +295,14 @@ total within 2 s.
 `apps/server/src/lib/e2eCleanup.test.ts`, `apps/server/src/index.ts`,
 `apps/server/src/resolvers/purge-coverage.test.ts`.
 
-- [ ] **Step 0: measure the baseline** of `pnpm test` (web, server, `scripts/spec`) and of
+- [x] **Step 0: measure the baseline** of `pnpm test` (web, server, `scripts/spec`) and of
   one call: 20 calls of `DELETE /e2e/cleanup` with nothing to delete, on the Neon test
   branch, p50 and p90 (S.1's scratch script or a copy of the measurement script; do not
   commit it). Expect about 1332 ms p50.
-- [ ] **Step 1: check that Prisma ignores functions.** Read Prisma 6's documentation on
+- [x] **Step 1: check that Prisma ignores functions.** Read Prisma 6's documentation on
   what `migrate diff` and `migrate dev` compare. If they would report the function as
   drift, stop and report: owner question P4 then needs option B.
-- [ ] **Step 2: write the failing tests** in `e2eCleanup.test.ts` (replace the mock of the
+- [x] **Step 2: write the failing tests** in `e2eCleanup.test.ts` (replace the mock of the
   array form of `$transaction`):
   - one `$queryRaw` call, no `$transaction`, no `deleteMany`;
   - the user ids reach the query as a bound value (`Prisma.Sql.values`), never as text in
@@ -316,33 +316,62 @@ total within 2 s.
     are exactly the 22 models of `MODELS`, in that order, each once;
   - the key list still equals `CLEANUP_MODEL_KEYS` in `e2e/helpers/cloudTeardown.ts` (keep
     that test).
-- [ ] **Step 3: `purge-coverage.test.ts`.** The `e2eCleanup` path reads
+- [x] **Step 3: `purge-coverage.test.ts`.** The `e2eCleanup` path reads
   `E2E_CLEANUP_FUNCTION_SQL`, not `prisma.<model>.deleteMany(` in `e2eCleanup.ts`. For each
   model: one `DELETE FROM "<Model>"`, and its `WHERE` text matches the one allowed SQL form
   for that model (a new `SQL_MODEL_PATHS`, written from today's `MODEL_PATHS` filters).
   `kept` stays `[]`. The `deleteHouseholdData` path does not change. Read the file's header
   first and keep its rules.
-- [ ] **Step 4:** run: red.
-- [ ] **Step 5: the function.** `E2E_CLEANUP_FUNCTION_SQL` holds
+- [x] **Step 4:** run: red.
+- [x] **Step 5: the function.** `E2E_CLEANUP_FUNCTION_SQL` holds
   `CREATE OR REPLACE FUNCTION e2e_cleanup(user_ids text[]) RETURNS jsonb LANGUAGE plpgsql`.
   First the owned households into a local `text[]` (the same rule as today: a `HouseholdMember`
   row with `role = 'owner'` for one of the users). Then the 22 `DELETE` statements, one for
   each `deleteMany` of today, same order, same filter, each followed by
   `GET DIAGNOSTICS c = ROW_COUNT` and one key added to the result. Port the comments that
   say why each statement is where it is. Quote every table and column name.
-- [ ] **Step 6: the handler.** `e2eCleanupHandler` calls
+- [x] **Step 6: the handler.** `e2eCleanupHandler` calls
   `` prisma.$queryRaw`SELECT e2e_cleanup(${userIds}::text[]) AS deleted` `` once, checks the
   22 keys, calls `forgetSeenToday` per user, and answers `{ ok: true, deleted }` as today.
-- [ ] **Step 7: create the function at start.** In `index.ts`, inside
+- [x] **Step 7: create the function at start.** In `index.ts`, inside
   `if (E2E_TEST_MODE)`, before `listen`: `await prisma.$executeRawUnsafe(E2E_CLEANUP_FUNCTION_SQL)`.
   A failure logs the error code only (never the message: it can hold a host) and exits
   non-zero. `scripts/check-start.mjs` runs with `E2E_TEST_MODE=false`, so it does not reach
   this line; check that it still passes.
-- [ ] **Step 8:** the gate without E2E. Then `pnpm test:e2e --project=cloud
+- [x] **Step 8:** the gate without E2E. Then `pnpm test:e2e --project=cloud
   e2e/tests/cleanup-endpoint.spec.ts e2e/tests/household-member-cleanup.spec.ts
   e2e/tests/purge-two-households.spec.ts`: all green.
-- [ ] **Step 9: measure** the 20 calls again, the same way as step 0. Expect p50 under
+- [x] **Step 9: measure** the 20 calls again, the same way as step 0. Expect p50 under
   200 ms on Neon. Record both numbers.
+
+**Done 2026-11-22** in `feab8caf`, on `chore/e2e-speed`.
+
+- **Step 1:** Prisma 6 does not see the function. At prisma-engines tag 6.19.0 (installed
+  6.19.3), `get_procedures` (`sql-schema-describer/src/postgres.rs`) reads `pg_proc`, but no
+  file of `sql-schema-connector/src` reads it except the SQL Server flavour, which drops
+  functions on reset. So `migrate diff` and the drift check of `migrate dev` do not compare
+  functions. The test database is only migrated with `migrate deploy` and `migrate reset`,
+  which run no drift check.
+- **The code:** the SQL is in `apps/server/src/lib/e2eCleanupSql.ts`. The handler makes one
+  `$queryRaw` with `Prisma.sql`, so the ids are `$1`. It answers 500 and names the key when a
+  count is missing, unknown or not a whole number. `installE2eCleanupFunction()` runs inside
+  `if (E2E_TEST_MODE)` before `listen`; on failure it logs `errorCodeOf(err)` (class and
+  codes, never the message) and exits with 1. `webhookRouteOrder.test.ts` checks that the
+  call is inside the E2E block. `purge-coverage.test.ts` builds the SQL `WHERE` forms from
+  `MODEL_PATHS` plus `SQL_RELATIONS` (4 entries); the 8 other forms are in
+  `SQL_CLEANUP_EXCEPTIONS`.
+- **Speed** (20 calls on the Neon test branch, through the E2E server, nothing to delete):
+  p50 1360 → **67 ms**, p90 1458 → **68 ms**. With one owned household: p50 1360 → 68 ms,
+  p90 1408 → 71 ms. The other queries were about 19% slower in the "after" run, so the gain
+  is not network noise.
+- **Gate without E2E:** all green. `pnpm test`: web 3899 / 378, server 2850 / 89 (was 2834),
+  `scripts/spec` 78. esbuild 271.2 KiB.
+- **E2E:** the 3 specs of step 8: 6 passed, twice (before and after the mutation runs).
+- **Mutations:** all 8 went red in unit tests (M1 `"ItemTag"` DELETE removed, M2 `"Item"`
+  above `"ItemTag"`, M3 `"Location"` filter, M4 `"HouseholdInvite"` after `"User"`, M5 ids
+  in the SQL text, M6 `forgetSeenToday` first, M7 the install call removed, M8 the owner
+  filter removed). In `cleanup-endpoint.spec.ts`: M2 `itemTags: 0`, M3 `locations: 0`, M4
+  `householdInvites: 0`. M1 stayed GREEN there (see *What this plan got wrong*).
 
 **Mutation checks** (copy the green file aside before each, restore from the copy; never
 `git checkout -- <file>`):
@@ -681,6 +710,13 @@ Otherwise the run gets killed, as on 2026-10-31.
 | S.1 step 1 | "Keep whatever prints the N passed lines" | nothing in the config prints them. Playwright adds its `line` reporter when no configured reporter writes to the terminal, which is still true with `html` plus `json` to a file |
 | S.1 step 2 | run `e2e-times.mjs e2e-results/*.json` | the glob can read a stale or foreign file. `run-all.sh` deletes each project's file before its run and passes the three files by name |
 | *Known gaps* (missing) | — | each Playwright run deletes `test-results/`, so inside `run-all.sh` a failure in `local` loses its error files when `cloud` starts. Keep `test-results/` per project (S.5 or S.9) |
+| S.2 mutation table, row 1 | removing the `"ItemTag"` DELETE turns `cleanup-endpoint.spec.ts` red with `itemTags: 0` | with its `GET DIAGNOSTICS` line kept, the spec stays GREEN. `ROW_COUNT` gives the previous delete's count (`Cart`, 2), and the `Item` delete removes the ItemTag rows by cascade. Only the SQL text unit tests catch it |
+| S.2 mutation table, row 4 | moving `"HouseholdInvite"` after `"User"` makes the `User` delete fail on RESTRICT, so the route answers 500 | the seeded invite is in the user's own household, so the household delete removes it by cascade. The spec goes red only on `householdInvites: 0`. No E2E seed reaches the RESTRICT case (an invite made in a household the user does not own) |
+| S.2 step 2 | check the bound value through `Prisma.Sql.values` | `Prisma.Sql` cannot be used with `toBeInstanceOf` at run time. `.values` works; the `$1` text is in `.text` (`.sql` uses `?`) |
+| S.2 step 1 | read Prisma's documentation | the documentation does not say. The prisma-engines source does |
+| S.2 file list | — | `apps/server/src/webhookRouteOrder.test.ts` also changes |
+| root `CLAUDE.md` and `e2e/CLAUDE.md`, the count of models `/e2e/cleanup` deletes | `grep -o 'prisma\.[a-zA-Z]*\.deleteMany' apps/server/src/lib/e2eCleanup.ts \| sort -u \| wc -l` | it now prints 0. Use `grep -c '^  DELETE FROM "' apps/server/src/lib/e2eCleanupSql.ts` (22). Fix in S.5 |
+| *Known gaps* (missing) | — | the function stays in the test database after a server stops, so a mutation run leaves the mutated function there until the next E2E server start. A removed "create function" call is caught only by `webhookRouteOrder.test.ts`, not by E2E |
 
 ## Status
 
