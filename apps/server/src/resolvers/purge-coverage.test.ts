@@ -311,12 +311,16 @@ function sqlWithoutComments(sql: string): string {
 }
 
 /**
- * Every `DELETE FROM "<Table>" WHERE …;` in `sql`. A `DELETE` in any other
- * shape (no `WHERE`, an unquoted table) is not returned, and
+ * Every `DELETE FROM "<Table>" WHERE …` in `sql`. The `WHERE` text ends at
+ * `RETURNING 1)` (the function's form since the S.3 fix:
+ * `WITH d AS (DELETE … WHERE … RETURNING 1) SELECT … FROM d;`) or at `;` (a
+ * plain `DELETE … WHERE …;`, as in the made-up lines below). A `DELETE` in
+ * any other shape (no `WHERE`, an unquoted table) is not returned, and
  * `sqlDeleteCount` still counts it, so a test that compares the two fails.
  */
 function sqlDeletes(sql: string): SqlDelete[] {
-  return [...sqlWithoutComments(sql).matchAll(/DELETE FROM "(\w+)"\s+WHERE\s([^;]*);/g)].map(
+  const pattern = /DELETE FROM "(\w+)"\s+WHERE\s([^;]*?)(?:\s+RETURNING 1\s*\)[^;]*)?;/g
+  return [...sqlWithoutComments(sql).matchAll(pattern)].map(
     (m) => ({ model: clientProperty(m[1] ?? ''), where: (m[2] ?? '').replace(/\s+/g, ' ').trim() }),
   )
 }

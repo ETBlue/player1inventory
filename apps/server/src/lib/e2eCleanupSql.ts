@@ -35,11 +35,26 @@
 // `purge-coverage.test.ts` and `e2eCleanup.test.ts` read this text. Keep
 // these rules, or they fail:
 //
-// - Each delete is ONE statement, `DELETE FROM "<Model>" WHERE <filter>;`, on
-//   one or more lines, with no comment inside it. Comments go on their own
-//   lines, starting with `--`, above the statement.
-// - Each delete is followed by `GET DIAGNOSTICS c = ROW_COUNT;` and ONE
-//   `jsonb_build_object('<key>', c)`, with the key from `CLEANUP_MODEL_KEYS`.
+// - Each delete is ONE statement that also writes its own count:
+//
+//     WITH d AS (
+//       DELETE FROM "<Model>"
+//       WHERE <filter>
+//       RETURNING 1
+//     )
+//     SELECT result || jsonb_build_object('<key>', count(*)) INTO result FROM d;
+//
+//   with the key from `CLEANUP_MODEL_KEYS`, and no comment inside it.
+//   Comments go on their own lines, starting with `--`, above the statement.
+// - No `GET DIAGNOSTICS … ROW_COUNT`. Until the S.3 fix each delete was
+//   followed by `GET DIAGNOSTICS c = ROW_COUNT;`, a SEPARATE statement that
+//   reads the count of the LAST statement that ran. Delete one `DELETE` and
+//   keep its count line, and that count silently repeats the count of the
+//   delete before it: `cleanup-endpoint.spec.ts` stayed green with the
+//   "ItemTag" delete removed (it read the "Cart" count, 2). Now the count is
+//   `count(*)` of the delete's own `RETURNING` rows, in the same statement,
+//   so a count cannot belong to another delete, and removing a delete
+//   removes its key (the route then answers 500 and names it).
 // - Every table and column name is quoted. No model has `@@map`, so a table
 //   name is the model name.
 //
@@ -63,7 +78,6 @@ LANGUAGE plpgsql
 AS $e2e_cleanup$
 DECLARE
   owned text[];
-  c bigint;
   result jsonb := '{}'::jsonb;
 BEGIN
   -- An empty list would delete no user but still run every statement. A
@@ -94,97 +108,129 @@ BEGIN
 
   -- Logs, carts and stock have no household of their own. They go through
   -- their location, the same as in clearAllData.
-  DELETE FROM "InventoryLog"
-  WHERE "locationId" IN (SELECT "id" FROM "Location" WHERE "householdId" = ANY(owned));
-  GET DIAGNOSTICS c = ROW_COUNT;
-  result := result || jsonb_build_object('inventoryLogs', c);
+  WITH d AS (
+    DELETE FROM "InventoryLog"
+    WHERE "locationId" IN (SELECT "id" FROM "Location" WHERE "householdId" = ANY(owned))
+    RETURNING 1
+  )
+  SELECT result || jsonb_build_object('inventoryLogs', count(*)) INTO result FROM d;
 
-  DELETE FROM "CartItem"
-  WHERE "cartId" IN (SELECT "id" FROM "Cart" WHERE "locationId" IN (SELECT "id" FROM "Location" WHERE "householdId" = ANY(owned)));
-  GET DIAGNOSTICS c = ROW_COUNT;
-  result := result || jsonb_build_object('cartItems', c);
+  WITH d AS (
+    DELETE FROM "CartItem"
+    WHERE "cartId" IN (SELECT "id" FROM "Cart" WHERE "locationId" IN (SELECT "id" FROM "Location" WHERE "householdId" = ANY(owned)))
+    RETURNING 1
+  )
+  SELECT result || jsonb_build_object('cartItems', count(*)) INTO result FROM d;
 
-  DELETE FROM "Cart"
-  WHERE "locationId" IN (SELECT "id" FROM "Location" WHERE "householdId" = ANY(owned));
-  GET DIAGNOSTICS c = ROW_COUNT;
-  result := result || jsonb_build_object('carts', c);
+  WITH d AS (
+    DELETE FROM "Cart"
+    WHERE "locationId" IN (SELECT "id" FROM "Location" WHERE "householdId" = ANY(owned))
+    RETURNING 1
+  )
+  SELECT result || jsonb_build_object('carts', count(*)) INTO result FROM d;
 
-  DELETE FROM "ItemTag"
-  WHERE "itemId" IN (SELECT "id" FROM "Item" WHERE "householdId" = ANY(owned));
-  GET DIAGNOSTICS c = ROW_COUNT;
-  result := result || jsonb_build_object('itemTags', c);
+  WITH d AS (
+    DELETE FROM "ItemTag"
+    WHERE "itemId" IN (SELECT "id" FROM "Item" WHERE "householdId" = ANY(owned))
+    RETURNING 1
+  )
+  SELECT result || jsonb_build_object('itemTags', count(*)) INTO result FROM d;
 
-  DELETE FROM "ItemVendor"
-  WHERE "itemId" IN (SELECT "id" FROM "Item" WHERE "householdId" = ANY(owned));
-  GET DIAGNOSTICS c = ROW_COUNT;
-  result := result || jsonb_build_object('itemVendors', c);
+  WITH d AS (
+    DELETE FROM "ItemVendor"
+    WHERE "itemId" IN (SELECT "id" FROM "Item" WHERE "householdId" = ANY(owned))
+    RETURNING 1
+  )
+  SELECT result || jsonb_build_object('itemVendors', count(*)) INTO result FROM d;
 
   -- Through the recipe, the same path as clearAllData. It was through the
   -- item here until households H3a task 3.10.
-  DELETE FROM "RecipeItem"
-  WHERE "recipeId" IN (SELECT "id" FROM "Recipe" WHERE "householdId" = ANY(owned));
-  GET DIAGNOSTICS c = ROW_COUNT;
-  result := result || jsonb_build_object('recipeItems', c);
+  WITH d AS (
+    DELETE FROM "RecipeItem"
+    WHERE "recipeId" IN (SELECT "id" FROM "Recipe" WHERE "householdId" = ANY(owned))
+    RETURNING 1
+  )
+  SELECT result || jsonb_build_object('recipeItems', count(*)) INTO result FROM d;
 
-  DELETE FROM "ItemStock"
-  WHERE "locationId" IN (SELECT "id" FROM "Location" WHERE "householdId" = ANY(owned));
-  GET DIAGNOSTICS c = ROW_COUNT;
-  result := result || jsonb_build_object('itemStocks', c);
+  WITH d AS (
+    DELETE FROM "ItemStock"
+    WHERE "locationId" IN (SELECT "id" FROM "Location" WHERE "householdId" = ANY(owned))
+    RETURNING 1
+  )
+  SELECT result || jsonb_build_object('itemStocks', count(*)) INTO result FROM d;
 
-  DELETE FROM "Item"
-  WHERE "householdId" = ANY(owned);
-  GET DIAGNOSTICS c = ROW_COUNT;
-  result := result || jsonb_build_object('items', c);
+  WITH d AS (
+    DELETE FROM "Item"
+    WHERE "householdId" = ANY(owned)
+    RETURNING 1
+  )
+  SELECT result || jsonb_build_object('items', count(*)) INTO result FROM d;
 
   -- Before "TagType": "Tag"."typeId" is NO ACTION, so a tag type cannot go
   -- while a tag names it.
-  DELETE FROM "Tag"
-  WHERE "householdId" = ANY(owned);
-  GET DIAGNOSTICS c = ROW_COUNT;
-  result := result || jsonb_build_object('tags', c);
+  WITH d AS (
+    DELETE FROM "Tag"
+    WHERE "householdId" = ANY(owned)
+    RETURNING 1
+  )
+  SELECT result || jsonb_build_object('tags', count(*)) INTO result FROM d;
 
-  DELETE FROM "TagType"
-  WHERE "householdId" = ANY(owned);
-  GET DIAGNOSTICS c = ROW_COUNT;
-  result := result || jsonb_build_object('tagTypes', c);
+  WITH d AS (
+    DELETE FROM "TagType"
+    WHERE "householdId" = ANY(owned)
+    RETURNING 1
+  )
+  SELECT result || jsonb_build_object('tagTypes', count(*)) INTO result FROM d;
 
-  DELETE FROM "Vendor"
-  WHERE "householdId" = ANY(owned);
-  GET DIAGNOSTICS c = ROW_COUNT;
-  result := result || jsonb_build_object('vendors', c);
+  WITH d AS (
+    DELETE FROM "Vendor"
+    WHERE "householdId" = ANY(owned)
+    RETURNING 1
+  )
+  SELECT result || jsonb_build_object('vendors', count(*)) INTO result FROM d;
 
-  DELETE FROM "Recipe"
-  WHERE "householdId" = ANY(owned);
-  GET DIAGNOSTICS c = ROW_COUNT;
-  result := result || jsonb_build_object('recipes', c);
+  WITH d AS (
+    DELETE FROM "Recipe"
+    WHERE "householdId" = ANY(owned)
+    RETURNING 1
+  )
+  SELECT result || jsonb_build_object('recipes', count(*)) INTO result FROM d;
 
-  DELETE FROM "Shelf"
-  WHERE "householdId" = ANY(owned);
-  GET DIAGNOSTICS c = ROW_COUNT;
-  result := result || jsonb_build_object('shelves', c);
+  WITH d AS (
+    DELETE FROM "Shelf"
+    WHERE "householdId" = ANY(owned)
+    RETURNING 1
+  )
+  SELECT result || jsonb_build_object('shelves', count(*)) INTO result FROM d;
 
   -- Every role row on the owned households' locations (anybody's), and the
   -- users' own role rows on any other location. "userId" is RESTRICT, so the
   -- "User" delete cannot run while one is left.
-  DELETE FROM "LocationMember"
-  WHERE "userId" = ANY(user_ids) OR "locationId" IN (SELECT "id" FROM "Location" WHERE "householdId" = ANY(owned));
-  GET DIAGNOSTICS c = ROW_COUNT;
-  result := result || jsonb_build_object('locationMembers', c);
+  WITH d AS (
+    DELETE FROM "LocationMember"
+    WHERE "userId" = ANY(user_ids) OR "locationId" IN (SELECT "id" FROM "Location" WHERE "householdId" = ANY(owned))
+    RETURNING 1
+  )
+  SELECT result || jsonb_build_object('locationMembers', count(*)) INTO result FROM d;
 
   -- Every preference row on the owned households' locations (anybody's), and
   -- the users' own rows on any other location (households H7b, task M.1).
   -- BEFORE "Location" and "User", for the count: both foreign keys are
   -- ON DELETE CASCADE, so after either delete the rows would be gone already
   -- and the count would read 0.
-  DELETE FROM "LocationPreference"
-  WHERE "userId" = ANY(user_ids) OR "locationId" IN (SELECT "id" FROM "Location" WHERE "householdId" = ANY(owned));
-  GET DIAGNOSTICS c = ROW_COUNT;
-  result := result || jsonb_build_object('locationPreferences', c);
+  WITH d AS (
+    DELETE FROM "LocationPreference"
+    WHERE "userId" = ANY(user_ids) OR "locationId" IN (SELECT "id" FROM "Location" WHERE "householdId" = ANY(owned))
+    RETURNING 1
+  )
+  SELECT result || jsonb_build_object('locationPreferences', count(*)) INTO result FROM d;
 
-  DELETE FROM "Location"
-  WHERE "householdId" = ANY(owned);
-  GET DIAGNOSTICS c = ROW_COUNT;
-  result := result || jsonb_build_object('locations', c);
+  WITH d AS (
+    DELETE FROM "Location"
+    WHERE "householdId" = ANY(owned)
+    RETURNING 1
+  )
+  SELECT result || jsonb_build_object('locations', count(*)) INTO result FROM d;
 
   -- Every invite of the owned households (anybody's), and the invites a
   -- listed user made in households they do not own (households H5b, task
@@ -193,19 +239,23 @@ BEGIN
   -- count would read 0. BEFORE "User": "createdById" is RESTRICT (decision
   -- T26), so an invite the user made elsewhere would make the "User" delete
   -- fail. An invite the user only USED stays: "usedById" is SET NULL.
-  DELETE FROM "HouseholdInvite"
-  WHERE "householdId" = ANY(owned) OR "createdById" = ANY(user_ids);
-  GET DIAGNOSTICS c = ROW_COUNT;
-  result := result || jsonb_build_object('householdInvites', c);
+  WITH d AS (
+    DELETE FROM "HouseholdInvite"
+    WHERE "householdId" = ANY(owned) OR "createdById" = ANY(user_ids)
+    RETURNING 1
+  )
+  SELECT result || jsonb_build_object('householdInvites', count(*)) INTO result FROM d;
 
   -- Every activity row of the owned households (households H6, task J.1).
   -- BEFORE "Household", for the count. Only the owned households: a log row
   -- elsewhere that names the user stays with its household ("actorId" and
   -- "targetUserId" have no foreign key, decision T46).
-  DELETE FROM "HouseholdActivity"
-  WHERE "householdId" = ANY(owned);
-  GET DIAGNOSTICS c = ROW_COUNT;
-  result := result || jsonb_build_object('householdActivities', c);
+  WITH d AS (
+    DELETE FROM "HouseholdActivity"
+    WHERE "householdId" = ANY(owned)
+    RETURNING 1
+  )
+  SELECT result || jsonb_build_object('householdActivities', count(*)) INTO result FROM d;
 
   -- Every offer of the owned households, and every offer TO a listed user
   -- anywhere (households H6b, task K.1). BEFORE "Household" and "User", for
@@ -213,32 +263,40 @@ BEGIN
   -- "HouseholdMember", so no member row goes while an offer still names its
   -- person. An offer a user MADE elsewhere stays: "fromUserId" has no
   -- foreign key.
-  DELETE FROM "OwnershipOffer"
-  WHERE "householdId" = ANY(owned) OR "toUserId" = ANY(user_ids);
-  GET DIAGNOSTICS c = ROW_COUNT;
-  result := result || jsonb_build_object('ownershipOffers', c);
+  WITH d AS (
+    DELETE FROM "OwnershipOffer"
+    WHERE "householdId" = ANY(owned) OR "toUserId" = ANY(user_ids)
+    RETURNING 1
+  )
+  SELECT result || jsonb_build_object('ownershipOffers', count(*)) INTO result FROM d;
 
   -- Every member row of the owned households (anybody's), and the users' own
   -- member rows in households they do not own. "userId" is RESTRICT.
-  DELETE FROM "HouseholdMember"
-  WHERE "userId" = ANY(user_ids) OR "householdId" = ANY(owned);
-  GET DIAGNOSTICS c = ROW_COUNT;
-  result := result || jsonb_build_object('householdMembers', c);
+  WITH d AS (
+    DELETE FROM "HouseholdMember"
+    WHERE "userId" = ANY(user_ids) OR "householdId" = ANY(owned)
+    RETURNING 1
+  )
+  SELECT result || jsonb_build_object('householdMembers', count(*)) INTO result FROM d;
 
   -- "User"."activeHouseholdId" is SET NULL, so a person outside the list who
   -- still names one of these households keeps their row.
-  DELETE FROM "Household"
-  WHERE "id" = ANY(owned);
-  GET DIAGNOSTICS c = ROW_COUNT;
-  result := result || jsonb_build_object('households', c);
+  WITH d AS (
+    DELETE FROM "Household"
+    WHERE "id" = ANY(owned)
+    RETURNING 1
+  )
+  SELECT result || jsonb_build_object('households', count(*)) INTO result FROM d;
 
   -- The "User" rows, LAST, after the two role tables and the invites, whose
   -- foreign keys to "User" are RESTRICT. The key is "id": the row IS the
   -- user.
-  DELETE FROM "User"
-  WHERE "id" = ANY(user_ids);
-  GET DIAGNOSTICS c = ROW_COUNT;
-  result := result || jsonb_build_object('users', c);
+  WITH d AS (
+    DELETE FROM "User"
+    WHERE "id" = ANY(user_ids)
+    RETURNING 1
+  )
+  SELECT result || jsonb_build_object('users', count(*)) INTO result FROM d;
 
   RETURN result;
 END;

@@ -21,7 +21,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 //   and not when it throws.
 // - The SQL text: the 22 `DELETE FROM "<Model>"` statements are exactly the
 //   22 models, in the order the route must delete them, each once, and each
-//   is followed by its own count key. The owner read asks for `owner` rows
+//   writes its own count key in the same statement (no `GET DIAGNOSTICS`). The owner read asks for `owner` rows
 //   only. The exact WHERE text of each statement is checked in
 //   resolvers/purge-coverage.test.ts.
 // - They do NOT run SQL. Whether each filter matches the right rows in
@@ -166,13 +166,16 @@ function withoutComments(sql: string): string {
 }
 
 /**
- * Every `DELETE FROM "<table>" WHERE …;` with the count key right after it.
+ * Every delete statement, in the one shape the function uses, with the count
+ * key it writes IN THE SAME STATEMENT:
+ * `WITH d AS (DELETE FROM "<table>" WHERE … RETURNING 1)
+ *  SELECT result || jsonb_build_object('<key>', count(*)) INTO result FROM d;`
  * A delete written in another shape is not matched, and the test that counts
  * every `DELETE FROM` then fails, so a statement cannot hide from this list.
  */
 function deletesWithKeys(sql: string): { table: string; key: string }[] {
   const pattern =
-    /DELETE FROM "(\w+)"\s+WHERE\s[^;]*;\s*GET DIAGNOSTICS c = ROW_COUNT;\s*result := result \|\| jsonb_build_object\('(\w+)', c\);/g
+    /WITH d AS \(\s*DELETE FROM "(\w+)"\s+WHERE\s[^;]*?\s+RETURNING 1\s*\)\s*SELECT result \|\| jsonb_build_object\('(\w+)', count\(\*\)\) INTO result FROM d;/g
   return [...withoutComments(sql).matchAll(pattern)].map((m) => ({
     table: m[1] ?? '',
     key: m[2] ?? '',
@@ -362,6 +365,20 @@ describe('the SQL function text (E2E_CLEANUP_FUNCTION_SQL)', () => {
     expect(deletes).toEqual(
       MODELS.map((model, index) => ({ table: tableOf(model), key: CLEANUP_MODEL_KEYS[index] })),
     )
+  })
+
+  it('takes each count from its own DELETE, never from GET DIAGNOSTICS', () => {
+    // `GET DIAGNOSTICS c = ROW_COUNT` is a separate statement that reads the
+    // count of the LAST statement that ran. With a DELETE removed and its
+    // count line kept, the count silently repeated the delete before it, and
+    // cleanup-endpoint.spec.ts stayed green (E2E speed plan, S.2 mutation 1).
+    const sql = withoutComments(E2E_CLEANUP_FUNCTION_SQL)
+    expect(sql).not.toMatch(/GET\s+DIAGNOSTICS/i)
+    expect(sql).not.toMatch(/ROW_COUNT/i)
+    // `result` is written only by the 22 delete statements (and its start
+    // value), so no count can be added apart from its delete.
+    expect(sql.match(/INTO result\b/g)).toHaveLength(22)
+    expect(sql.match(/result :=/g)).toBeNull()
   })
 
   it('reads the owned households by owner rows of the listed users only', () => {
