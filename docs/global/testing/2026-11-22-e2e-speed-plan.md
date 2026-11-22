@@ -682,15 +682,15 @@ test (new), `apps/server/src/index.ts`, `apps/server/src/webhookRouteOrder.test.
 test and the docs. The owner (or the main session, with the owner's consent) runs the
 commands in step 4.
 
-- [ ] **Step 1:** `e2eLocalDb.ts migrate|status`: reads `E2E_LOCAL_DATABASE_URL` from
+- [x] **Step 1:** `e2eLocalDb.ts migrate|status`: reads `E2E_LOCAL_DATABASE_URL` from
   `apps/server/.env`, runs the same checks as S.6 (loopback, identity), then runs
   `prisma migrate deploy` (or `prisma migrate status`) with **both** `DATABASE_URL` and
   `DIRECT_URL` set to the local URL. Both, because `migrate deploy` uses `directUrl`:
   overriding only `DATABASE_URL` would migrate the database `DIRECT_URL` names, which is the
   DEV database. Unit-test the checks and the environment it builds; do not run Prisma in the
   test.
-- [ ] **Step 2:** scripts `e2e:db:migrate` and `e2e:db:status` in `apps/server/package.json`.
-- [ ] **Step 3:** `.env.example`: `E2E_LOCAL_DATABASE_URL=""` with a comment: a local
+- [x] **Step 2:** scripts `e2e:db:migrate` and `e2e:db:status` in `apps/server/package.json`.
+- [x] **Step 3:** `.env.example`: `E2E_LOCAL_DATABASE_URL=""` with a comment: a local
   database only, created with Neon's major version and collation, migrated with
   `pnpm --filter server e2e:db:migrate` after every new migration.
 **Parts 1 and 2 done 2026-11-23** by the main session, with the owner's consent ("install
@@ -718,7 +718,7 @@ Parts 3 and 4 (the URL in `apps/server/.env`, the migration) are still owed.
   3. set `E2E_LOCAL_DATABASE_URL` in `apps/server/.env` (never in the repo);
   4. `pnpm --filter server e2e:db:migrate`, then `e2e:db:status`: "Database schema is up to
      date!".
-- [ ] **Step 5:** `e2e/CLAUDE.md`, a new section *The local E2E database*: the four steps,
+- [x] **Step 5:** `e2e/CLAUDE.md`, a new section *The local E2E database*: the four steps,
   the version and collation it must match (with the date they were read), and "after every
   new migration, run `e2e:db:migrate`; the run stops at the start until you do".
 
@@ -728,6 +728,33 @@ Parts 3 and 4 (the URL in `apps/server/.env`, the migration) are still owed.
 |---|---|
 | the script sets only `DATABASE_URL` | the "both variables" unit test |
 | the script skips the identity check | the identity unit test |
+
+**Steps 1, 2, 3 and 5 done 2026-11-23** in `2d451c4d` (the shared check), `7d1b4eb7` (the
+script) and `ca6574a6` (the docs), on `chore/e2e-speed-b`.
+
+- **The shared check:** `assertLocalE2eDatabaseUrl(url, env)` in `src/lib/databaseUrl.ts`
+  holds the S.6 loopback and identity checks. `resolveDatasourceUrl` and the script both
+  call it; `prisma.test.ts` did not change.
+- **The script:** `scripts/e2eLocalDb.ts migrate|status` reads `apps/server/.env` (a shell
+  value wins, as with `dotenv/config`), refuses an unset, non-local or same-database
+  `E2E_LOCAL_DATABASE_URL` (the identity check runs on the merged env AND on `.env` alone),
+  then runs `pnpm exec prisma migrate deploy` (or `status`) with BOTH `DATABASE_URL` and
+  `DIRECT_URL` set to the local URL. `schema.prisma` reads only those two (no
+  `shadowDatabaseUrl`). No message prints a URL or a host.
+- **Scripts:** `pnpm --filter server e2e:db:migrate` and `e2e:db:status`.
+- **`.env.example`:** `E2E_LOCAL_DATABASE_URL=""`, the form
+  `postgresql://<your mac user>@localhost:5432/p1i_e2e`, and why `postgresql://u@/db?host=/tmp`
+  is refused.
+- **`e2e/CLAUDE.md`:** *The local E2E database*: the four steps, the version and locale read
+  2026-11-22 (PostgreSQL 17.12, builtin, `C.UTF-8`, the same on TEST and production), the P2
+  query, and "run `e2e:db:migrate` after every new migration".
+- **Gate without E2E:** all green. `pnpm test`: web 3899 / 378, server 2934 / 91 (was
+  2904 / 90), `scripts/spec` 78. esbuild 279.7 KiB. TS6385: 0. The scripts pass checks 240
+  files (was 237: the script, its test, dotenv's types); 0.83–0.85 s.
+- **Mutations:** both rows of the table went red (only `DATABASE_URL`: 6 tests; no identity
+  check: 8). Extra, all red: no `.env`-only check (1), `.env` wins over the shell (2), `main`
+  runs without the checks (3), loopback check off in the shared function (10, 7 of them in
+  `prisma.test.ts`).
 
 ## Task S.8 — the config: `cloud` on the local database, `cloud-neon`, `run-all.sh`
 
@@ -893,6 +920,11 @@ Otherwise the run gets killed, as on 2026-10-31.
 | S.6 / S.7 (missing) | — | P7-A makes the server ask for `E2E_LOCAL_DATABASE_URL` as soon as S.6 lands, so `--project=cloud` does not start until S.7 step 4 (or with `E2E_DATABASE=neon`) |
 | S.7 step 3 (missing) | — | `postgresql://u@/db?host=/tmp` (a user and no host) is not a valid URL in Node, so the server refuses it. Use `localhost`, or `postgresql:///db?host=/tmp` |
 | D12 (missing) | — | `kind` in `/e2e/database` comes from `E2E_DATABASE`, not from the URL the client used. Both come from the same `process.env` at start, so they agree |
+| S.7 step 1 | "runs the same checks as S.6" | the S.6 checks were written inline in `resolveDatasourceUrl`, so nothing could reuse them. `2d451c4d` moved them into `assertLocalE2eDatabaseUrl` (`src/lib/databaseUrl.ts`) first |
+| S.7 step 1 (missing) | — | which value wins when the shell and `.env` disagree. The script follows `dotenv` (the shell wins) AND runs the identity check on `.env` alone too, so a shell value cannot hide a `.env` variable that names the same database |
+| S.7 step 4.2 | `createdb --template=template0 …` | the command that worked had `-h localhost` (see *Parts 1 and 2*). `e2e/CLAUDE.md` gives that form |
+| S.6 / D10 (missing) | — | `databaseIdentity` compares `host + path`, and `URL.host` keeps an explicit port. So `localhost:5432/p1i_e2e` and `localhost/p1i_e2e` count as two databases, and a same-database paste that differs only by the default port passes. Also true for `verify-migration`'s guard |
+| S.7 (missing) | — | `biome check` ignores `apps/server/`, so no linter checks the server files; the gate's `pnpm check` does not cover them |
 
 ## Status
 
