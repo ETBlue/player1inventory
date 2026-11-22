@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client'
-import { e2eDatabaseKind, findSameDatabase, isLocalDatabaseUrl } from './databaseUrl.js'
+import { assertLocalE2eDatabaseUrl, e2eDatabaseKind } from './databaseUrl.js'
 
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient }
 
@@ -50,24 +50,10 @@ export function resolveDatasourceUrl(env: NodeJS.ProcessEnv): string | undefined
         'to use the Neon test branch — see apps/server/.env.example.',
     )
   }
-  if (!isLocalDatabaseUrl(localUrl)) {
-    throw new Error(
-      'E2E_LOCAL_DATABASE_URL must point at a database on this computer ' +
-        '(localhost, 127.0.0.1, ::1 or a socket path). Refusing to run E2E.',
-    )
-  }
-  const sameAs = findSameDatabase(localUrl, env, [LOCAL_URL_VAR_NAME])
-  if (sameAs !== undefined) {
-    throw new Error(
-      `E2E_LOCAL_DATABASE_URL is the same database as ${sameAs}. Refusing to run ` +
-        'E2E: the local E2E database must be a database of its own.',
-    )
-  }
+  // The loopback and identity checks, shared with scripts/e2eLocalDb.ts.
+  assertLocalE2eDatabaseUrl(localUrl, env)
   return localUrl
 }
-
-/** The local E2E database's variable. It is the only one not compared with itself. */
-const LOCAL_URL_VAR_NAME = 'E2E_LOCAL_DATABASE_URL'
 
 function createClient(): PrismaClient {
   const url = resolveDatasourceUrl(process.env)

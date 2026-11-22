@@ -3,7 +3,7 @@
 // | Who | What it checks |
 // |---|---|
 // | `scripts/verify-migration.ts`, through `scripts/databaseIsolation.ts` | `TEST_DATABASE_URL` and `TEST_DIRECT_URL` are not another database of `.env` (that script DROPS the schema) |
-// | `lib/prisma.ts`, `resolveDatasourceUrl` | with `E2E_DATABASE=local`, `E2E_LOCAL_DATABASE_URL` is on this computer and is not another database of `.env` (E2E speed plan, task S.6, decision D10) |
+// | `lib/prisma.ts`, `resolveDatasourceUrl`, and `scripts/e2eLocalDb.ts` (task S.7), both through `assertLocalE2eDatabaseUrl` | `E2E_LOCAL_DATABASE_URL` is on this computer and is not another database of `.env` (E2E speed plan, task S.6, decision D10) |
 //
 // This file lives in `src/` since task S.6, and `scripts/databaseIsolation.ts`
 // re-exports it. So the `scripts` type-check pass also checks this one `src`
@@ -150,6 +150,47 @@ export function isLocalDatabaseUrl(rawUrl: string): boolean {
     }
   }
   return true
+}
+
+/** The local E2E database's variable. It is the only `*_URL` variable not
+ * compared with itself. */
+export const E2E_LOCAL_URL_VAR_NAME = 'E2E_LOCAL_DATABASE_URL'
+
+/**
+ * The two checks on `E2E_LOCAL_DATABASE_URL` (E2E speed plan, decision D10).
+ * Throws when `rawUrl`:
+ *
+ * - names a host that is not this computer (`isLocalDatabaseUrl`), or
+ * - is the same database as any other variable in `env` whose name ends in
+ *   `_URL` (`findSameDatabase`), the `TEST_` ones included.
+ *
+ * Two callers, one check:
+ *
+ * | Caller | When |
+ * |---|---|
+ * | `lib/prisma.ts`, `resolveDatasourceUrl` | the E2E server starts with `E2E_DATABASE=local` |
+ * | `scripts/e2eLocalDb.ts` | `pnpm --filter server e2e:db:migrate` and `e2e:db:status` (task S.7) |
+ *
+ * The messages name the variable only. They print no URL and no host.
+ * "Unset" is not checked here: each caller has its own advice for that case.
+ */
+export function assertLocalE2eDatabaseUrl(
+  rawUrl: string,
+  env: Record<string, string | undefined>,
+): void {
+  if (!isLocalDatabaseUrl(rawUrl)) {
+    throw new Error(
+      'E2E_LOCAL_DATABASE_URL must point at a database on this computer ' +
+        '(localhost, 127.0.0.1, ::1 or a socket path). Refusing to run E2E.',
+    )
+  }
+  const sameAs = findSameDatabase(rawUrl, env, [E2E_LOCAL_URL_VAR_NAME])
+  if (sameAs !== undefined) {
+    throw new Error(
+      `E2E_LOCAL_DATABASE_URL is the same database as ${sameAs}. Refusing to run ` +
+        'E2E: the local E2E database must be a database of its own.',
+    )
+  }
 }
 
 /** The two E2E databases (E2E speed plan, decision D9). */
