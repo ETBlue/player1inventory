@@ -188,10 +188,10 @@ function milkCheckbox(page: Page) {
 }
 
 async function cleanupAll(request: Parameters<typeof makeGql>[0]) {
-  // MEMBER first: the owner's cleanup deletes household A and its role rows.
-  await cleanupCloudData(request, MEMBER)
-  await cleanupCloudData(request, STRANGER)
-  await cleanupCloudData(request)
+  // One call for every user (E2E speed plan, task S.4). A household whose
+  // members are all listed is deleted too (decision D6), so the order of
+  // the users no longer matters.
+  await cleanupCloudData(request, [MEMBER, STRANGER, E2E_USER_ID])
 }
 
 test.beforeEach(async ({ page, request, baseURL }) => {

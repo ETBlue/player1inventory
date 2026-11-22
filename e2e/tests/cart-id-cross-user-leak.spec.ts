@@ -118,12 +118,11 @@ async function firstLocationId(
   return id
 }
 
-/** Both users, in `beforeEach`. One call deletes one user. */
+/** Both users, in `beforeEach`, in one call (E2E speed plan, task S.4). */
 async function cleanupBothUsers(
   request: Parameters<typeof cleanupCloudData>[0],
 ): Promise<void> {
-  await cleanupCloudData(request, E2E_USER_ID)
-  await cleanupCloudData(request, E2E_SECOND_USER_ID)
+  await cleanupCloudData(request, [E2E_USER_ID, E2E_SECOND_USER_ID])
 }
 
 test.beforeEach(async ({ request }) => {

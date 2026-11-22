@@ -148,12 +148,10 @@ async function packedAt(gqlOwner: Gql, locationId: string, itemId: string) {
 }
 
 async function cleanupAll(request: Parameters<typeof makeGql>[0]) {
-  // The two members first, then the owner, whose cleanup deletes the
-  // household. Any order works; this one leaves no member row behind even
-  // when a run crashed half way.
-  await cleanupCloudData(request, MEMBER)
-  await cleanupCloudData(request, MANAGER)
-  await cleanupCloudData(request, OWNER)
+  // One call for every user (E2E speed plan, task S.4). A household whose
+  // members are all listed is deleted too (decision D6), so the order of
+  // the users no longer matters.
+  await cleanupCloudData(request, [MEMBER, MANAGER, OWNER])
 }
 
 test.beforeEach(async ({ request }) => {

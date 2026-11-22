@@ -225,8 +225,8 @@ async function snapshot(gql: Gql, itemId: string): Promise<Snapshot> {
 
 test.beforeEach(async ({ request }) => {
   // The only cleanup of each test: it starts clean whatever ran before it (E2E speed plan, D7).
-  await cleanupCloudData(request, USER_A)
-  await cleanupCloudData(request, USER_B)
+  // One call for both users (task S.4).
+  await cleanupCloudData(request, [USER_A, USER_B])
 })
 
 test.describe('clearAllData clears one household only', () => {

@@ -7,7 +7,7 @@ import {
   test,
 } from '@playwright/test'
 import { checkA11y, injectAxe } from 'axe-playwright'
-import { CLOUD_WEB_URL, E2E_SECOND_USER_ID } from '../constants'
+import { CLOUD_WEB_URL, E2E_SECOND_USER_ID, E2E_USER_ID } from '../constants'
 import { AXE_OPTIONS, checkDialogA11y } from '../helpers/axe'
 import { cleanupCloudData } from '../helpers/cloudTeardown'
 import {
@@ -241,10 +241,12 @@ async function names(gql: Gql, query: string, key: string): Promise<string[]> {
 }
 
 async function cleanupAll(request: APIRequestContext) {
-  for (const userId of ALL_USERS) await cleanupCloudData(request, userId)
-  // And the build-time user: if the `e2e-user-id` override ever stops
-  // working, every context writes as it (shared-household.spec.ts).
-  await cleanupCloudData(request)
+  // One call for every user (E2E speed plan, task S.4). A household whose
+  // members are all listed is deleted too (decision D6), so the order of
+  // the users no longer matters.
+  // The build-time user is in the list too: if the `e2e-user-id` override
+  // ever stops working, every context writes as it (shared-household.spec.ts).
+  await cleanupCloudData(request, [...ALL_USERS, E2E_USER_ID])
 }
 
 /** Every context a test opens. `afterEach` closes them all. */

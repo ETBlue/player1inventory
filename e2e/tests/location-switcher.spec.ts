@@ -426,10 +426,8 @@ const CREATE_LOCATION = `mutation ($name: String!) { createLocation(name: $name)
 test.describe('cloud: View only on the switcher (households H5 task F.4)', () => {
   test.beforeEach(async ({ request, baseURL }) => {
     test.skip(baseURL !== CLOUD_WEB_URL, 'roles exist in cloud mode only')
-    // The browser's user first (its cleanup removes its own role rows), then
-    // the owner, whose cleanup deletes the household.
-    await cleanupCloudData(request, E2E_USER_ID)
-    await cleanupCloudData(request, SWITCHER_OWNER)
+    // One call for both users (E2E speed plan, task S.4).
+    await cleanupCloudData(request, [E2E_USER_ID, SWITCHER_OWNER])
 
     const owner = makeGql(request, SWITCHER_OWNER)
     // The owner's first request runs first sign-in, which makes "Home"

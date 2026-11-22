@@ -125,10 +125,9 @@ test.beforeEach(async ({ page, request }) => {
   await page.addInitScript(() => {
     localStorage.setItem('e2e-skip-onboarding', 'true')
   })
-  // The only cleanup of each test: it starts clean whatever ran before it (E2E speed plan, D7). Bea's
-  // cleanup comes first: their member row is in Mia's household.
-  await cleanupCloudData(request, BEA)
-  await cleanupCloudData(request)
+  // The only cleanup of each test: it starts clean whatever ran before it
+  // (E2E speed plan, D7). One call for both users (task S.4).
+  await cleanupCloudData(request, [BEA, E2E_USER_ID])
 })
 
 test('user can keep their own location order', async ({

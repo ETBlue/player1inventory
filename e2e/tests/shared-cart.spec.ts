@@ -215,12 +215,10 @@ async function logCount(gql: Gql, seed: Seed, itemId: string) {
 }
 
 async function cleanupAll(request: Parameters<typeof makeGql>[0]) {
-  // The two members first, then the owner, whose cleanup deletes the
-  // household, its carts and every cart row in them.
-  await cleanupCloudData(request, PARTICIPANT)
-  await cleanupCloudData(request, VIEWER)
-  await cleanupCloudData(request, IMPORTER)
-  await cleanupCloudData(request, OWNER)
+  // One call for every user (E2E speed plan, task S.4). A household whose
+  // members are all listed is deleted too (decision D6), so the order of
+  // the users no longer matters.
+  await cleanupCloudData(request, [PARTICIPANT, VIEWER, IMPORTER, OWNER])
 }
 
 test.beforeEach(async ({ request }) => {

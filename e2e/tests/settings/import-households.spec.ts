@@ -170,12 +170,10 @@ async function itemNames(gql: Gql): Promise<Record<string, string>> {
 }
 
 async function cleanupAll(request: APIRequestContext) {
-  // The browser's user first: in the role tests it is only a member of the
-  // owner's household, and its cleanup removes its own role rows. Then the
-  // owner, whose cleanup deletes the household.
-  await cleanupCloudData(request, E2E_USER_ID)
-  await cleanupCloudData(request, OWNER)
-  await cleanupCloudData(request, STRANGER)
+  // One call for every user (E2E speed plan, task S.4). A household whose
+  // members are all listed is deleted too (decision D6), so the order of
+  // the users no longer matters.
+  await cleanupCloudData(request, [E2E_USER_ID, OWNER, STRANGER])
 }
 
 test.beforeEach(async ({ page, request }) => {
