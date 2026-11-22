@@ -311,6 +311,7 @@ change to, for example, `ItemInput` or `TagInput`, which `main`'s import sends.
 
 #### The order
 
+0. Before the deploy day: the whole cloud E2E suite on Neon, green (section 15).
 1. Deploy the server (H3a runbook 4.4, with the migrations). Wait until it is live.
 2. Then merge `develop` into `main`, so Cloudflare builds the new web.
 3. Reload every device and accept the update prompt.
@@ -1222,6 +1223,46 @@ reach the person's other open tabs live (`publishesNothing`); `dataUpdatedAt` is
 after the commit, so a crash between the two loses one timestamp; visits made with an old
 bundle or in local mode are not recorded; the shared `Location.order` stays until the
 release after households.
+
+## 15. Every checkpoint release: the whole cloud E2E suite on Neon
+
+Added 2026-11-23 by E2E speed plan task S.9 (owner answer P10-A). Plan:
+[`../testing/2026-11-22-e2e-speed-plan.md`](../testing/2026-11-22-e2e-speed-plan.md).
+
+**Why.** Since that plan's PR B, the per-PR gate runs the cloud specs on a Postgres on the
+developer's Mac, and only 8 spec files on the Neon test branch. A local query takes well
+under 1 ms; a Neon query about 52 ms. So a wait that is long enough only on a fast database,
+or a race that needs a slow one, can pass every PR gate and still fail on Neon. This step
+runs EVERY cloud spec on Neon once, before the release.
+
+**Who:** the main session, alone on the machine (no other E2E run, no `pnpm test`).
+**When:** before the deploy day, after the last PR of the release is merged into `develop`,
+on a checkout of `develop` at the commit that will be released. Do it AFTER any
+`verify:migration` run on the TEST branch: that run drops and rebuilds the schema, and the
+E2E server starts on whatever it left.
+
+```bash
+pnpm test:e2e:all:neon
+```
+
+It runs three rows: `local`, `cloud-neon` with the whole cloud list on the Neon test branch
+(`E2E_DATABASE=neon`, `E2E_NEON_FULL=1`), and `pwa`. It needs `TEST_DATABASE_URL` in
+`apps/server/.env`, as before. It never touches production or the dev database.
+
+| Check | Expected | Result |
+|---|---|---|
+| every row | green, 0 failed | `TBD before the release` |
+| `cloud-neon` counts | the same tests as the `cloud` row of the last per-PR gate (220 collected on 2026-11-23) | `TBD before the release` |
+| commit | the `develop` commit that will be released | `TBD before the release` |
+
+**Stop rule:** a failed test is a stop, as in the root `CLAUDE.md`, *Verification Gate*.
+Copy `e2e-results/` (it holds `test-results-cloud-neon/`) aside before any re-run, and tell a
+real failure from a phantom with the three proofs there. A test that fails on Neon and
+passes on the local database is a real difference, not noise.
+
+**Measured on `chore/e2e-speed-b` at `aa327e69`, 2026-11-23** (E2E speed plan task S.9):
+all green, **44m33s** wall clock. `local` 3m47s (179 passed / 11 skipped), `cloud-neon`
+39m10s (212 passed / 8 skipped), `pwa` 1m36s (73 passed).
 
 ## Where this file lives, and why
 

@@ -12,8 +12,9 @@ ports are plain constants in `e2e/constants.ts` — `LOCAL_WEB_PORT 5175`,
 override, and every `webServer` entry sets `reuseExistingServer: false`. **There are four
 ports, not three.** `PWA_WEB_PORT` arrived with the PWA work and is easy to miss when
 checking whether the machine is free. Cloud specs additionally share one
-dev database under the same `E2E_USER_ID`, so a concurrent run cross-contaminates rows
-even when the ports happen to work out.
+database (the local E2E database for `cloud`, the Neon test branch for `cloud-neon`) under
+the same `E2E_USER_ID`, so a concurrent run cross-contaminates rows even when the ports
+happen to work out.
 
 **The cloud web app's live socket goes to port 4001 too** (since households H3c-1, task
 C.5). `e2e/playwright.config.ts` gives the cloud web server
@@ -49,6 +50,7 @@ array from the projects named on the command line:
 |---|---|
 | `--project=local` | `5175` |
 | `--project=cloud` | `5174` + `4001` |
+| `E2E_DATABASE=neon --project=cloud-neon` | `5174` + `4001` (the same ports: only one of `cloud` and `cloud-neon` exists in one run) |
 | `--project=pwa` | `5176` (runs `pnpm --filter web build` first) |
 | no `--project` | all four |
 
@@ -58,7 +60,7 @@ full production build for a PWA preview they never opened.
 
 **The fallback is to start everything.** The config cannot read the selection
 with confidence when `--ui` or `--debug` is passed, or when a `--project` value
-is not exactly `local`, `cloud` or `pwa` — a glob counts as unrecognised. In
+is not exactly `local`, `cloud`, `cloud-neon` or `pwa` — a glob counts as unrecognised. In
 those cases it starts all four, so a parsing mistake costs a slow run and never
 a missing server.
 
@@ -81,27 +83,32 @@ fixtures, not a `TestInfo`.
 
 **Two consequences for the port check above.** A `--project=local` run leaves
 `5174`, `5176` and `4001` free, so seeing them free does not mean nobody is
-running E2E. And `pnpm test:e2e:all` (`e2e/run-all.sh`) runs the three projects
+running E2E. And `pnpm test:e2e:all` (`e2e/run-all.sh`) runs its four rows
 one after another, so it touches all four ports over its lifetime but rarely
 more than two at a time.
 
-## `pnpm test:e2e:all` runs the three projects in one command
+## `pnpm test:e2e:all` runs four rows in one command
 
-`e2e/run-all.sh` runs `local`, `cloud` and `pwa` as three separate Playwright
-invocations. It does three things a plain `a && b && c` gets wrong:
+`e2e/run-all.sh` runs `local`, `cloud` (`E2E_DATABASE=local`), `cloud-neon`
+(`E2E_DATABASE=neon`, the 8 files of `e2e/neonSpecs.ts`) and `pwa` as four separate
+Playwright invocations (since E2E speed plan task S.8, 2026-11-23; three before). With
+`--full-neon` (`pnpm test:e2e:all:neon`, the checkpoint gate) it runs three: `local`,
+`cloud-neon` with the WHOLE cloud list (`E2E_NEON_FULL=1`), and `pwa`. See *Which database
+each cloud project uses* below. It does three things a plain `a && b && c` gets wrong:
 
-1. It does **not** stop at the first failing project. All three run, and a
-   summary table at the end lists each project's result and elapsed time. The
-   script exits non-zero if any project failed.
+1. It does **not** stop at the first failing row. All of them run, and a
+   summary table at the end lists each row's result and elapsed time, and which
+   database each cloud row used. The script exits non-zero if any row failed.
 2. It gives each project its own HTML report directory
-   (`playwright-report/local`, `/cloud`, `/pwa`) via
+   (`playwright-report/local`, `/cloud`, `/cloud-neon`, `/pwa`) via
    `PLAYWRIGHT_HTML_OUTPUT_DIR`. One shared directory would let run 3 overwrite
    runs 1 and 2.
 3. It sets `PLAYWRIGHT_HTML_OPEN=never`, so a failure does not open a browser
    and block a non-interactive run.
 
 4. It writes `e2e-results/<project>.json` (Playwright's JSON report, since E2E speed plan
-   task S.1) and, at the end, runs `scripts/spec/e2e-times.mjs` on the three files. That
+   task S.1) and, at the end, runs `scripts/spec/e2e-times.mjs` on the files of the rows it
+   ran. That
    prints each project's total, its 15 slowest tests and the time per spec file. So every
    gate records the time of every test.
 5. It copies `test-results/` to `e2e-results/test-results-<project>/` right after each
@@ -141,10 +148,13 @@ that `pnpm test`, `pnpm check` and `build-storybook` all miss.
 
 ## Cloud E2E is not database-isolated
 
-The `cloud` project runs against the **Neon test branch**, `TEST_DATABASE_URL` in
-`apps/server/.env`, never the dev database (since 2026-08-30; see *Fixed* below). But that
-test branch is ONE shared database: every worktree and every session that runs cloud E2E
-uses it, and `verify:migration` uses it too.
+Cloud E2E never runs on the dev database (since 2026-08-30; see *Fixed* below). Since
+2026-11-23 (E2E speed plan task S.8) the `cloud` project runs on the **local E2E database**
+(`E2E_LOCAL_DATABASE_URL`, see the next section), and the `cloud-neon` project on the
+**Neon test branch** (`TEST_DATABASE_URL` in `apps/server/.env`). Until that date `cloud`
+ran on the Neon test branch. Both are ONE shared database each: every worktree and every
+session that runs cloud E2E on this Mac uses the local one, and every machine uses the Neon
+one. `verify:migration` uses the Neon one too.
 
 So inside it, isolation is by **row ownership, not by database**. Every E2E user id starts
 with `e2e-` (`E2E_USER_ID` is `'e2e-test-user'`, every other id is built from
@@ -175,7 +185,27 @@ The last E2E counts on the H3a branch, 2026-11-11, from **three separate runs** 
 `pnpm test:e2e:all`): `cloud` **126 passed / 7 skipped**, `local` **178 passed / 6 skipped**,
 `pwa` **73 passed**. Re-measure rather than quote.
 
-The last whole gate, `pnpm test:e2e:all` on `chore/e2e-speed` at `9e439f00` on 2026-11-23
+The last whole gates, on `chore/e2e-speed-b` at `aa327e69` on 2026-11-23 (E2E speed plan task
+S.9, after PR B: `cloud` on the local database, `cloud-neon` on Neon), each first try, no
+retry, no flaky test, **all green**. Two `pnpm test:e2e:all` runs in a row, then one
+`pnpm test:e2e:all:neon`:
+
+| Row | Database | Gate run 1 | Gate run 2 | `test:e2e:all:neon` |
+|---|---|---|---|---|
+| `local` | — | 3m49s, 179 passed / 11 skipped | 3m51s, 179 / 11 | 3m47s, 179 / 11 |
+| `cloud` | local Postgres | **4m16s** (255.0 s), 212 passed / 8 skipped | **4m04s** (243.3 s), 212 / 8 | — |
+| `cloud-neon` | Neon test branch | 12m01s (720.5 s), 40 passed (8 files) | 11m51s (710.6 s), 40 passed | **39m10s** (2348.6 s), 212 passed / 8 skipped (all 40 files) |
+| `pwa` | — | 1m38s, 73 passed | 1m37s, 73 passed | 1m36s, 73 passed |
+| wall clock | | **21m44s** | **21m24s** | **44m33s** |
+
+Load average (1 min, every 60 s): gate run 1 min 2.34, max 6.55, mean 4.26; gate run 2 min
+2.20, max 7.33, mean 3.94; the Neon run min 2.30, max 6.32, mean 3.51. "Inactive" memory
+never fell below 5.67 GB. Each `cloud` run's `globalSetup` deleted 35 E2E users left by the
+run before (each test cleans in `beforeEach`, so a spec's last test leaves its rows). The
+slowest `cloud-neon` file in the gate is `settings/import-export-cloud.spec.ts`, 290.1 s and
+272.2 s.
+
+The whole gate before PR B, `pnpm test:e2e:all` on `chore/e2e-speed` at `9e439f00` on 2026-11-23
 (E2E speed plan task S.5, after PR A: one-trip cleanup, one cleanup per test, `globalSetup`),
 first try, no retry, **all green**, 45m52s wall clock:
 
@@ -262,6 +292,163 @@ user no longer leaves rows in the dev database. If `E2E_TEST_MODE=true` and
 `TEST_DATABASE_URL` is unset, `prisma.ts` throws rather than falling back to
 `DATABASE_URL` (covered by `apps/server/src/lib/prisma.test.ts`) — so a missing test
 database fails loudly instead of silently writing multi-user fixtures into dev.
+
+## The local E2E database — since 2026-11-23 (E2E speed plan, task S.7)
+
+The `cloud` project can run on a Postgres on this Mac instead of the Neon test branch. A
+query there takes well under 1 ms, against about 52 ms on Neon. The server picks the
+database with `E2E_DATABASE` (`apps/server/src/lib/prisma.ts`, task S.6):
+
+| `E2E_DATABASE` | Database | Variable in `apps/server/.env` |
+|---|---|---|
+| `local`, or unset | the local E2E database | `E2E_LOCAL_DATABASE_URL` |
+| `neon` | the Neon test branch | `TEST_DATABASE_URL` |
+
+**Until `E2E_LOCAL_DATABASE_URL` is set, `--project=cloud` does not start:** with
+`E2E_DATABASE` unset the server asks for the local URL. Set it up (below), or run the cloud
+specs on Neon with `E2E_DATABASE=neon pnpm test:e2e --project=cloud-neon`.
+
+### It must match Neon
+
+Read on 2026-11-22 by the owner, on the Neon TEST branch and on production:
+
+| Setting | Neon (TEST and production) | Local |
+|---|---|---|
+| Version | PostgreSQL 17.12 | PostgreSQL 17.12 (Homebrew `postgresql@17`, installed 2026-11-23) |
+| Locale provider (`datlocprovider`) | `b` (builtin) | `b` (builtin) |
+| Locale (`datlocale`) | `C.UTF-8` | `C.UTF-8` |
+| `datcollate`, `datctype` | `C.UTF-8` | `C` (the builtin provider does not use them for sorting) |
+| Time zone | GMT | `UTC` (set on the database) |
+
+Why it matters: `householdMembers` and `locationPeople` sort names in SQL, and
+`location-people.spec.ts` and `household-invites.spec.ts` check that order. Another
+collation sorts "ben" and "Bea" differently. With the builtin provider and `C.UTF-8`, text
+sorts by code point, the same on every machine. **Nothing checks the version or the
+collation at run time.** When Neon moves to a new major version, a person must notice and
+change the local database too.
+
+### Set it up (a person runs these; no agent does)
+
+1. Install and start Postgres 17 (owner answer P1-A):
+
+   ```bash
+   brew install postgresql@17
+   brew services start postgresql@17
+   ```
+
+   It listens on `localhost` only. Homebrew's `initdb` uses the shell's locale for the
+   cluster (`en_US.UTF-8` here). That does not matter: the database sets its own.
+2. Create the database with Neon's locale provider, and set its time zone:
+
+   ```bash
+   createdb -h localhost --template=template0 --locale-provider=builtin \
+     --builtin-locale=C.UTF-8 --locale=C p1i_e2e
+   psql -h localhost -d postgres -c "ALTER DATABASE p1i_e2e SET timezone TO 'UTC'"
+   ```
+
+   `--locale=C` sets only `datcollate` and `datctype`. Do not pass `--locale=C.UTF-8`:
+   macOS may have no libc `C.UTF-8` locale. Check it with the P2 query. `datlocprovider`
+   must be `b` and `datlocale` must be `C.UTF-8`:
+
+   ```bash
+   psql -h localhost -d p1i_e2e -c "SELECT datcollate, datctype, datlocprovider, datlocale FROM pg_database WHERE datname = current_database();"
+   ```
+
+   (Do not use `current_setting('lc_collate')`: Postgres 16 removed that setting.)
+3. Put the URL in `apps/server/.env`, never in the repo:
+
+   ```bash
+   E2E_LOCAL_DATABASE_URL="postgresql://<your mac user>@localhost:5432/p1i_e2e"
+   ```
+
+   The server and the script refuse a host that is not `localhost`, `127.0.0.1`, `::1` or a
+   socket path, and a URL that names the same database as any other `*_URL` variable
+   (`DATABASE_URL`, `DIRECT_URL`, `TEST_DATABASE_URL`, …). **`postgresql://<user>@/p1i_e2e?host=/tmp`
+   is refused**: a user with no host is not a valid URL in Node. Use `localhost`, or
+   `postgresql:///p1i_e2e?host=/tmp`.
+4. Apply the migrations, then check:
+
+   ```bash
+   pnpm --filter server e2e:db:migrate   # prisma migrate deploy
+   pnpm --filter server e2e:db:status    # expect "Database schema is up to date!"
+   ```
+
+**After every new migration, run `pnpm --filter server e2e:db:migrate`.** Nothing applies
+migrations to the local database by itself. The `cloud` run stops at the start until you do
+(since task S.8): `globalSetup` (`e2e/global-setup.ts`) reads `GET /e2e/database` and
+throws when fewer migrations are applied than there are migration folders, or when the
+newest applied name sorts before the newest folder. Measured with an extra empty folder:
+"21 migrations applied, 22 migration folders".
+
+### What `e2e:db:migrate` and `e2e:db:status` do
+
+Both run `apps/server/scripts/e2eLocalDb.ts`:
+
+1. It reads `apps/server/.env`. A value already set in the shell wins, as with
+   `dotenv/config`.
+2. It refuses to go on unless `E2E_LOCAL_DATABASE_URL` is set and passes the task S.6 checks
+   (`assertLocalE2eDatabaseUrl` in `apps/server/src/lib/databaseUrl.ts`, the same function
+   the server calls). The identity check runs twice: on the merged environment, and on
+   `.env` alone, so a shell value cannot hide a `.env` variable that names the same
+   database.
+3. It runs `pnpm exec prisma migrate deploy` (or `migrate status`) with **both**
+   `DATABASE_URL` and `DIRECT_URL` set to the local URL. `schema.prisma` reads
+   `url = env("DATABASE_URL")` and `directUrl = env("DIRECT_URL")`, and Prisma Migrate uses
+   `directUrl`. With only `DATABASE_URL` changed, the migration would go to the database
+   that `DIRECT_URL` names in `.env`: the DEV database.
+
+No message of the script prints a URL or a host. Its tests (`scripts/e2eLocalDb.test.ts`)
+use made-up URLs and a fake runner; they never run Prisma.
+
+## Which database each cloud project uses — since 2026-11-23 (E2E speed plan, task S.8)
+
+The cloud specs run in ONE of two projects. Which one exists depends on `E2E_DATABASE`
+(`e2e/helpers/e2eDatabase.ts`; the same rule as the server). Only one exists in one
+Playwright run, because both use the same API server (port 4001), and one server uses one
+database.
+
+| Project | `E2E_DATABASE` | Database | Spec files |
+|---|---|---|---|
+| `cloud` | `local`, or unset | the local E2E database (`E2E_LOCAL_DATABASE_URL`) | all of `CLOUD_SPECS` (40) |
+| `cloud-neon` | `neon` | the Neon test branch (`TEST_DATABASE_URL`) | the 8 files of `NEON_SPECS` (`e2e/neonSpecs.ts`, each with its reason), or all of `CLOUD_SPECS` with `E2E_NEON_FULL=1` |
+
+| Command | Runs |
+|---|---|
+| `pnpm test:e2e:all` | the per-PR gate: `local`, `cloud` (local database), `cloud-neon` (8 files on Neon), `pwa` |
+| `pnpm test:e2e:all:neon` | the checkpoint gate: `local`, `cloud-neon` with the WHOLE cloud list on Neon, `pwa`. A named step of every checkpoint release (section 15 of `docs/global/backend/2026-11-17-deploy-runbook-households-h4.md`) |
+| `pnpm test:e2e --project=cloud <files>` | some cloud files on the local database |
+| `E2E_DATABASE=neon pnpm test:e2e --project=cloud-neon <files>` | some cloud files on Neon |
+
+The config throws at load when a `NEON_SPECS` entry is not in `CLOUD_SPECS`, when
+`--project=cloud-neon` is asked for without `E2E_DATABASE=neon`, and when `--project=cloud`
+is asked for with it. Each message gives the command to use.
+
+**`globalSetup` checks the database before the first test.** It reads `GET /e2e/database`
+(`apps/server/src/lib/e2eDatabase.ts`, E2E mode only; it answers `kind` and the migration
+names, never a URL or a host) and throws when `kind` is not the one this run expects, or
+when the database is behind the migration folders. Then it runs the `allE2eUsers` cleanup.
+
+### `cloud` green on the local database is not Neon green
+
+A query on the local database takes well under 1 ms. On Neon it takes about 52 ms. Some
+things only Neon shows:
+
+| What | Why the local database hides it | What catches it |
+|---|---|---|
+| the Neon pooler (prepared statements, connection limits) | the local URL is a direct connection | every `cloud-neon` file |
+| latency races (two requests that overlap only because each query is slow) | the window closes | `household-ownership.spec.ts` (two accepts at once), `live-cart.spec.ts`, `live-pantry.spec.ts`, in `cloud-neon` |
+| waits that are long enough only on a fast database (`location-switcher.spec.ts` waits up to 5 s for "Home", and took 3.9 s and 5.0 s on Neon) | everything answers fast | the checkpoint gate only: the file is not in `cloud-neon` |
+| sort order of text in SQL | another collation sorts names differently | the local database is made with Neon's locale (see *It must match Neon*); nothing checks it at run time |
+| another Postgres major version | — | the version is matched by hand; nothing checks it at run time |
+| a stale local database | nothing migrates it by itself | `globalSetup` stops the run |
+| Neon cold start after the branch was idle | not a thing locally | a slow FIRST `cloud-neon` request is not a code failure |
+
+So **a red `cloud-neon` row with a green `cloud` row is a real signal**, not noise to
+re-run away. And a file you changed that is NOT in `NEON_SPECS` has run only on the local
+database until the next checkpoint gate. If it depends on timing or locks, run it once on
+Neon yourself: `E2E_DATABASE=neon pnpm test:e2e --project=cloud-neon <file>` does not work
+for a file outside `NEON_SPECS` (it selects nothing), so use
+`E2E_DATABASE=neon E2E_NEON_FULL=1 pnpm test:e2e --project=cloud-neon <file>`.
 
 ## Every cloud spec uses `cleanupCloudData` — since 2026-09-25
 
@@ -735,19 +922,23 @@ reconcile finds nothing to remove and creates every row the fixture lists. No ed
 loop was needed in 4b or in PR 5 — which is the whole argument for reading state back
 instead of predicting it.
 
-**The `cloud` project's `testMatch` is 39 files today** (`e2e/playwright.config.ts`,
-measured 2026-11-21, after households H7 task L.6; 38 after H6b task K.8, 37 on 2026-11-20
+**The cloud list (`CLOUD_SPECS`) is 40 files today** (`e2e/playwright.config.ts`,
+measured 2026-11-23; 40 after households H7b task M.5, 39 on 2026-11-21 after households H7
+task L.6; 38 after H6b task K.8, 37 on 2026-11-20
 after households H6 task J.8; 36 on 2026-11-19, 35 on 2026-11-18, 29
-on 2026-11-04 and 13 on 2026-09-23). **Count the array rather than reusing that 39** — it
+on 2026-11-04 and 13 on 2026-09-23). **Count the array rather than reusing that 40** — it
 grows most weeks:
 
 ```bash
-awk "/name: 'cloud'/,/name: 'pwa'/" e2e/playwright.config.ts | grep -c "spec\.ts'"
+awk '/^const CLOUD_SPECS = \[/,/^\]/' e2e/playwright.config.ts | grep -c "spec\.ts'"
 ```
 
-The `awk` range matters: the file holds **three** such lists — `local`'s `testIgnore`,
-`cloud`'s `testMatch` and `pwa`'s `testMatch` — and a grep over the whole file counts all 56
-entries instead of the 37 that belong to `cloud` (measured 2026-11-20).
+It gave **40** on 2026-11-23. The `awk` range matters: the file holds more than one such
+list (`local`'s `testIgnore`, `CLOUD_SPECS`, `pwa`'s `testMatch`), and a grep over the
+whole file counts them all (56 instead of 37 on 2026-11-20). **The range changed on
+2026-11-23** (E2E speed plan task S.8): the cloud list moved into `const CLOUD_SPECS`, so
+`cloud` and `cloud-neon` share it. The command this section gave before,
+`awk "/name: 'cloud'/,/name: 'pwa'/" … | grep -c "spec\.ts'"`, prints 0 since then.
 
 **The command this section used to give printed 0 from 2026-10-30.** It ended
 `| grep -m1 testMatch | grep -o "'\*\*/[^']*\.spec\.ts'" | wc -l`, so it only counted the

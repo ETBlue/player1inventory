@@ -2,7 +2,7 @@
 //
 //   spec-dist/       the public spec site for non-developers
 //     index.html       landing page
-//     local/ cloud/ pwa/   Playwright HTML reports (from `pnpm test:e2e:all`)
+//     local/ cloud/ cloud-neon/ pwa/   Playwright HTML reports (from `pnpm test:e2e:all`)
 //     features/        the feature page (from `pnpm spec:vitest`)
 //   spec-dist-dev/   the full Vitest UI report, for developers
 //
@@ -69,6 +69,14 @@ const PLAYWRIGHT = [
     dir: 'cloud',
     name: 'Cloud mode',
     text: 'The app with data saved to the cloud account.',
+  },
+  // E2E speed plan, task S.8: `cloud` runs on a test database on the
+  // developer's computer, `cloud-neon` runs some of the same tests (or all of
+  // them, before a release) on the hosted test database.
+  {
+    dir: 'cloud-neon',
+    name: 'Cloud mode, hosted database',
+    text: 'Cloud mode tests run against the same kind of database as the real app.',
   },
   {
     dir: 'pwa',

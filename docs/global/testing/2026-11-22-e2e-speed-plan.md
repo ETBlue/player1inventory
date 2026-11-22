@@ -83,17 +83,17 @@ runs it.
 | The cleanup SQL becomes a function body in a TypeScript string, not 22 Prisma calls | it is what makes one round trip possible. The two source-text tests move to the SQL text |
 | A second list to keep: the `cloud-neon` spec list | the config refuses a name that is not in the `cloud` list, so a typo cannot run nothing |
 
-**Expected times.** Estimates, to be replaced by measured numbers in each task's *Done*
-note:
+**Expected times.** Measured numbers since S.5 and S.9. The first estimates are in
+*What this plan got wrong*:
 
-| Gate part | Now (2026-11-22) | After PR A | After PR B |
+| Gate part | Now (2026-11-22) | After PR A (measured, S.5) | After PR B (measured, S.9, two runs) |
 |---|---|---|---|
-| `local` | 3m46s | 3m46s | 3m46s |
-| `cloud` | 65m39s (Neon) | about 45–50 min (Neon) | about 10–15 min (local Postgres) |
-| `cloud-neon` | — | — | about 10–13 min (38 tests, Neon) |
-| `pwa` | 1m36s | 1m36s | 1m36s |
-| **Whole gate** | **about 71 min** | **about 50–55 min** | **about 25–33 min** |
-| Full cloud suite on Neon, before a checkpoint | 65m39s | about 45–50 min | about 45–50 min (unchanged by PR B) |
+| `local` | 3m46s | 3m42s | 3m49s, 3m51s |
+| `cloud` | 65m39s (Neon) | 40m35s (Neon) | **4m16s, 4m04s** (local Postgres) |
+| `cloud-neon` | — | — | 12m01s, 11m51s (40 tests, Neon) |
+| `pwa` | 1m36s | 1m35s | 1m38s, 1m37s |
+| **Whole gate** | **about 71 min** | **45m52s** | **21m44s, 21m24s** |
+| Full cloud suite on Neon, before a checkpoint | 65m39s | 40m35s | 44m33s wall clock (`cloud-neon` 39m10s), `pnpm test:e2e:all:neon` |
 
 Why the PR A estimate is 15–20 min and not more: see *Facts*, the 55% figure.
 
@@ -606,9 +606,9 @@ comments) and `7f3246fb` (gate record, `docs/INDEX.md`), on `chore/e2e-speed`.
 (new), `apps/server/scripts/databaseIsolation.ts`, `apps/server/src/lib/e2eDatabase.ts` and
 test (new), `apps/server/src/index.ts`, `apps/server/src/webhookRouteOrder.test.ts`.
 
-- [ ] **Step 0:** measure the baseline of `pnpm test` and of `pnpm --filter server build`
+- [x] **Step 0:** measure the baseline of `pnpm test` and of `pnpm --filter server build`
   (three runs).
-- [ ] **Step 1: failing tests** in `prisma.test.ts` (`resolveDatasourceUrl` stays a pure
+- [x] **Step 1: failing tests** in `prisma.test.ts` (`resolveDatasourceUrl` stays a pure
   function of its argument):
   - `E2E_TEST_MODE` not `true`: `undefined`, as today;
   - `E2E_DATABASE=neon`: `TEST_DATABASE_URL`; unset: throws, as today;
@@ -620,17 +620,17 @@ test (new), `apps/server/src/index.ts`, `apps/server/src/webhookRouteOrder.test.
   - `E2E_DATABASE` unset: the default of owner question **P7**;
   - any other value: throws.
   No error message prints a URL or a host.
-- [ ] **Step 2:** move `databaseIdentity` and `assertNotAnotherDatabase` into
+- [x] **Step 2:** move `databaseIdentity` and `assertNotAnotherDatabase` into
   `src/lib/databaseUrl.ts`; `scripts/databaseIsolation.ts` re-exports them, so
   `databaseIsolation.test.ts` and `verify-migration.ts` do not change. Measure the server
   build again: the scripts pass now also checks one `src` file (root `CLAUDE.md`, *The
   no-overlap trick*). Record the cost.
-- [ ] **Step 3: `GET /e2e/database`.** Answers `{ kind, migrations: { applied, latest } }`:
+- [x] **Step 3: `GET /e2e/database`.** Answers `{ kind, migrations: { applied, latest } }`:
   `kind` from `E2E_DATABASE`; `applied` and `latest` from `_prisma_migrations` (finished and
   not rolled back). Unit test: no field holds a URL, a host or a password (check the JSON
   text for `://` and `@`). Mount it inside `if (E2E_TEST_MODE)`;
   `webhookRouteOrder.test.ts` fails when it is outside.
-- [ ] **Step 4:** the gate without E2E.
+- [x] **Step 4:** the gate without E2E.
 
 **Mutation checks:**
 
@@ -641,6 +641,38 @@ test (new), `apps/server/src/index.ts`, `apps/server/src/webhookRouteOrder.test.
 | `E2E_DATABASE=local` falls back to `TEST_DATABASE_URL` when the local URL is unset | the "unset throws" test |
 | `/e2e/database` mounted outside the E2E block | `webhookRouteOrder.test.ts` |
 
+**Done 2026-11-23** in `ff681b34` (the switch) and `d18391cd` (`GET /e2e/database`), on
+`chore/e2e-speed-b`.
+
+- **The switch:** `resolveDatasourceUrl` reads `E2E_DATABASE` through `e2eDatabaseKind`
+  (`src/lib/databaseUrl.ts`; unset or empty means `local`, P7-A; any other value throws
+  without repeating it). `local` takes `E2E_LOCAL_DATABASE_URL` and refuses it when unset,
+  when a host is not `localhost`, `127.0.0.1`, `::1`, no host or a socket path (`?host=` and
+  `?hostaddr=` are checked too), or when it is the same database as ANY other `*_URL`
+  variable, the TEST_ ones included (`findSameDatabase`, which names the variable only).
+  `neon` takes `TEST_DATABASE_URL`, as before. No branch falls back to the other database.
+  No new message prints a URL or a host.
+- **The move:** `databaseIdentity`, `assertNotAnotherDatabase` and `TEST_URL_VAR_NAMES`
+  are in `src/lib/databaseUrl.ts`, which imports nothing. `scripts/databaseIsolation.ts`
+  re-exports them; `verify-migration.ts` and `databaseIsolation.test.ts` (15 tests) did not
+  change. The scripts pass now checks 237 files, 1 of them from `src` (was 236, 0).
+- **The route:** `{ kind, migrations: { applied, latest } }` from one `$queryRaw` on
+  `"_prisma_migrations"` (finished, not rolled back; `latest` is the largest name). A
+  database error answers 500 with the error's class and codes only. Mounted inside the
+  `E2E_TEST_MODE` block; `webhookRouteOrder.test.ts` checks it (six handlers now).
+- **Gate without E2E:** all green. `pnpm test`: web 3899 / 378, server 2904 / 90 (was
+  2861 / 89), `scripts/spec` 78. esbuild 279.6 KiB (was 275.8). TS6385: 0. The new
+  `prisma.test.ts` against the old `prisma.ts`: 31 of 34 red.
+- **Build time** (3 runs, load average 14 to 37): server build 4.89, 4.57, 4.60 s before;
+  4.96, 4.65, 4.69 s after. `tsc -p tsconfig.scripts.json` alone: 1.06, 0.92, 0.92 s before;
+  1.07, 0.93, 0.94 s after. No cost that the noise lets us see.
+- **Mutations:** all 4 of the table went red (loopback check removed: 7 tests;
+  `TEST_DATABASE_URL` not compared: 1; local falls back to Neon: 1; route outside the
+  block: 4 `webhookRouteOrder` tests). Extra: "unset means neon" red; `?host=` not
+  checked: 2 red; bad value repeated in the message: 4 red in `prisma.test.ts`.
+- **Until S.7 step 4, `--project=cloud` does not start** with `E2E_DATABASE` unset: the
+  server asks for `E2E_LOCAL_DATABASE_URL`. Use `E2E_DATABASE=neon` until then.
+
 ## Task S.7 — the local database: install, create, migrate (a person runs the database steps)
 
 **Files:** `apps/server/scripts/e2eLocalDb.ts` (new) and test, `apps/server/package.json`,
@@ -650,18 +682,38 @@ test (new), `apps/server/src/index.ts`, `apps/server/src/webhookRouteOrder.test.
 test and the docs. The owner (or the main session, with the owner's consent) runs the
 commands in step 4.
 
-- [ ] **Step 1:** `e2eLocalDb.ts migrate|status`: reads `E2E_LOCAL_DATABASE_URL` from
+- [x] **Step 1:** `e2eLocalDb.ts migrate|status`: reads `E2E_LOCAL_DATABASE_URL` from
   `apps/server/.env`, runs the same checks as S.6 (loopback, identity), then runs
   `prisma migrate deploy` (or `prisma migrate status`) with **both** `DATABASE_URL` and
   `DIRECT_URL` set to the local URL. Both, because `migrate deploy` uses `directUrl`:
   overriding only `DATABASE_URL` would migrate the database `DIRECT_URL` names, which is the
   DEV database. Unit-test the checks and the environment it builds; do not run Prisma in the
   test.
-- [ ] **Step 2:** scripts `e2e:db:migrate` and `e2e:db:status` in `apps/server/package.json`.
-- [ ] **Step 3:** `.env.example`: `E2E_LOCAL_DATABASE_URL=""` with a comment: a local
+- [x] **Step 2:** scripts `e2e:db:migrate` and `e2e:db:status` in `apps/server/package.json`.
+- [x] **Step 3:** `.env.example`: `E2E_LOCAL_DATABASE_URL=""` with a comment: a local
   database only, created with Neon's major version and collation, migrated with
   `pnpm --filter server e2e:db:migrate` after every new migration.
-- [ ] **Step 4 (owner):** with the answers to P1 and P2:
+**Parts 1 and 2 done 2026-11-23** by the main session, with the owner's consent ("install
+local postgres 17 for me please"): `brew install postgresql@17` gave **PostgreSQL 17.12
+(Homebrew)**, the same minor version as Neon; `brew services start postgresql@17`; it
+listens on `localhost` only. `createdb -h localhost --template=template0
+--locale-provider=builtin --builtin-locale=C.UTF-8 --locale=C p1i_e2e` and `ALTER DATABASE
+p1i_e2e SET timezone TO 'UTC'` worked. The P2 query gives `C | C | b | C.UTF-8`: the same
+provider and locale as Neon (`datcollate` and `datctype` are `C`, not `C.UTF-8`; the
+builtin provider does not use them for sorting). Homebrew's own `initdb` used
+`en_US.UTF-8` for the cluster, which does not matter, because `p1i_e2e` sets its own.
+Parts 3 and 4 (the URL in `apps/server/.env`, the migration) are still owed.
+
+**Parts 3 and 4 done 2026-11-23** by the main session (the owner asked it to set up the local
+Postgres): `E2E_LOCAL_DATABASE_URL` added to the worktree's `apps/server/.env` (a `localhost`
+URL with the Mac user name, no password; the file is git-ignored). `e2e:db:status` first
+named `p1i_e2e` at `localhost:5432` and listed the pending migrations (exit 1, as Prisma does
+for pending migrations). `e2e:db:migrate`: "All migrations have been successfully applied."
+`e2e:db:status` then: "21 migrations found … Database schema is up to date!".
+`_prisma_migrations` holds 21 finished rows; `SHOW timezone` is `UTC`. No Prisma consent
+prompt appeared (`migrate deploy` is not one of the guarded commands).
+
+- [x] **Step 4 (owner):** with the answers to P1 and P2:
   1. install Postgres 17 (Homebrew `postgresql@17` and `brew services start postgresql@17`,
      owner answer P1-A);
   2. create the database with Neon's locale provider and `timezone = 'UTC'`:
@@ -675,7 +727,7 @@ commands in step 4.
   3. set `E2E_LOCAL_DATABASE_URL` in `apps/server/.env` (never in the repo);
   4. `pnpm --filter server e2e:db:migrate`, then `e2e:db:status`: "Database schema is up to
      date!".
-- [ ] **Step 5:** `e2e/CLAUDE.md`, a new section *The local E2E database*: the four steps,
+- [x] **Step 5:** `e2e/CLAUDE.md`, a new section *The local E2E database*: the four steps,
   the version and collation it must match (with the date they were read), and "after every
   new migration, run `e2e:db:migrate`; the run stops at the start until you do".
 
@@ -686,12 +738,39 @@ commands in step 4.
 | the script sets only `DATABASE_URL` | the "both variables" unit test |
 | the script skips the identity check | the identity unit test |
 
+**Steps 1, 2, 3 and 5 done 2026-11-23** in `2d451c4d` (the shared check), `7d1b4eb7` (the
+script) and `ca6574a6` (the docs), on `chore/e2e-speed-b`.
+
+- **The shared check:** `assertLocalE2eDatabaseUrl(url, env)` in `src/lib/databaseUrl.ts`
+  holds the S.6 loopback and identity checks. `resolveDatasourceUrl` and the script both
+  call it; `prisma.test.ts` did not change.
+- **The script:** `scripts/e2eLocalDb.ts migrate|status` reads `apps/server/.env` (a shell
+  value wins, as with `dotenv/config`), refuses an unset, non-local or same-database
+  `E2E_LOCAL_DATABASE_URL` (the identity check runs on the merged env AND on `.env` alone),
+  then runs `pnpm exec prisma migrate deploy` (or `status`) with BOTH `DATABASE_URL` and
+  `DIRECT_URL` set to the local URL. `schema.prisma` reads only those two (no
+  `shadowDatabaseUrl`). No message prints a URL or a host.
+- **Scripts:** `pnpm --filter server e2e:db:migrate` and `e2e:db:status`.
+- **`.env.example`:** `E2E_LOCAL_DATABASE_URL=""`, the form
+  `postgresql://<your mac user>@localhost:5432/p1i_e2e`, and why `postgresql://u@/db?host=/tmp`
+  is refused.
+- **`e2e/CLAUDE.md`:** *The local E2E database*: the four steps, the version and locale read
+  2026-11-22 (PostgreSQL 17.12, builtin, `C.UTF-8`, the same on TEST and production), the P2
+  query, and "run `e2e:db:migrate` after every new migration".
+- **Gate without E2E:** all green. `pnpm test`: web 3899 / 378, server 2934 / 91 (was
+  2904 / 90), `scripts/spec` 78. esbuild 279.7 KiB. TS6385: 0. The scripts pass checks 240
+  files (was 237: the script, its test, dotenv's types); 0.83–0.85 s.
+- **Mutations:** both rows of the table went red (only `DATABASE_URL`: 6 tests; no identity
+  check: 8). Extra, all red: no `.env`-only check (1), `.env` wins over the shell (2), `main`
+  runs without the checks (3), loopback check off in the shared function (10, 7 of them in
+  `prisma.test.ts`).
+
 ## Task S.8 — the config: `cloud` on the local database, `cloud-neon`, `run-all.sh`
 
 **Files:** `e2e/playwright.config.ts`, `e2e/neonSpecs.ts` (new), `e2e/global-setup.ts`,
 `e2e/run-all.sh`, `package.json`, `scripts/spec/build.mjs`, `build.test.mjs`.
 
-- [ ] **Step 1: the list.** `e2e/neonSpecs.ts` exports `NEON_SPECS`, one entry per line
+- [x] **Step 1: the list.** `e2e/neonSpecs.ts` exports `NEON_SPECS`, one entry per line
   with its reason (the list of owner question **P8**). The core list, 8 files, 38 tests
   (counts from `--list` on 2026-11-22):
 
@@ -708,23 +787,23 @@ commands in step 4.
 
   Optional (P8): `location-scoped-writes.spec.ts` (7) and `household-switch.spec.ts` (6),
   which would make 10 files and 51 tests.
-- [ ] **Step 2: the switch.** The config reads `E2E_DATABASE` (default from P7). The API
+- [x] **Step 2: the switch.** The config reads `E2E_DATABASE` (default from P7). The API
   server's `command` gets `E2E_DATABASE=<value>`. With `neon` the project list is `local`,
   `cloud-neon`, `pwa`; else `local`, `cloud`, `pwa` (D11). `cloud-neon` has the same `use`
   as `cloud` and `testMatch: NEON_SPECS`, or the whole cloud list when
   `E2E_NEON_FULL=1`. The config throws when a `NEON_SPECS` entry is not in the cloud list
   (D13). `selectedProjects()` knows `cloud-neon`.
-- [ ] **Step 3: `globalSetup`** first calls `GET /e2e/database` and throws when `kind` is not
+- [x] **Step 3: `globalSetup`** first calls `GET /e2e/database` and throws when `kind` is not
   the expected one ("this run expected the Neon test branch but the server uses the local
   database"), or when `applied` is less than the number of migration folders ("the local E2E
   database is behind: run `pnpm --filter server e2e:db:migrate`"). Then the S.3 cleanup.
-- [ ] **Step 4: `run-all.sh`.** `PROJECTS=(local cloud cloud-neon pwa)`. The `cloud-neon`
+- [x] **Step 4: `run-all.sh`.** `PROJECTS=(local cloud cloud-neon pwa)`. The `cloud-neon`
   run gets `E2E_DATABASE=neon`; the others `E2E_DATABASE=local`. The summary has one row
   each, and the line under the table says which database each cloud row used. A flag
   `--full-neon` (or `pnpm test:e2e:all:neon`) runs the whole cloud list on Neon instead, for
   a checkpoint (P10). Where `cloud-neon` runs follows owner question **P6**.
-- [ ] **Step 5:** `scripts/spec/build.mjs` gets the `cloud-neon` report folder, with a test.
-- [ ] **Step 6:** `--list` checks, recorded in the *Done* note:
+- [x] **Step 5:** `scripts/spec/build.mjs` gets the `cloud-neon` report folder, with a test.
+- [x] **Step 6:** `--list` checks, recorded in the *Done* note:
   `pnpm exec playwright test --config=e2e/playwright.config.ts --project=cloud --list`
   (expect 218), and the same with `E2E_DATABASE=neon --project=cloud-neon` (expect 38, or
   51).
@@ -738,22 +817,101 @@ commands in step 4.
 | one migration folder added (an empty folder, then deleted) | `globalSetup`'s migrations check on the `cloud` run |
 | `run-all.sh` runs `cloud-neon` without `E2E_DATABASE=neon` | `globalSetup`'s `kind` check |
 
+**Done 2026-11-23** in `02fa7bd7` (the switch, `cloud-neon`, `e2e/neonSpecs.ts`), `fe2f6fc0`
+(`globalSetup` database check), `5f5dcc2c` (`run-all.sh`, `test:e2e:all:neon`) and `f6a03174`
+(spec site), on `chore/e2e-speed-b`.
+
+- **The switch:** the config reads `E2E_DATABASE` (`e2e/helpers/e2eDatabase.ts`, the
+  server's rule: unset or empty is `local`, P7-A; an unknown value throws). With `neon` the
+  cloud project is named `cloud-neon`, else `cloud`; only one exists (D11). The cloud list
+  is `CLOUD_SPECS`; `cloud-neon` takes `NEON_SPECS`, or all of `CLOUD_SPECS` with
+  `E2E_NEON_FULL=1`. The config throws when a `NEON_SPECS` entry is not in `CLOUD_SPECS`
+  (D13). `--project=cloud-neon` without `neon`, and `--project=cloud` with it, throw a
+  message that gives the command (`requestedProjects()` in `selectedProjects.ts`). The API
+  server command gets `E2E_DATABASE=<value>`.
+- **`globalSetup`** calls `GET /e2e/database` first, for `cloud` and `cloud-neon`. It throws
+  when `kind` is not the expected one, or when fewer migrations are applied than there are
+  migration folders (directories only), or when the newest applied name sorts before the
+  newest folder. More rows than folders is allowed (the shared Neon branch). Then the S.3
+  cleanup.
+- **`run-all.sh`:** rows `local`, `cloud` (`E2E_DATABASE=local`), `cloud-neon`
+  (`E2E_DATABASE=neon`), `pwa`, and a line under the table that says which database each
+  cloud row used. `--full-neon` (`pnpm test:e2e:all:neon`, P10-A) runs `local`, `cloud-neon`
+  with the whole list, and `pwa`.
+- **Spec site:** `build.mjs` publishes `playwright-report/cloud-neon`; 2 new tests.
+- **`--list`:** `--project=cloud` 220 tests in 40 files; `E2E_DATABASE=neon
+  --project=cloud-neon` **40 in 8 files** (`cleanup-endpoint.spec.ts` has 3 tests since
+  S.4); with `E2E_NEON_FULL=1`, 220; `local` 190, `pwa` 73.
+- **Gate without E2E:** all green. `pnpm test`: web 3899 / 378, server 2934 / 91,
+  `scripts/spec` 80 (was 78). esbuild 279.7 KiB. TS6385: 0.
+- **Mutations:** misspelled entry: config throws at load. Migration folder added:
+  `globalSetup` stops the `cloud` run ("21 migrations applied, 22 migration folders").
+  `cloud-neon` row without `neon`: the config stops it, `cloud-neon FAIL(1)`. Server command
+  with the wrong value (`local`) on a neon run: `globalSetup` stops it. Server command
+  WITHOUT `E2E_DATABASE`: green, the server inherits the shell value.
+- **First runs:** `cloud` on the local database with `cleanup-endpoint`,
+  `settings/locations`, `location-people`, `household-invites`: 27 passed, 2 skipped, 43.7 s
+  (the same files on Neon at S.5: 379.8 s). `cloud-neon` with `cleanup-endpoint`: 3 passed,
+  31.8 s (S.5: 38.5 s).
+- **The whole `cloud` project on the local database** (2026-11-23 01:57 CST, load 2.78 to
+  3.79, inactive memory above 6.6 GB): **212 passed, 8 skipped, 0 failed, 235.0 s
+  (3m55s)**, against S.5's 2435.0 s on Neon. No test failed on local Postgres. In "two
+  accepts at once" the loser got `OFFER_GONE` (it waited at the lock), as on Neon at S.5.
+  Slowest files (s): `location-switcher` 17.9, `household-invites` 17.2,
+  `settings/import-export-cloud` 17.2, `settings/tags` 16.9, `item-management` 14.6.
+
 ## Task S.9 — PR B docs, the gate, the numbers
 
 **Files:** `e2e/CLAUDE.md`, root `CLAUDE.md`, `docs/INDEX.md`, this plan, the H4 deploy
 runbook or the checkpoint runbook (if P10 says so).
 
-- [ ] **Step 1:** `e2e/CLAUDE.md`: which project uses which database, the two commands, the
+- [x] **Step 1:** `e2e/CLAUDE.md`: which project uses which database, the two commands, the
   risks table of this plan (short form), and the new hazard ("`cloud` green on the local
   database is not Neon green"). Root `CLAUDE.md`, *Verification Gate*: the per-PR gate and
   the checkpoint gate.
-- [ ] **Step 2: the whole gate,** alone on the machine, twice in a row (a fast database
+- [x] **Step 2: the whole gate,** alone on the machine, twice in a row (a fast database
   can hide a flaky wait; two runs show whether a new flake appears). All projects green.
-- [ ] **Step 3:** the full cloud list on Neon once (`--full-neon`), to prove nothing in the
+- [x] **Step 3:** the full cloud list on Neon once (`--full-neon`), to prove nothing in the
   switch broke the Neon path. All green.
-- [ ] **Step 4:** record every time next to S.1 and S.5, and update the *Expected times*
+- [x] **Step 4:** record every time next to S.1 and S.5, and update the *Expected times*
   table with measured numbers.
-- [ ] **Step 5:** `docs/INDEX.md`: PR B ✅ built.
+- [x] **Step 5:** `docs/INDEX.md`: PR B ✅ built.
+
+**Done 2026-11-23** in `cee52eba` (stale counts and commands), `1baaa070` (the two gates and
+the database section), `aa327e69` (runbook section 15), `55f1426f` (the times) and
+`b2fc6c6e` (`docs/INDEX.md`), on `chore/e2e-speed-b`.
+
+- **Docs:** `e2e/CLAUDE.md` has a new section, *Which database each cloud project uses*:
+  the two projects, the four commands, the risks a local database hides, and "`cloud` green
+  on the local database is not Neon green". The servers table, the `run-all.sh` section and
+  *Cloud E2E is not database-isolated* name `cloud-neon`. Root `CLAUDE.md`, *Verification
+  Gate*: four rows, the per-PR gate and the checkpoint gate, the one-time setup and "run
+  `e2e:db:migrate` after every new migration". `apps/server/prisma/CLAUDE.md`: the check
+  lives in `src/lib/databaseUrl.ts`.
+- **Stale items fixed:** the cloud count command (now
+  `awk '/^const CLOUD_SPECS = \[/,/^\]/' … | grep -c "spec\.ts'"`, 40 of 44); the migration
+  folder command (now `ls -d apps/server/prisma/migrations/*/ | wc -l`; the H6b, H7a and H7b
+  counts were 21, 21, 22 and are 20, 20, 21); the no-overlap note (7 `.ts` files in
+  `scripts/`, 1 `src` file checked twice); the S.8 forward reference in `e2e/CLAUDE.md`.
+- **P10-A:** section 15 of `docs/global/backend/2026-11-17-deploy-runbook-households-h4.md`,
+  and step 0 of section 8.3 *The order*.
+- **Gate without E2E:** all green. `pnpm test`: web 3899 / 378, server 2934 / 91,
+  `scripts/spec` 80. esbuild 279.7 KiB. TS6385: 0.
+- **E2E** at `aa327e69`, alone on the machine, each first try, no retry, no flaky test:
+
+| Row | S.1 | S.5 | S.9 gate 1 | S.9 gate 2 | S.9 `test:e2e:all:neon` |
+|---|---|---|---|---|---|
+| `local` | 3m44s | 3m42s | 3m49s, 179 / 11 skipped | 3m51s, 179 / 11 | 3m47s, 179 / 11 |
+| `cloud` | 64m08s (Neon) | 40m35s (Neon) | **4m16s** (255.0 s, local), 212 / 8 | **4m04s** (243.3 s), 212 / 8 | — |
+| `cloud-neon` | — | — | 12m01s (720.5 s), 40 | 11m51s (710.6 s), 40 | 39m10s (2348.6 s), 212 / 8 |
+| `pwa` | 1m34s | 1m35s | 1m38s, 73 | 1m37s, 73 | 1m36s, 73 |
+| wall clock | 69m26s | 45m52s | **21m44s** | **21m24s** | **44m33s** |
+
+- Load average (1 min): gate 1 min 2.34, max 6.55, mean 4.26; gate 2 min 2.20, max 7.33,
+  mean 3.94; the Neon run min 2.30, max 6.32, mean 3.51. "Inactive" memory never fell below
+  5.67 GB. Each local `globalSetup` deleted 35 users left by the run before (D7).
+- Slowest `cloud-neon` file in the gate: `settings/import-export-cloud.spec.ts`, 290.1 s and
+  272.2 s.
 
 ---
 
@@ -843,6 +1001,32 @@ Otherwise the run gets killed, as on 2026-10-31.
 | S.5 brief, the count command | `grep -c '^  DELETE FROM "' apps/server/src/lib/e2eCleanupSql.ts` gives 22 | it gives 0: the statements are indented 4 spaces. `grep -cE '^ +DELETE FROM "' …` gives 22 |
 | *Expected times* | after PR A: whole gate about 50–55 min, cloud about 45–50 min | 45m52s and 40m35s (S.5 gate, one run) |
 | *Expected times* | — | the cloud time moves by more than 10% between runs of the same code (2177.8 s at S.3, 2435.0 s at S.5), browserless specs included. Quote PR A's gain from more than one gate |
+| S.6 step 1 | the local URL is compared with `DATABASE_URL`, `DIRECT_URL`, `TEST_DATABASE_URL`, `TEST_DIRECT_URL` or `PROD_COPY_DATABASE_URL` | the existing guard has no list: it compares every variable whose name ends in `_URL`. The local check does the same and skips only `E2E_LOCAL_DATABASE_URL`, so `PROD_COPY_DIRECT_URL` and any later variable are compared too |
+| S.6 step 1 | "No error message prints a URL or a host" | true for the new code. The old `assertNotAnotherDatabase` message (verify-migration's guard) still prints `host/db`; kept so its test does not change |
+| S.6 step 2 | the move needs only a re-export | the `tsconfig.scripts.json` comment and the `databaseIsolation.ts` header both said `scripts/` imports nothing from `src`; both had to change |
+| S.6 step 2 | "Measure the server build again" | the whole build moves by more than the cost under load. Measure `tsc -p tsconfig.scripts.json` alone and its `--listFiles` count (236 → 237) |
+| S.6 / S.7 (missing) | — | P7-A makes the server ask for `E2E_LOCAL_DATABASE_URL` as soon as S.6 lands, so `--project=cloud` does not start until S.7 step 4 (or with `E2E_DATABASE=neon`) |
+| S.7 step 3 (missing) | — | `postgresql://u@/db?host=/tmp` (a user and no host) is not a valid URL in Node, so the server refuses it. Use `localhost`, or `postgresql:///db?host=/tmp` |
+| D12 (missing) | — | `kind` in `/e2e/database` comes from `E2E_DATABASE`, not from the URL the client used. Both come from the same `process.env` at start, so they agree |
+| S.7 step 1 | "runs the same checks as S.6" | the S.6 checks were written inline in `resolveDatasourceUrl`, so nothing could reuse them. `2d451c4d` moved them into `assertLocalE2eDatabaseUrl` (`src/lib/databaseUrl.ts`) first |
+| S.7 step 1 (missing) | — | which value wins when the shell and `.env` disagree. The script follows `dotenv` (the shell wins) AND runs the identity check on `.env` alone too, so a shell value cannot hide a `.env` variable that names the same database |
+| S.7 step 4.2 | `createdb --template=template0 …` | the command that worked had `-h localhost` (see *Parts 1 and 2*). `e2e/CLAUDE.md` gives that form |
+| S.6 / D10 (missing) | — | `databaseIdentity` compares `host + path`, and `URL.host` keeps an explicit port. So `localhost:5432/p1i_e2e` and `localhost/p1i_e2e` count as two databases, and a same-database paste that differs only by the default port passes. Also true for `verify-migration`'s guard |
+| S.7 (missing) | — | `biome check` ignores `apps/server/`, so no linter checks the server files; the gate's `pnpm check` does not cover them |
+| S.8 step 1, step 6 | `cloud-neon` is 38 tests; `cloud` is 218 | 40 and 220: S.4 added 2 tests to `cleanup-endpoint.spec.ts` (3, not 1) |
+| S.8 mutation row 2 | the API server command without `E2E_DATABASE` turns `globalSetup` red | it stays green: Playwright's `webServer` passes `process.env` to the server, so the server inherits the shell value. The kind check goes red only when the server gets a different value (measured with `E2E_DATABASE=local` in the command on a neon run) |
+| S.8 mutation row 4 | `run-all.sh` without `E2E_DATABASE=neon` for `cloud-neon` is caught by `globalSetup`'s kind check | the config stops it first: without `neon` there is no `cloud-neon` project, and the config throws a message naming the fix |
+| root `CLAUDE.md`, H6b and H7b counts | migration folders: `ls apps/server/prisma/migrations \| grep -c _`; 22 after H7b | that command counts `migration_lock.toml` too. There are 21 folders. `globalSetup` counts directories only |
+| root `CLAUDE.md` and `e2e/CLAUDE.md`, the cloud count command (S.9) | `awk "/name: 'cloud'/,/name: 'pwa'/" e2e/playwright.config.ts \| grep -c "spec\.ts'"` | it prints 0 since S.8: the list is `const CLOUD_SPECS`. Use `awk '/^const CLOUD_SPECS = \[/,/^\]/' e2e/playwright.config.ts \| grep -c "spec\.ts'"` (40) |
+| *Known gaps*, `household-ownership.spec.ts` test 6 | on the local database the loser almost never waits at the lock | in the first full local run it got `OFFER_GONE` (it waited). One run only |
+| *Expected times* | `cloud` about 10–15 min after PR B | 3m55s (235.0 s), one run |
+| root `CLAUDE.md`, H6b and H7a counts (S.9) | migration folders 21 and 21 | 20 and 20: the same `migration_lock.toml` error as the H7b row. Checked with `git ls-tree -d` at `5cd82bf4`, `9701ddff` and `41bbbe1a` |
+| S.9 brief | root `CLAUDE.md` says the check "lives in `scripts/databaseIsolation.ts`" | only `apps/server/prisma/CLAUDE.md` said so. The root file names it only in a dated measurement table (history, kept) |
+| S.9 file list | — | `apps/server/prisma/CLAUDE.md` also changes |
+| P10-A | the Neon run sits "next to the `verify:migration` step" | the H4 runbook has no single such step; `verify:migration` appears in several phase sections. Built as section 15 and step 0 of section 8.3 |
+| *Expected times* | whole gate about 25–33 min after PR B; `cloud-neon` about 10–13 min for 38 tests | 21m44s and 21m24s; `cloud-neon` 12m01s and 11m51s for 40 tests |
+| *Expected times* | full cloud suite on Neon about 45–50 min after PR B | 44m33s wall clock, `cloud-neon` 39m10s |
+| *Known gaps* (missing) | — | `--project=cloud-neon <file>` with a file outside `NEON_SPECS` selects 0 tests and passes. Add `E2E_NEON_FULL=1` to run one other file on Neon (written into `e2e/CLAUDE.md`) |
 
 ## Status
 
@@ -852,10 +1036,15 @@ both run **PostgreSQL 17.12** with the builtin locale provider and `C.UTF-8` (re
 owner; table under P2). The local database matches: Postgres 17, builtin, `C.UTF-8`. All
 owner questions are answered.
 
-**PR A built 2026-11-23** on `chore/e2e-speed` (tasks S.1–S.5), not merged. The whole gate
-went from 69m26s to 45m52s, all green, and `cloud` went from 64m08s to 40m35s. Next: open
-PR A against `develop`, then PR B (tasks S.6–S.9).
-Nothing built.
+**PR A built 2026-11-23** on `chore/e2e-speed` (tasks S.1–S.5), merged into `develop` (2026-11-23, #396, merge `197790f4`). The whole gate
+went from 69m26s to 45m52s, all green, and `cloud` went from 64m08s to 40m35s.
+
+**PR B built 2026-11-23** on `chore/e2e-speed-b` (tasks S.6–S.9), not merged. The `cloud`
+project runs on a local Postgres 17, a `cloud-neon` row runs 8 spec files on Neon in every
+gate, and `pnpm test:e2e:all:neon` runs the whole cloud list on Neon before each checkpoint
+(H4 runbook section 15). The whole gate went from 45m52s to 21m44s and 21m24s (two runs),
+all green; `cloud` from 40m35s to about 4 minutes. The checkpoint gate took 44m33s, all
+green. Next: open PR B against `develop`; after it merges, task S.10.
 
 ---
 
