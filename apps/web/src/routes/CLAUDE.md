@@ -461,7 +461,7 @@ The page an invite link opens. Plan: `docs/global/permissions/2026-11-18-househo
 
 | Mode, status | What shows |
 |---|---|
-| local | `join.needsCloud` and **Sign in to join**. It sets `data-mode` to `cloud`, never `migration-strategy` and never `migration-prompted`, then reloads. So no copy starts, and local data is not touched. The "Copy local data?" question waits on `/join/…` and `/sign-in` (`isCopyPromptPausedPath`), and **Join** adds the joined household to `migration-skip-households` (`skipCopyPromptIn`), so it is never asked there (O12-A). It still comes in any other household, for example the person's own. Until 2026-11-19 the button set `migration-prompted`, which turned the question off on the device for good (`docs/global/bugs/2026-11-19-bug-join-turns-off-copy-prompt.md`) |
+| local | `join.needsCloud` and **Sign in to join**. It sets `data-mode` to `cloud`, never `migration-strategy` and never `migration-prompted`, then reloads. So no copy starts, and local data is not touched. The "Copy local data?" question waits on `/join/…`, `/sign-in` and `/sign-up` (`isCopyPromptPausedPath`), and **Join** adds the joined household to `migration-skip-households` (`skipCopyPromptIn`), so it is never asked there (O12-A). It still comes in any other household, for example the person's own. Until 2026-11-19 the button set `migration-prompted`, which turned the question off on the device for good (`docs/global/bugs/2026-11-19-bug-join-turns-off-copy-prompt.md`) |
 | cloud, loading | the spinner |
 | cloud, `VALID` | `join.title` with the household name, `join.invitedBy`, the roles (household role, then each location as stored, never `capitalize`), **Join** |
 | cloud, `ALREADY_MEMBER` | the household name, `join.alreadyMember`, a link to the pantry |
@@ -481,10 +481,20 @@ Three things could send a new person away from the link. Each is handled:
 
 - **The onboarding redirect.** `shouldRedirectToOnboarding` returns `false` for `/join/…`
   (decision T25). Tested as a unit and on the real page with an empty database.
-- **Sign-in.** `CloudAuthGuard` sends a signed-out person to `/sign-in?redirect=<path>`,
-  except on `/sign-in` itself. `/sign-in` follows `safeRedirectPath(redirect)`
-  (`lib/safeRedirect.ts`) and passes the same path to Clerk's `forceRedirectUrl` AND
-  `signUpForceRedirectUrl`, so a sign-up returns too (decision T24). `safeRedirectPath`
+- **Sign-in and sign-up.** `CloudAuthGuard` sends a signed-out person to
+  `/sign-in?redirect=<path>`, except on `/sign-in` and `/sign-up` themselves
+  (`isAuthPage` in `lib/authPages.ts`). `/sign-in` follows `safeRedirectPath(redirect)`
+  (`lib/safeRedirect.ts`) and passes the path to Clerk's `forceRedirectUrl`. Clerk's
+  **Sign up** link goes to our own `/sign-up?redirect=<path>` (the `signUpUrl` prop;
+  `authPageUrl`), and `/sign-up` passes the path to `<SignUp>`'s `forceRedirectUrl`. Its
+  **Sign in** link goes back to `/sign-in` with the same `redirect`. `<SignUp>` uses
+  `routing="hash"`, so the e-mail code step stays on `/sign-up?redirect=…`.
+  `ClerkProvider` gets `signInUrl` and `signUpUrl` (`main.tsx`), so no Clerk flow falls
+  back to Clerk's hosted pages (decision T24). **Until 2026-11-23 a sign-up did NOT
+  return**: there was no `/sign-up` page, Clerk's link went to its hosted page, which
+  keeps no `?redirect=`, and `signUpForceRedirectUrl` is not put on that link
+  (`docs/global/bugs/2026-11-23-bug-join-redirect-lost-on-sign-up.md`). Only a manual check
+  with real Clerk proves Clerk follows these props; E2E has no Clerk. `safeRedirectPath`
   resolves the path with `new URL` against this site and checks the RESULT, because
   `/..//evil.example` and `/%2e%2e//evil.example` pass a plain "starts with `//`" check
   and still resolve to another host.
@@ -578,7 +588,7 @@ not in any household." and three actions (owner decision O19): **Create a househ
   household is still cached: Apollo keeps the cached answer in `data` next to the error
   (measured on 4.1.6), so `isError` is `false` then, and a gate on `isError` would never
   show the screen to a person just removed.
-- **Not on `/join/…` or `/sign-in`.** A person with no household can still open an invite
+- **Not on `/join/…`, `/sign-in` or `/sign-up`.** A person with no household can still open an invite
   link and sign in.
 - **When the screen first shows, it clears the old household's data once**, with no
   reload. `HouseholdChangeGuard` cannot do it: there is no new id. Exactly what is cleared:

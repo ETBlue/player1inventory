@@ -461,20 +461,31 @@ change it.
 
 **Owner, in the PRODUCTION Clerk instance, before the web deploy.** A person who opens an
 invite link while signed out goes to `/sign-in?redirect=/join/<token>`. The sign-in page
-passes that same-origin path to Clerk as `forceRedirectUrl` AND `signUpForceRedirectUrl`
-(decision T24). Clerk may refuse a redirect it does not allow.
+passes that same-origin path to Clerk as `forceRedirectUrl`, and Clerk's **Sign up** link
+goes to the app's own `/sign-up?redirect=/join/<token>` page, which passes the path to
+Clerk's `<SignUp>` as `forceRedirectUrl` (decision T24). Clerk may refuse a redirect it does
+not allow.
+
+**Corrected 2026-11-23.** This section first said the sign-in page passes the path as
+`signUpForceRedirectUrl` too, and that a sign-up would return. It did not: there was no
+`/sign-up` page, so Clerk's **Sign up** link went to Clerk's hosted page, which keeps no
+`?redirect=`. Fixed in code (`fix/join-redirect-after-sign-up`), see
+`docs/global/bugs/2026-11-23-bug-join-redirect-lost-on-sign-up.md`.
 
 1. In the Clerk Dashboard, open **Paths** and any list of allowed redirect URLs. Check that a
    path on the production origin, such as `/join/<token>`, is allowed.
 2. After the deploy, test both ways, with a link from a test household:
    - **Sign-in:** open the link in a private window, signed out. Sign in with an existing
      account. The page must come back to `/join/<token>`.
-   - **Sign-up:** open a NEW link in a private window. Sign up as a new account (including
-     any e-mail check Clerk asks for). The page must come back to `/join/<token>`, not to
-     `/`.
+   - **Sign-up:** open a NEW link in a private window. Choose **Sign up**. The address bar
+     must show `/sign-up?redirect=%2Fjoin%2F<token>`, on the app's own origin, not a Clerk
+     `accounts.dev` or `accounts.<domain>` page. Sign up as a new account (including any
+     e-mail code Clerk asks for). The page must come back to `/join/<token>`, not to `/`.
 
-If either lands on `/`, the person can still open the link again by hand. Fix the Clerk
-setting; no code change is needed for that.
+If either lands on `/`, the person can still open the link again by hand. If the address bar
+showed our own `/sign-up?redirect=…` and it still lands on `/`, check the Clerk redirect
+setting in step 1. If the **Sign up** link left our origin, the web bundle is older than the
+2026-11-23 fix.
 
 Result: `TBD on deploy day` (sign-in: back on the link yes/no; sign-up: yes/no).
 
@@ -540,7 +551,7 @@ Result: `TBD` (dialog: pasted yes/no; row: pasted yes/no; browser and device use
 | Symptom | Likely cause | What to do |
 |---|---|---|
 | The release log stops at `add_household_invites` with an error | the migration failed. Each migration file runs as its own transaction (H3a runbook 7.1), so nothing of this one is applied; the three before it stay applied | the old server keeps serving. Read the error, then follow H3a runbook 7.1, with `20261118000000_add_household_invites` as the name to mark `--rolled-back` |
-| A signed-out person who opens a link ends on `/` after sign-in or sign-up | Clerk did not accept the redirect (9.5) | fix the Clerk setting. The person opens the link again |
+| A signed-out person who opens a link ends on `/` after sign-in or sign-up | Clerk did not accept the redirect, or the web bundle is older than the 2026-11-23 sign-up fix (9.5) | fix the Clerk setting, or deploy the web. The person opens the link again |
 | The join page, Members page or no-household screen shows an error for everyone | the web is new and the server is old, or the server was rolled back | check the Railway deployment is the new commit |
 
 **Rollback.** The migration only adds. To roll back the server alone, redeploy the previous
