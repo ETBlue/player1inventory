@@ -53,7 +53,7 @@ describe('Members page — local mode', () => {
       expect(router.state.location.pathname).toBe('/settings/household'),
     )
     expect(
-      await screen.findByRole('heading', { level: 1, name: 'My data' }),
+      await screen.findByRole('heading', { level: 1, name: 'General' }),
     ).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Members' })).toBeNull()
   })

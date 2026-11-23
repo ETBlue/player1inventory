@@ -32,10 +32,12 @@ import { makeGql } from '../utils/cloud'
 //
 // | Test | What                                                              |
 // |------|-------------------------------------------------------------------|
-// | 1    | PAT switches from A to B in Switch to…; the saved cache copy and  |
+// | 1    | PAT switches from A to B in Switch to… on /settings/household;    |
+// |      | the page loads that settings page again; the saved cache copy and |
 // |      | the stored active location of A are gone after the reload; the    |
 // |      | cart page shows B's row, not A's; A's cart row is still in A       |
-// | 2    | PAT, in A only, uses Create new; lands in the new household;      |
+// | 2    | PAT, in A only, uses Create new on Settings › Tags; lands in the  |
+// |      | new household, still on Settings › Tags;                          |
 // |      | A is still there, PAT still its owner                             |
 // | 3    | owner decision O21: a tab that shows A, after PAT moved to B on   |
 // |      | "another device", cannot write a tag type; nothing in A or B; the |
@@ -353,9 +355,16 @@ async function expectTheme(page: Page, dark: boolean) {
   else await expect(html).not.toHaveClass(/(^|\s)dark(\s|$)/)
 }
 
-/** The household heading of `/settings/household` (`HouseholdLabel`). */
+/**
+ * The household heading of the desktop household sidebar on
+ * `/settings/household` (`HouseholdLabel`, the `<h2>` next to Back in
+ * HouseholdSidebar.tsx). The page's own `<h1>` says "General" since
+ * 2026-11-23, so the name is read from the sidebar.
+ */
 function householdHeading(page: Page, name: string) {
-  return page.getByRole('main').getByRole('heading', { name, exact: true })
+  return page
+    .getByRole('navigation', { name: 'Sidebar navigation' })
+    .getByRole('heading', { level: 2, name, exact: true })
 }
 
 test.beforeEach(async ({ request, baseURL }) => {
@@ -415,9 +424,12 @@ test.describe('household switch', () => {
     await markDocument(page)
     await switcher.row(seed.b.name).click()
 
-    // Then the page loads `/` again, in B
-    await page.waitForURL((url) => url.pathname === '/')
+    // Then the page loads again, in B, and it is the same settings page
+    // (owner request 2026-11-23: a switch on a settings page stays there; it
+    // loaded `/` before). The URL is read AFTER the new document: the old
+    // page already had this URL, so a URL wait alone would not wait at all
     await documentWasReplaced(page)
+    expect(new URL(page.url()).pathname).toBe('/settings/household')
     await expect
       .poll(async () => (await myHouseholds(seed.pat)).find((h) => h.isActive))
       .toMatchObject({ id: seed.b.id, role: 'member' })
@@ -472,10 +484,11 @@ test.describe('household switch', () => {
       { id: a.id, name: a.name, role: 'owner', isActive: true },
     ])
 
-    // When PAT uses Switch to… › Create new
+    // When PAT uses Switch to… › Create new, on Settings › Tags (the
+    // household sidebar is on the five list pages too)
     const page = await openAs(browser, PAT)
     const switcher = new HouseholdSwitcher(page)
-    await switcher.navigateTo()
+    await page.goto('/settings/household/tags')
     await expect(householdHeading(page, a.name)).toBeVisible()
     await switcher.open()
     // One household is still a list: A, then Create new
@@ -497,9 +510,11 @@ test.describe('household switch', () => {
         { timeout: 15_000 },
       )
       .toMatchObject({ name: 'Pat Second Home', role: 'owner' })
-    // And the page loads `/` again, in the new household
-    await page.waitForURL((url) => url.pathname === '/')
+    // And the page loads again, in the new household, and it is still
+    // Settings › Tags: a switch on a settings page stays on it (owner
+    // request 2026-11-23). Read after the new document, as in test 1
     await documentWasReplaced(page)
+    expect(new URL(page.url()).pathname).toBe('/settings/household/tags')
     if (!created) throw new Error('no active household')
     expect(created.id).not.toBe(a.id)
     // And the new household has its first location, "Home", and no items

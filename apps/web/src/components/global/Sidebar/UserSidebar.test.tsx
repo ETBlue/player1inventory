@@ -24,6 +24,23 @@ describe('UserSidebar', () => {
     expect(back).toHaveFocus()
   })
 
+  it('user sees Back as an icon in the same row as the heading', () => {
+    // Given the user view
+    render(<UserSidebar onBack={vi.fn()} />)
+
+    // Then Back keeps its accessible name, but shows no text, only its icon
+    const back = screen.getByRole('button', { name: 'Back' })
+    expect(back).toHaveAttribute('aria-label', 'Back')
+    expect(back).toHaveTextContent(/^$/)
+    expect(back.querySelector('svg')).not.toBeNull()
+
+    // And Back and the heading share one flex row
+    const heading = screen.getByRole('heading', { name: 'Preferences' })
+    const row = back.parentElement
+    expect(row).toBe(heading.parentElement)
+    expect(row).toHaveClass('flex')
+  })
+
   it('calls onBack when Back is pressed', async () => {
     // Given the user view
     const onBack = vi.fn()

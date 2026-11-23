@@ -11,8 +11,9 @@ import { routeTree } from '@/routeTree.gen'
 import { mockScreen } from '@/test/viewport'
 
 // The household name in CLOUD mode (households H3a, task 3.13), through the
-// real route tree: the page title, the name card, the desktop household
-// sidebar heading and the mobile `/settings` accordion trigger.
+// real route tree: the name card, the desktop household sidebar heading and
+// the mobile `/settings` accordion trigger. The page title is NOT the name
+// since 2026-11-23: it is "General" in both modes.
 //
 // Every generated Apollo hook is replaced with an inert stub (this factory
 // REPLACES the one in `src/test/setup.ts`), and `useGetHouseholdQuery` answers
@@ -118,29 +119,33 @@ describe('Household name — cloud mode', () => {
     return router
   }
 
-  it('user sees the household name as the household page title, as stored', async () => {
+  it('user sees "General" as the household page title, not the household name', async () => {
     // Given a cloud household named in lower case
     renderAt('/settings/household')
 
-    // Then the page title is the name, not "My data"
-    const title = await screen.findByRole('heading', { level: 1, name: NAME })
+    // Then the page title is "General", the label of this page's sidebar link
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'General' }),
+    ).toBeInTheDocument()
+
+    // And neither the household name nor "My data" is the page title
+    expect(
+      screen.queryByRole('heading', { level: 1, name: NAME }),
+    ).not.toBeInTheDocument()
     expect(
       screen.queryByRole('heading', { level: 1, name: 'My data' }),
     ).not.toBeInTheDocument()
-
-    // And nothing above it capitalizes the name
-    expect(title.closest('.capitalize')).toBeNull()
   })
 
-  it('user sees "My data" as the title while the household name loads', async () => {
+  it('user sees "General" as the title while the household name loads', async () => {
     // Given the household query has not answered yet
     state.household = undefined
 
     renderAt('/settings/household')
 
-    // Then the title is never empty
+    // Then the title is still "General": it does not wait for the name
     expect(
-      await screen.findByRole('heading', { level: 1, name: 'My data' }),
+      await screen.findByRole('heading', { level: 1, name: 'General' }),
     ).toBeInTheDocument()
   })
 
@@ -166,6 +171,9 @@ describe('Household name — cloud mode', () => {
     expect(
       within(main).getByText('Only the household owner can change the name.'),
     ).toBeInTheDocument()
+
+    // And the name shows as stored: nothing above it capitalizes it
+    expect(within(main).getByText(NAME).closest('.capitalize')).toBeNull()
   })
 
   it('user sees the household name as the household sidebar heading on desktop', async () => {

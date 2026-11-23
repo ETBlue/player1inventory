@@ -18,7 +18,7 @@ describe('Household config page stories smoke tests', () => {
   it('Default renders the title and the export card', async () => {
     render(<Default />)
     expect(
-      await screen.findByRole('heading', { level: 1, name: 'My data' }),
+      await screen.findByRole('heading', { level: 1, name: 'General' }),
     ).toBeInTheDocument()
     expect(screen.getByText('Download my data')).toBeInTheDocument()
   })

@@ -515,12 +515,23 @@ screen clears them (see *No household* below). The join page calls `switchToHous
 
 **Switch to…** (`HouseholdSwitcher`, see `components/CLAUDE.md`) is the household sidebar's
 item 9 and an item of the mobile `/settings` accordion, cloud only. Choosing another
-household calls `setActiveHousehold`, then `switchToHousehold(id)`: the same one step as
+household calls `setActiveHousehold`, then `switchToHousehold(id, { to })`: the same one step as
 above (cache in memory and in `Player1InventoryCloudCache` cleared, `active-location-id:cloud`
-removed, reload). So no cart row, stock or name of the old household stays on screen
+removed, a new page load). **The page stays the same** (since 2026-11-23, owner request): a
+switch on a settings page loads that settings page again; a settings page that names a row id
+of the old household (`/settings/household/<section>/<id>…`) goes to its section's list page;
+any other page loads `/`. The switcher is only on settings pages, so in practice the person
+stays where they were. The tab's page history is emptied too, so Back cannot open an old id.
+See `useMyHouseholds` in `hooks/CLAUDE.md`. So no cart row, stock or name of the old household stays on screen
 (the design's known gap "Household switch shows the previous household's cart" is closed;
 `household-switch.spec.ts` test 1). **Create new** sends
-`createHousehold(name, alsoWhenMember: true)` and switches the same way.
+`createHousehold(name, alsoWhenMember: true)` and switches the same way, to the same page.
+
+**A page limited by role, after a switch to a household where the person has less right.**
+Checked 2026-11-23; nothing new was added. Activity (`/settings/household/activity`) shows
+its no-access note and a link back for a `member`, as it does when a member opens the URL.
+Members shows the list with the member's own buttons. A location's people page is never
+reloaded after a switch: it names a location id, so the switch loads Settings › Locations.
 
 **A stale tab cannot read or write the other household** (owner decision O21, decisions
 T66, T67, T72). Every HTTP request carries `x-household-id`: the id this PAGE shows

@@ -5,22 +5,29 @@ Since households phase H1, every settings page except `/settings` itself lives u
 
 | Route | File | What it shows |
 |---|---|---|
-| `/settings` | `settings/index.tsx` | Desktop: `<Navigate to="/settings/household">`. Mobile: an accordion with two items. The household item (open), labelled by `HouseholdLabel`, holds six `SettingsNavCard` links, seven in cloud mode: **Members** is second there (households H5b task G.9). An owner or manager in cloud mode gets an eighth, **Activity**, after Tags (households H6 task J.6, `usePermissions().canReadActivity`). Cloud mode also ends the list with **Switch to…** (`HouseholdSwitcher variant="card"`, households H7 task L.4), for every household role; it is a menu, not a link. "Preferences" (closed) holds `UserSettingsPanel`. |
-| `/settings/household` | `settings/household/index.tsx` | Title `HouseholdLabel`, then `HouseholdNameCard` (cloud only), `ExportCard`, `ImportCard` and, for the cloud owner only, `HouseholdDangerZone` (households H6 task J.7: Clear household, Delete all locations, Delete household, each confirmed by typing the household name exactly as stored) |
+| `/settings` | `settings/index.tsx` | Desktop: `<Navigate to="/settings/household">`. Mobile: a top bar with a **Back** icon (`useBackToAppPage`, the same place the desktop household sidebar's Back goes; since 2026-11-23) and the title, then an accordion with two items. The household item (open), labelled by `HouseholdLabel`, holds six `SettingsNavCard` links, seven in cloud mode: **Members** is second there (households H5b task G.9). An owner or manager in cloud mode gets an eighth, **Activity**, after Tags (households H6 task J.6, `usePermissions().canReadActivity`). Cloud mode also ends the list with **Switch to…** (`HouseholdSwitcher variant="card"`, households H7 task L.4), for every household role; it is a menu, not a link. "Preferences" (closed) holds `UserSettingsPanel`. |
+| `/settings/household` | `settings/household/index.tsx` | A **Go back** icon on mobile only (`lg:hidden`, `useAppNavigation('/settings')`, since 2026-11-23), title "General" (`settings.household.general.label`, the label of its own sidebar link, in both modes, since 2026-11-23; it was `HouseholdLabel` before), then `HouseholdNameCard` (cloud only), `ExportCard`, `ImportCard` and, for the cloud owner only, `HouseholdDangerZone` (households H6 task J.7: Clear household, Delete all locations, Delete household, each confirmed by typing the household name exactly as stored) |
 
 **The household name (households H3a task 3.13).** In cloud mode the 🏠 sidebar link, the
-household sidebar heading, the household page title and the mobile accordion trigger all
-show the household's name. Local mode has no household and keeps "My data"
-(`settings.household.title`); cloud mode shows "My data" too while the name loads. All four
-render `HouseholdLabel` (see `components/CLAUDE.md`). The name is shown as stored, with no
+household sidebar heading (next to the Back icon, on desktop) and the mobile accordion
+trigger all show the household's name. Local mode has no household and keeps "My data"
+(`settings.household.title`); cloud mode shows "My data" too while the name loads. All three
+render `HouseholdLabel` (see `components/CLAUDE.md`). The household page's own `<h1>` showed
+it too until 2026-11-23; it now says "General", like the other household pages, which title
+themselves with their sidebar label. The name is shown as stored, with no
 `capitalize`. Only the household `owner` can rename it, in `HouseholdNameCard`; the server
 checks the role too (`renameHousehold`, `apps/server/src/resolvers/household.resolver.ts`).
-Tests: `settings/household/index.cloud.test.tsx`; the local "My data" tests stay in
-`index.test.tsx` and `settings/index.test.tsx`.
+Tests: `settings/household/index.cloud.test.tsx` (the page title is "General", not the
+name; the name card and the sidebar heading show the name with no `capitalize`); the local
+tests stay in `index.test.tsx` and `settings/index.test.tsx`.
 | `/settings/household/members` | `settings/household/members.tsx` | Cloud only (local mode: `<Navigate to="/settings/household">`). Every person and their household role; Invite, open invites, role control, Remove and Leave by role. See *The Members page* below. |
 | `/settings/household/activity` | `settings/household/activity.tsx` | Cloud only (local mode: `<Navigate to="/settings/household">`). The household activity log, for an owner or manager. See *The Activity page* below. |
 | `/settings/household/{locations,shelves,vendors,recipes,tags}` | `settings/household/<section>/index.tsx` | The five list pages. Each has its own Back button on mobile only (`lg:hidden`). |
 | `/settings/household/<section>/<id>…` | detail pages | Full-screen on every screen size |
+
+**On mobile every `/settings` page is full-screen since 2026-11-23** (owner request): no bottom bar, and a Back icon in the page's own top bar. See the table of which Back goes where in `components/CLAUDE.md`, *Navigation*.
+
+**Switch to… stays on the settings page** (cloud, since 2026-11-23, owner request). A switch or a Create new on a settings page loads that page again in the new household. A page below a section (`/settings/household/<section>/<id>…`) goes to the section's list page instead, because its id is a row of the old household; the switcher is not on those pages today, so this rule is only a safe default. See `useMyHouseholds` in `hooks/CLAUDE.md`.
 
 On desktop the sidebar switches to `HouseholdSidebar` on `/settings/household` and the five
 list pages. Theme, language, data mode and the account card are in `UserSettingsPanel`,
@@ -57,7 +64,7 @@ Plan: `docs/global/permissions/2026-11-18-households-plan-h5b.md`, Task G.9. Ser
   | everyone with Leave | Leave shows but cannot be pressed until the server has answered `householdMembers` in this visit (`useHouseholdMembers().isFromServer`; households H6b task K.7b, owner decision O48). The first list may be the cache restored from IndexedDB; if the last other person left since, that list would hide `lastLeaveWarning` while the server deletes the household. Offline, Leave stays off; a leave could not be sent then anyway |
 
   The page has no Decline and no Not now: a person answers no from the banner (`OwnershipOfferBanner`).
-- Mobile: not full-screen, like Locations; the page has its own Back button (`lg:hidden`).
+- Mobile: full-screen (no bottom bar) since 2026-11-23, like every settings page; the page has its own Back button (`lg:hidden`).
 - Tests: `members.cloud.test.tsx` (the real route tree, real Apollo hooks, `MockedProvider`; every fixture holds all three roles), `members.test.tsx` (local mode), `components/household/MemberList/MemberList.test.tsx` (every caller × row pair), `lib/copyText.test.ts`. Stories: `Owner`, `Manager`, `Member`, `WithOpenInvites`, `InviteDialogOpen`, `OwnerSeesNoLocationRoles`, and since K.7 `OwnerWaitingForAccept`, `NoOwnerBecomeOwner`, `LastPersonLeaves` (`CloudRolePage`'s `ownership` prop sets `hasOwner` and `pendingTransfer`). The axe scans (light and dark) belong to G.10's cloud spec, because `a11y.spec.ts` does not run in cloud. Since households H6b task K.8, `household-ownership.spec.ts` scans the waiting row and the transfer confirm (light and dark). The "no owner" note with **Become the owner** is not scanned yet.
 
 ### The Activity page (cloud, households H6 task J.6)
@@ -74,7 +81,7 @@ Plan: `docs/global/permissions/2026-11-20-households-plan-h6.md`, Task J.6. Hook
 
 - After "Load more", focus moves to the first new row, because the button may be gone (end of the log). An empty page moves focus to the page heading.
 - The sidebar and the mobile accordion list the page only for `canReadActivity`. The server is the real check.
-- Mobile: not full-screen, like Members; its own Back button (`lg:hidden`).
+- Mobile: full-screen (no bottom bar) since 2026-11-23, like Members; its own Back button (`lg:hidden`).
 - Tests: `activity.cloud.test.tsx` (the hook replaced, each state), `activity.test.tsx` (local mode), `components/household/ActivityList/ActivityList.test.tsx` (every action, tw word order, fallbacks), `components/global/Sidebar/HouseholdSidebar.activity.test.tsx`, `routes/settings/index.activity.test.tsx`. Stories (real route, real hook): `Owner`, `Empty`, `Loading`, `NoAccess`, `LoadError`. The axe scans (light and dark) belong to J.8's cloud spec, because `a11y.spec.ts` does not run in cloud.
 
 ### The Items tabs are global assignment pages

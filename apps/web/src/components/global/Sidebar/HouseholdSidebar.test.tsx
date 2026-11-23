@@ -57,6 +57,24 @@ describe('HouseholdSidebar', () => {
     ).toBeTruthy()
   })
 
+  it('user sees Back as an icon in the same row as the heading', async () => {
+    // Given the household view
+    renderHouseholdSidebar('/settings/household')
+    const nav = await screen.findByRole('navigation')
+
+    // Then Back keeps its accessible name, but shows no text, only its icon
+    const back = within(nav).getByRole('button', { name: 'Back' })
+    expect(back).toHaveAttribute('aria-label', 'Back')
+    expect(back).toHaveTextContent(/^$/)
+    expect(back.querySelector('svg')).not.toBeNull()
+
+    // And Back and the heading share one flex row
+    const heading = within(nav).getByRole('heading', { name: 'My data' })
+    const row = back.parentElement
+    expect(row).toBe(heading.parentElement)
+    expect(row).toHaveClass('flex')
+  })
+
   it('user goes Back to the last shopping cart, skipping newer non-app pages', async () => {
     // Given the user opened a cart, then an item, then settings
     saveNavigationHistory([

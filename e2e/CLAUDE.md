@@ -1339,8 +1339,8 @@ change once (owner decision O56-A, task L.7) and no spec needed an edit. 6 tests
 
 | Test | What it proves |
 |---|---|
-| 1 | PAT, owner of A and a member of B, chooses B in **Switch to…**; the page loads `/` again; the stored active location is gone at the start of that load, and so is the saved cache copy; the cart page shows B's row and not A's (a negative control); A's cart row is still in A |
-| 2 | PAT, in A only, uses **Create new**; the server makes the household and PAT acts in it; the page loads `/`; A and its item are still there |
+| 1 | PAT, owner of A and a member of B, chooses B in **Switch to…** on `/settings/household`; the page loads `/settings/household` again (it loaded `/` until 2026-11-23); the stored active location is gone at the start of that load, and so is the saved cache copy; the cart page shows B's row and not A's (a negative control); A's cart row is still in A |
+| 2 | PAT, in A only, uses **Create new** on Settings › Tags; the server makes the household and PAT acts in it; the page loads Settings › Tags again (`/` until 2026-11-23); A and its item are still there |
 | 3 | O21: a tab that shows A, after PAT moved to B through `makeGql` ("another device"), creates a tag type; the server answers `HOUSEHOLD_CHANGED`; no tag type in A or B; the tab reloads into B and shows the message |
 | 4 | O22-A: PAT copies offline data with `skip` from a page that showed A, picks B (manager) in "Copy into", and **Move there and copy**; after the reload "Import into which location?" asks; the item lands in B only, and the page did reload with PAT active in B |
 | 5, 6 | axe, light and dark: the page with the menu closed, the open menu alone, and the Create new dialog |
