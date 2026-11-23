@@ -20,7 +20,9 @@
 //     (`null` or `{ lt: Date }`), `householdSetupAt` (`null` only, for the
 //     first sign-in claim of decision H1), `activeHouseholdId` (a string or
 //     `{ in: [...] }`; a null column matches nothing, as in SQL; households H6
-//     task J.4), and `OR` (an array of the same).
+//     task J.4), `displayName` (a plain string) and `deletedAt` (`null` only;
+//     both for the fallback name fix of 2026-11-24, `refreshFallbackName` in
+//     `lib/userRow.ts`), and `OR` (an array of the same).
 //     The keys are checked ONCE per call by `checkWhere` (`whereKeys.ts`). `{ lt }` does NOT
 //     match a null column, as in SQL. That is why task 2.4's "not seen today"
 //     update needs `OR: [{ lastSeenAt: null }, { lastSeenAt: { lt } }]`.
@@ -42,6 +44,10 @@
 //     create, like every column the add_household_invites migration added to
 //     an existing table. So does `locationSort` (households H7b, decision
 //     T74), which the add_location_preferences migration added.
+//   - `updateManyAndReturn` (2026-11-24, for `touchLastSeen`) is
+//     `updateMany` that returns the changed rows, AFTER the write, as
+//     Postgres `UPDATE ... RETURNING` does. `select` is applied like
+//     `findUnique`'s scalar select; with no `select`, whole rows.
 //   - `update` (households H5b, for G.4's `activeHouseholdId` write) acts on
 //     ONE row named by its string `id`, raises P2025 when no row matches,
 //     applies `data` with Prisma's `value !== undefined` rule, and honours
@@ -97,14 +103,13 @@
 //   - The foreign key from `activeHouseholdId` to `Household`, and its
 //     ON DELETE SET NULL. `Household` lives in `householdFake`. Only real SQL
 //     proves them: `assertHouseholdInvites` in `scripts/verify-migration.ts`.
-//   - `where` on `email`, `displayName`, `deletedAt`, `createdAt`,
-//     `updatedAt`, and `AND` / `NOT`. All throw. Add one on purpose, with a
+//   - `where` on `email`, `createdAt`, `updatedAt`, and `AND` / `NOT`. All throw. Add one on purpose, with a
 //     test, when a caller needs it.
 //   - `$transaction`. Import `runInTransaction` from `stockFake.ts` and pass
 //     this fake's `state` as a store. `state` holds plain data and `Date`s,
 //     which `structuredClone` copies.
 //   - Methods other than `findUnique`, `findMany`, `create`, `upsert`,
-//     `update` and `updateMany`. Calling another one fails as "not a
+//     `update`, `updateMany` and `updateManyAndReturn`. Calling another one fails as "not a
 //     function".
 
 import type { HouseholdMember, User } from '@prisma/client'
@@ -191,6 +196,10 @@ const ROW_KEYS: WhereSpec = {
   // `deleteHousehold` (households H6 task J.4) clears this column on every
   // row that names the household, before it takes the household lock.
   activeHouseholdId: 'in',
+  // The fallback name fix (2026-11-24): "this row still has the fallback
+  // name, and is not deleted". `deletedAt` is asked "is it unset?" only.
+  displayName: 'equals',
+  deletedAt: 'null',
 }
 const USER_WHERE: WhereSpec = { ...ROW_KEYS, OR: { or: ROW_KEYS } }
 
@@ -230,6 +239,12 @@ export function userMatches(row: UserRow, where: Where): boolean {
         break
       case 'householdSetupAt':
         if (!matchesNullableDate(row.householdSetupAt, filter)) return false
+        break
+      case 'displayName':
+        if (row.displayName !== filter) return false
+        break
+      case 'deletedAt':
+        if (!matchesNullableDate(row.deletedAt, filter)) return false
         break
       case 'activeHouseholdId':
         if (row.activeHouseholdId === null || !matchesId(row.activeHouseholdId, filter)) return false
@@ -524,6 +539,25 @@ export function createUserFake(rows: UserRow[] = [], options: UserFakeOptions = 
       const matched = readableRows().filter((r) => userMatches(r, args.where ?? {}))
       for (const found of matched) applyUpdate(storedRow(found), args.data)
       return { count: matched.length }
+    },
+    // `updateMany` that answers the changed rows, as they are AFTER the
+    // write (Postgres `UPDATE ... RETURNING`). Only scalar columns may be
+    // selected: Prisma's `updateManyAndReturn` has no relation select.
+    updateManyAndReturn: async (args: {
+      where?: Where
+      data: Data
+      select?: Record<string, unknown>
+    }) => {
+      refuseUnknownOptions('updateManyAndReturn', args, ['where', 'data', 'select'])
+      checkUserWhere(args.where)
+      const matched = readableRows().filter((r) => userMatches(r, args.where ?? {}))
+      const changed = matched.map((found) => applyUpdate(storedRow(found), args.data))
+      const select = args.select
+      const out = select
+        ? changed.map((r) => pickColumns(r, select, USER_COLUMNS, 'on updateManyAndReturn'))
+        : changed.map(copy)
+      // biome-ignore lint/suspicious/noExplicitAny: the shape depends on `select`, as in Prisma
+      return out as any[]
     },
   }
 

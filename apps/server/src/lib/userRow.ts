@@ -61,15 +61,16 @@ export function userRowFromClerk(user: ClerkUserJSON): ClerkUserValues {
 //
 // The webhook (clerkWebhook.ts) is the main way a `User` row is written. A
 // webhook can be late or lost, so every authenticated GraphQL request also
-// calls `ensureUser`. It creates a missing row and records `lastSeenAt` once
-// per day.
+// calls `ensureUser`. It creates a missing row, records `lastSeenAt` once
+// per day, and replaces a fallback name once Clerk answers.
 //
 // | Case | Queries |
 // |---|---|
 // | this process already saw the user today | 0 |
-// | the row was last seen before today, or never (`lastSeenAt` null) | 1 (`updateMany`) |
-// | the row was seen today by another process | 2 (`updateMany`, `findUnique`), then 0 |
-// | no row yet | 3 (`updateMany`, `findUnique`, `create`), plus one Clerk call |
+// | the row was last seen before today, or never (`lastSeenAt` null) | 1 (`updateManyAndReturn`) |
+// | the same, and the row still has the fallback name and is not deleted | 1, plus one Clerk call, plus 1 (`updateMany`) when Clerk gives a real name |
+// | the row was seen today by another process | 2 (`updateManyAndReturn`, `findUnique`), then 0 |
+// | no row yet | 3 (`updateManyAndReturn`, `findUnique`, `create`), plus one Clerk call |
 //
 // Parallel calls for the same user in one process share one run, so a burst
 // of first requests costs the same as one request. The Clerk call gives up
@@ -78,11 +79,20 @@ export function userRowFromClerk(user: ClerkUserJSON): ClerkUserValues {
 // "Today" is the UTC day. A day starts at 00:00:00.000 UTC. UTC is used so
 // the answer does not depend on the server's time zone.
 //
-// It never un-deletes and never renames (plan P13). The only column it
-// writes on an existing row is `lastSeenAt`. It writes `lastSeenAt` for a
-// deleted row too: the column records that a request arrived, and that is
-// still true. Leaving `deletedAt` and the name alone is what keeps the user
+// It never un-deletes (plan P13). On an existing row it writes `lastSeenAt`,
+// and nothing else, with ONE exception: a live row that still has the
+// fallback name (`FALLBACK_DISPLAY_NAME`) gets Clerk's name, and Clerk's
+// email when none is stored. See `refreshFallbackName`. A real name is never
+// overwritten, and a deleted row is never renamed. It writes `lastSeenAt`
+// for a deleted row too: the column records that a request arrived, and
+// that is still true. Leaving `deletedAt` alone is what keeps the user
 // deleted.
+//
+// Why the exception (bug 2026-11-24,
+// docs/global/bugs/2026-11-24-bug-fallback-display-name-never-fixed.md): a
+// row created while Clerk failed kept "User" for good. Only the webhook
+// writes the name otherwise, and Clerk sends `user.created` once and
+// `user.updated` only when the account changes.
 
 /**
  * Look up a user in Clerk and return Clerk's raw user JSON, or `null`.
@@ -210,23 +220,30 @@ export function resetSeenTodayMemory(limit: number = MEMORY_LIMIT): void {
   memoryLimit = limit
 }
 
+/** What `touchLastSeen` returns about the row it changed. */
+export type TouchedRow = { displayName: string; email: string | null; deletedAt: Date | null }
+
 /**
- * Set `lastSeenAt` to `now` if the row was not seen yet today. One query.
- * Returns how many rows changed: 1, or 0 when there is no row or it was
- * already seen today.
+ * Set `lastSeenAt` to `now` if the row was not seen yet today. One query
+ * (`UPDATE ... RETURNING` in Postgres). Returns the changed row's name,
+ * email and `deletedAt`, or `null` when there is no row or it was already
+ * seen today. `ensureUser` reads the name to find a fallback row, so that
+ * check costs no extra query.
  *
  * Both branches of the `OR` are needed. `{ lt }` is SQL `<`, and `NULL < x`
  * is not true, so `{ lt }` alone never matches a row that was never seen.
  */
-export async function touchLastSeen(userId: string, now: Date): Promise<number> {
-  const { count } = await prisma.user.updateMany({
+export async function touchLastSeen(userId: string, now: Date): Promise<TouchedRow | null> {
+  const rows = await prisma.user.updateManyAndReturn({
     where: {
       id: userId,
       OR: [{ lastSeenAt: null }, { lastSeenAt: { lt: startOfUtcDay(now) } }],
     },
     data: { lastSeenAt: now },
+    select: { displayName: true, email: true, deletedAt: true },
   })
-  return count
+  // `id` is the primary key, so there is at most one row.
+  return rows[0] ?? null
 }
 
 /**
@@ -256,11 +273,16 @@ async function lookupWithTimeout(
   }
 }
 
-/** The values for a new row. Never throws: a Clerk error gives the fallback. */
-async function newRowValues(userId: string, source: UserSource): Promise<ClerkUserValues> {
-  if (source.kind === 'e2e') {
-    return { id: userId, displayName: userId, email: null }
-  }
+/**
+ * Ask Clerk for a user's values. Never throws: a Clerk error, a timeout or
+ * an empty reply gives the fallback values, and an error is logged by its
+ * name only (its message may name the user).
+ */
+async function clerkValues(
+  userId: string,
+  source: Extract<UserSource, { kind: 'clerk' }>,
+  logPrefix: string,
+): Promise<ClerkUserValues> {
   const fallback = { id: userId, displayName: FALLBACK_DISPLAY_NAME, email: null }
   let json: ClerkUserJSON | null
   try {
@@ -270,16 +292,59 @@ async function newRowValues(userId: string, source: UserSource): Promise<ClerkUs
       source.timeoutMs ?? CLERK_LOOKUP_TIMEOUT_MS,
     )
   } catch (err) {
-    // The error's name only. Its message may name the user.
-    console.error(
-      'ensureUser: Clerk lookup failed, using fallback values:',
-      err instanceof Error ? err.name : 'unknown error',
-    )
+    console.error(logPrefix, err instanceof Error ? err.name : 'unknown error')
     return fallback
   }
   if (!json) return fallback
   // The id is always the signed-in user's id, never the id in the reply.
   return { ...userRowFromClerk(json), id: userId }
+}
+
+/** The values for a new row. Never throws: a Clerk error gives the fallback. */
+async function newRowValues(userId: string, source: UserSource): Promise<ClerkUserValues> {
+  if (source.kind === 'e2e') {
+    return { id: userId, displayName: userId, email: null }
+  }
+  return clerkValues(userId, source, 'ensureUser: Clerk lookup failed, using fallback values:')
+}
+
+/**
+ * Replace a fallback name with Clerk's name (bug 2026-11-24). Called only
+ * for a row `touchLastSeen` just changed, so at most once per user per UTC
+ * day, across all processes: the touch matches a row once a day.
+ *
+ * - Only for the Clerk source. E2E mode has no Clerk.
+ * - Only for a live row that still has `FALLBACK_DISPLAY_NAME`.
+ * - When Clerk fails, times out, or also gives the fallback name, nothing is
+ *   written, and the next day tries again.
+ * - The write itself is guarded: `where` names the fallback name and
+ *   `deletedAt: null`. So a webhook that wrote a real name, or deleted the
+ *   account, while this call waited for Clerk is not overwritten.
+ * - The email is written only when none is stored.
+ *
+ * A database error in the write is thrown, like every other database error
+ * here; `ensureUserOrLog` catches it.
+ */
+async function refreshFallbackName(
+  userId: string,
+  source: UserSource,
+  row: TouchedRow,
+): Promise<void> {
+  if (source.kind !== 'clerk') return
+  if (row.displayName !== FALLBACK_DISPLAY_NAME || row.deletedAt !== null) return
+  const values = await clerkValues(
+    userId,
+    source,
+    'ensureUser: Clerk lookup failed, the fallback name stays:',
+  )
+  if (values.displayName === FALLBACK_DISPLAY_NAME) return
+  await prisma.user.updateMany({
+    where: { id: userId, displayName: FALLBACK_DISPLAY_NAME, deletedAt: null },
+    data: {
+      displayName: values.displayName,
+      ...(row.email === null && values.email !== null ? { email: values.email } : {}),
+    },
+  })
 }
 
 function isUniqueViolation(err: unknown): boolean {
@@ -294,7 +359,7 @@ function isUniqueViolation(err: unknown): boolean {
  * day. See the table above for what each case costs.
  *
  * Throws only when the database fails. A Clerk failure does not throw; it
- * gives the fallback values (plan P11). The request path calls
+ * gives the fallback values (plan P11), or leaves a fallback name as it is. The request path calls
  * `ensureUserOrLog`, which never throws.
  */
 export async function ensureUser(
@@ -328,7 +393,9 @@ async function checkAndCreate(userId: string, source: UserSource, now: Date): Pr
     if (generation === forgetGeneration) rememberSeenToday(userId, now)
   }
 
-  if ((await touchLastSeen(userId, now)) > 0) {
+  const touched = await touchLastSeen(userId, now)
+  if (touched) {
+    await refreshFallbackName(userId, source, touched)
     remember()
     return
   }
