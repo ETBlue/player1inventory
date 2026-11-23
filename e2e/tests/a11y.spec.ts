@@ -1659,11 +1659,17 @@ test.describe('mobile viewport a11y', () => {
     await expect(
       page.getByRole('button', { name: 'Preferences' }),
     ).toHaveAttribute('aria-expanded', 'false')
+    // Settings pages have no bottom bar on mobile since 2026-11-23. The way
+    // out is the Back icon in the top bar, so the scan covers it.
+    await expect(page.getByRole('button', { name: 'Back' })).toBeVisible()
+    await expect(
+      page.getByRole('navigation', { name: 'Bottom navigation' }),
+    ).toHaveCount(0)
 
     // When axe scans the page for accessibility violations
     await injectAxe(page)
 
-    // Then there should be no violations (including the bottom Navigation component)
+    // Then there should be no violations
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
@@ -1689,13 +1695,18 @@ test.describe('mobile viewport a11y', () => {
   test('user can view household config page without accessibility violations on mobile', async ({
     page,
   }) => {
-    // Given the household config page on a mobile viewport. It keeps the
-    // bottom bar on mobile (layoutRules.ts), so the scan covers it too.
+    // Given the household config page on a mobile viewport. Since
+    // 2026-11-23 it has no bottom bar on mobile (layoutRules.ts) and a Go
+    // back icon in its top bar, so the scan covers that button.
     await page.goto('/settings/household')
     await page.waitForLoadState('networkidle')
     await expect(
       page.getByRole('heading', { name: 'General', level: 1 }),
     ).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Go back' })).toBeVisible()
+    await expect(
+      page.getByRole('navigation', { name: 'Bottom navigation' }),
+    ).toHaveCount(0)
 
     // When axe scans the page for accessibility violations
     await injectAxe(page)

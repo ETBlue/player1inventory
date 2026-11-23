@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   isFullscreenPage,
   isHouseholdSettingsPage,
+  isSettingsPage,
   lastAppPage,
 } from './layoutRules'
 
@@ -28,16 +29,33 @@ describe('isFullscreenPage', () => {
       '/',
       '/shopping',
       '/cooking',
-      '/settings',
-      '/settings/household',
-      '/settings/household/',
-      '/settings/household/locations',
-      '/settings/household/locations/',
+      '/settingsx',
       '/join',
       '/joined',
     ])('%s is not full-screen', (path) => {
       expect(isFullscreenPage(path, { desktop })).toBe(false)
     })
+  })
+
+  // Owner request 2026-11-23: on mobile every settings page hides the bottom
+  // bar and shows its own Back button.
+  const SETTINGS_LIST_PAGES = [
+    '/settings',
+    '/settings/',
+    '/settings/household',
+    '/settings/household/',
+    '/settings/household/locations',
+    '/settings/household/locations/',
+    '/settings/household/members',
+    '/settings/household/activity',
+  ]
+
+  it.each(SETTINGS_LIST_PAGES)('%s is full-screen on mobile', (path) => {
+    expect(isFullscreenPage(path, { desktop: false })).toBe(true)
+  })
+
+  it.each(SETTINGS_LIST_PAGES)('%s shows the sidebar on desktop', (path) => {
+    expect(isFullscreenPage(path, { desktop: true })).toBe(false)
   })
 
   describe('household list pages', () => {
@@ -59,9 +77,28 @@ describe('isFullscreenPage', () => {
       '/settings/household/recipes',
       '/settings/household/shelves',
       '/settings/household/shelves/',
-    ])('%s stays full-screen on mobile, as today', (path) => {
+    ])('%s stays full-screen on mobile', (path) => {
       expect(isFullscreenPage(path, { desktop: false })).toBe(true)
     })
+  })
+})
+
+describe('isSettingsPage', () => {
+  it.each([
+    '/settings',
+    '/settings/',
+    '/settings/household/tags/t1',
+  ])('%s is a settings page', (path) => {
+    expect(isSettingsPage(path)).toBe(true)
+  })
+
+  it.each([
+    '/',
+    '/settingsx',
+    '/shopping',
+    '/items/settings',
+  ])('%s is not a settings page', (path) => {
+    expect(isSettingsPage(path)).toBe(false)
   })
 })
 

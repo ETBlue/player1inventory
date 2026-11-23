@@ -1,4 +1,4 @@
-import { Link, useRouter } from '@tanstack/react-router'
+import { Link } from '@tanstack/react-router'
 import {
   ArrowLeft,
   ChefHat,
@@ -14,10 +14,9 @@ import { useTranslation } from 'react-i18next'
 import { HouseholdSwitcher } from '@/components/household/HouseholdSwitcher'
 import { HouseholdLabel } from '@/components/settings/HouseholdLabel'
 import { Button } from '@/components/ui/button'
+import { useBackToAppPage } from '@/hooks/useBackToAppPage'
 import { useDataMode } from '@/hooks/useDataMode'
 import { usePermissions } from '@/hooks/usePermissions'
-import { lastAppPage } from '@/lib/layoutRules'
-import { loadNavigationHistory } from '@/lib/sessionStorage'
 
 // The household items, in the order the design lists them. Members (H5b task
 // G.9) is second, and cloud only: local mode has no members (design, *Local
@@ -105,7 +104,6 @@ const householdLinks = [
  * its search string, or to `/` (plan decision P9).
  */
 export function HouseholdSidebar() {
-  const router = useRouter()
   const { t } = useTranslation()
   const { mode } = useDataMode()
   const { canReadActivity } = usePermissions()
@@ -115,11 +113,8 @@ export function HouseholdSidebar() {
       (canReadActivity || !link.readsActivity),
   )
 
-  const goBack = () => {
-    // A full URL string, so the search string is kept. useAppNavigation's
-    // goBack pushes its URL the same way.
-    router.history.push(lastAppPage(loadNavigationHistory()))
-  }
+  // Shared with the mobile /settings page's Back.
+  const goBack = useBackToAppPage()
 
   return (
     <>

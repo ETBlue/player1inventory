@@ -1,10 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { ArrowLeft } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ExportCard } from '@/components/settings/ExportCard'
 import { HouseholdDangerZone } from '@/components/settings/HouseholdDangerZone'
 import { HouseholdNameCard } from '@/components/settings/HouseholdNameCard'
 import { ImportCard } from '@/components/settings/ImportCard'
 import { Toolbar } from '@/components/shared/Toolbar'
+import { Button } from '@/components/ui/button'
+import { useAppNavigation } from '@/hooks/useAppNavigation'
 
 export const Route = createFileRoute('/settings/household/')({
   component: HouseholdConfig,
@@ -20,10 +23,25 @@ export const Route = createFileRoute('/settings/household/')({
 // shows to the cloud owner only, last.
 function HouseholdConfig() {
   const { t } = useTranslation()
+  const { goBack } = useAppNavigation('/settings')
   return (
     <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
       <Toolbar>
-        <h1 className="px-3 min-w-0 truncate">
+        {/* Mobile only, like the Back of the other household pages (Members,
+            Locations, Tags…): it goes to the previous page, usually the
+            /settings menu. On desktop the household sidebar has Back. Mobile
+            settings pages have no bottom bar since 2026-11-23, so without it
+            this page had no way out. */}
+        <Button
+          variant="neutral-ghost"
+          size="icon"
+          className="lg:hidden"
+          aria-label={t('common.goBack')}
+          onClick={goBack}
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
+        <h1 className="lg:px-3 min-w-0 truncate">
           {t('settings.household.general.label')}
         </h1>
         <span className="h-8" />

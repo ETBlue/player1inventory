@@ -71,7 +71,9 @@ export const CookingActive: Story = {
   render: () => <SidebarStory path="/cooking" />,
 }
 
-// Story 4: Settings tab active
+// Story 4: Settings tab active. On a desktop canvas /settings goes to
+// /settings/household, so the sidebar shows its household view. On mobile
+// every settings page is full-screen, so there is no sidebar at all.
 export const SettingsActive: Story = {
   render: () => <SidebarStory path="/settings" />,
 }

@@ -10,6 +10,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
+import { saveNavigationHistory } from '@/lib/sessionStorage'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
 import { mockScreen } from '@/test/viewport'
@@ -76,6 +77,50 @@ describe('Settings page (/settings)', () => {
   })
 
   describe('on mobile', () => {
+    it('user sees no bottom bar on the settings page, and a Back icon in the top bar', async () => {
+      // Given the mobile /settings page
+      mockScreen({ desktop: false })
+      renderSettings()
+      const title = await screen.findByRole('heading', {
+        level: 1,
+        name: 'Settings',
+      })
+
+      // Then the bottom bar is gone (owner request, 2026-11-23)
+      expect(
+        screen.queryByRole('navigation', { name: 'Bottom navigation' }),
+      ).toBeNull()
+
+      // And Back sits before the title, as an icon with the name "Back"
+      const back = screen.getByRole('button', { name: 'Back' })
+      expect(back).toHaveTextContent(/^$/)
+      expect(
+        back.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy()
+    })
+
+    it('user goes Back from the settings page to the last cart they saw', async () => {
+      // Given the user saw a cart, then an item, then settings
+      sessionStorage.clear()
+      saveNavigationHistory([
+        '/cooking',
+        '/shopping/v1?q=milk',
+        '/items/i1',
+        '/settings',
+      ])
+      mockScreen({ desktop: false })
+      const router = renderSettings()
+
+      // When the user presses Back
+      await userEvent.click(await screen.findByRole('button', { name: 'Back' }))
+
+      // Then they are on that cart again, with its search string, the same
+      // place the desktop household sidebar's Back goes
+      await waitFor(() => {
+        expect(router.state.location.href).toBe('/shopping/v1?q=milk')
+      })
+    })
+
     it('user stays on /settings and sees the two accordion items', async () => {
       // Given a mobile screen
       mockScreen({ desktop: false })

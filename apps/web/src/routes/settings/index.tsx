@@ -1,5 +1,6 @@
 import { createFileRoute, Navigate } from '@tanstack/react-router'
 import {
+  ArrowLeft,
   ChefHat,
   History,
   Home,
@@ -26,6 +27,8 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion'
+import { Button } from '@/components/ui/button'
+import { useBackToAppPage } from '@/hooks/useBackToAppPage'
 import { useDataMode } from '@/hooks/useDataMode'
 import { useIsDesktop } from '@/hooks/useIsDesktop'
 import { usePermissions } from '@/hooks/usePermissions'
@@ -47,11 +50,24 @@ function SettingsAccordion() {
   const { t } = useTranslation()
   const { mode } = useDataMode()
   const { canReadActivity } = usePermissions()
+  // The same Back as the desktop household sidebar's: this page is the mobile
+  // copy of that sidebar, and mobile settings pages have no bottom bar (owner
+  // request, 2026-11-23), so this is the way out of settings.
+  const goBack = useBackToAppPage()
 
   return (
     <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
       <Toolbar>
-        <h1 className="px-3">{t('settings.title')}</h1>
+        <Button
+          variant="neutral-ghost"
+          size="icon"
+          className="shrink-0"
+          aria-label={t('navigation.back')}
+          onClick={goBack}
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
+        <h1 className="min-w-0">{t('settings.title')}</h1>
         <span className="h-8" />
       </Toolbar>
 
