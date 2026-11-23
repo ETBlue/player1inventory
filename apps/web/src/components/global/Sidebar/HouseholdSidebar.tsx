@@ -123,7 +123,7 @@ export function HouseholdSidebar() {
           heading is the household's name in cloud mode, "My data" in local
           mode. A long name wraps inside its own column (`min-w-0 flex-1`), so
           it never widens the 224px sidebar and never pushes the icon away. */}
-      <div className="flex items-start gap-1 px-2 pt-2 pb-3">
+      <div className="flex items-center gap-1 px-2 pt-2 pb-3">
         <Button
           variant="neutral-ghost"
           size="icon"

@@ -31,7 +31,7 @@ export function UserSidebar({ onBack }: { onBack: () => void }) {
       {/* One row: the Back icon, then the heading, the same as the household
           view. Back shows only its icon; `aria-label` keeps its name "Back".
           A long name wraps inside its own column. */}
-      <div className="flex items-start gap-1 px-2 pt-2 pb-3">
+      <div className="flex items-center gap-1 px-2 pt-2 pb-3">
         <Button
           ref={backRef}
           variant="neutral-ghost"
