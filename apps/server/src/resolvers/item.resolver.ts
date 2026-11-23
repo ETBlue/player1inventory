@@ -1,5 +1,7 @@
 import { GraphQLError } from 'graphql'
+import { requireCatalogIds, requireCatalogRole } from '../lib/authz.js'
 import { prisma } from '../lib/prisma.js'
+import { publishChange, publishHouseholdChange } from '../lib/publishChange.js'
 import { requireAuth } from '../context.js'
 import type { Item, Resolvers, UpdateItemInput } from '../generated/graphql.js'
 import type { ExpirationMode, Prisma, TargetUnit } from '@prisma/client'
@@ -93,45 +95,63 @@ export function buildItemUpdateData(input: UpdateItemInput): Prisma.ItemUpdateIn
 }
 
 export const itemResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
+  // ── Household scope (households H3a, task 3.7) ──
+  //
+  // Every read needs household role `member` and every write `manager`
+  // (design, *Household roles*), through `requireCatalogRole`
+  // (lib/authz.ts). Every read is filtered by the caller's household, so an
+  // item another member of the household made is read and written like the
+  // caller's own. No call site compares a `householdId`.
   Query: {
     items: async (_, __, ctx) => {
-      const userId = requireAuth(ctx)
+      const householdId = await requireCatalogRole(ctx, 'member')
       const items = await prisma.item.findMany({
-        where: { userId },
+        where: { householdId },
         include: { tags: true, vendors: true },
       })
       return items.map(toGraphQL)
     },
 
     item: async (_, { id }, ctx) => {
-      const userId = requireAuth(ctx)
+      const householdId = await requireCatalogRole(ctx, 'member')
       const item = await prisma.item.findFirst({
-        where: { id, userId },
+        where: { id, householdId },
         include: { tags: true, vendors: true },
       })
       return item ? toGraphQL(item) : null
     },
 
+    // Issue #273: these three counted the items of every household. A client
+    // could attach another household's tag to its own item, and that
+    // household then saw its count go up. Now each count reads only the
+    // caller's household's items, through the junction row's `item`.
     itemCountByTag: async (_, { tagId }, ctx) => {
-      requireAuth(ctx)
-      return prisma.itemTag.count({ where: { tagId } })
+      const householdId = await requireCatalogRole(ctx, 'member')
+      return prisma.itemTag.count({ where: { tagId, item: { householdId } } })
     },
 
     itemCountByVendor: async (_, { vendorId }, ctx) => {
-      requireAuth(ctx)
-      return prisma.itemVendor.count({ where: { vendorId } })
+      const householdId = await requireCatalogRole(ctx, 'member')
+      return prisma.itemVendor.count({ where: { vendorId, item: { householdId } } })
     },
 
     itemCountByRecipe: async (_, { recipeId }, ctx) => {
-      requireAuth(ctx)
-      return prisma.recipeItem.count({ where: { recipeId } })
+      const householdId = await requireCatalogRole(ctx, 'member')
+      return prisma.recipeItem.count({ where: { recipeId, item: { householdId } } })
     },
   },
 
   Mutation: {
     createItem: async (_, { input }, ctx) => {
-      const userId = requireAuth(ctx)
+      requireAuth(ctx)
+      const householdId = await requireCatalogRole(ctx, 'manager')
       const { tagIds, vendorIds, expirationMode, targetUnit, ...rest } = input
+
+      // Issue #273: every tag and vendor the new item points at must be the
+      // household's. Checked BEFORE the item is created, so a refused call
+      // writes nothing.
+      await requireCatalogIds(ctx, householdId, 'tag', tagIds ?? [])
+      await requireCatalogIds(ctx, householdId, 'vendor', vendorIds ?? [])
 
       // CONFIGURATION only. Cloud locations PR 5 removed the five per-location
       // state fields from `CreateItemInput`, so nothing is written for them
@@ -167,38 +187,52 @@ export const itemResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
           // stored value from "never set".
           wikidataUrl: strOr(rest.wikidataUrl),
           note: strOr(rest.note),
-          userId,
+          householdId,
         },
       })
 
-      if (tagIds?.length) {
-        await prisma.itemTag.createMany({
-          data: tagIds.map((tagId) => ({ itemId: item.id, tagId })),
-        })
-      }
-      if (vendorIds?.length) {
-        await prisma.itemVendor.createMany({
-          data: vendorIds.map((vendorId) => ({ itemId: item.id, vendorId })),
-        })
-      }
+      // `CATALOG` for the household (households H3c-2 task D.4), in
+      // `finally`: the item and its tag and vendor rows are separate writes,
+      // not one transaction, so once the item is saved other tabs must hear
+      // about it even if a later write fails.
+      try {
+        if (tagIds?.length) {
+          await prisma.itemTag.createMany({
+            data: tagIds.map((tagId) => ({ itemId: item.id, tagId })),
+          })
+        }
+        if (vendorIds?.length) {
+          await prisma.itemVendor.createMany({
+            data: vendorIds.map((vendorId) => ({ itemId: item.id, vendorId })),
+          })
+        }
 
-      const full = await prisma.item.findUniqueOrThrow({
-        where: { id: item.id },
-        include: { tags: true, vendors: true },
-      })
-      return toGraphQL(full)
+        const full = await prisma.item.findUniqueOrThrow({
+          where: { id: item.id },
+          include: { tags: true, vendors: true },
+        })
+        return toGraphQL(full)
+      } finally {
+        await publishHouseholdChange(ctx, ['CATALOG'], householdId)
+      }
     },
 
     updateItem: async (_, { id, input }, ctx) => {
-      const userId = requireAuth(ctx)
+      const householdId = await requireCatalogRole(ctx, 'manager')
 
-      // Verify ownership
-      const existing = await prisma.item.findFirst({ where: { id, userId } })
+      // The item must be the household's. Another household's item gives the
+      // same NOT_FOUND as a missing one.
+      const existing = await prisma.item.findFirst({ where: { id, householdId } })
       if (!existing) {
         throw new GraphQLError('Item not found', { extensions: { code: 'NOT_FOUND' } })
       }
 
       const { tagIds, vendorIds } = input
+
+      // Issue #273: checked BEFORE any write, so a refused call changes
+      // nothing — not the item's fields, not its junction rows.
+      await requireCatalogIds(ctx, householdId, 'tag', tagIds ?? [])
+      await requireCatalogIds(ctx, householdId, 'vendor', vendorIds ?? [])
 
       // `Item` only, and `UpdateItemInput` now makes that the only option:
       // cloud locations PR 5 removed the five per-location state fields from
@@ -208,39 +242,91 @@ export const itemResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       // by `upsertItemStock(itemId, locationId)` and nothing else.
       await prisma.item.update({ where: { id }, data: buildItemUpdateData(input) })
 
-      // Replace junction rows wholesale when the field is explicitly provided
-      if (tagIds !== undefined && tagIds !== null) {
-        await prisma.itemTag.deleteMany({ where: { itemId: id } })
-        if (tagIds.length) {
-          await prisma.itemTag.createMany({
-            data: tagIds.map((tagId) => ({ itemId: id, tagId })),
-          })
+      // `CATALOG` in `finally`, for the same reason as `createItem`: the
+      // writes below are not one transaction with the update above.
+      try {
+        // Replace junction rows wholesale when the field is explicitly provided
+        if (tagIds !== undefined && tagIds !== null) {
+          await prisma.itemTag.deleteMany({ where: { itemId: id } })
+          if (tagIds.length) {
+            await prisma.itemTag.createMany({
+              data: tagIds.map((tagId) => ({ itemId: id, tagId })),
+            })
+          }
         }
-      }
 
-      if (vendorIds !== undefined && vendorIds !== null) {
-        await prisma.itemVendor.deleteMany({ where: { itemId: id } })
-        if (vendorIds.length) {
-          await prisma.itemVendor.createMany({
-            data: vendorIds.map((vendorId) => ({ itemId: id, vendorId })),
-          })
+        if (vendorIds !== undefined && vendorIds !== null) {
+          await prisma.itemVendor.deleteMany({ where: { itemId: id } })
+          if (vendorIds.length) {
+            await prisma.itemVendor.createMany({
+              data: vendorIds.map((vendorId) => ({ itemId: id, vendorId })),
+            })
+          }
         }
-      }
 
-      const full = await prisma.item.findUniqueOrThrow({
-        where: { id },
-        include: { tags: true, vendors: true },
-      })
-      return toGraphQL(full)
+        const full = await prisma.item.findUniqueOrThrow({
+          where: { id },
+          include: { tags: true, vendors: true },
+        })
+        return toGraphQL(full)
+      } finally {
+        await publishHouseholdChange(ctx, ['CATALOG'], householdId)
+      }
     },
 
     deleteItem: async (_, { id }, ctx) => {
-      const userId = requireAuth(ctx)
-      // Verify ownership before deleting
-      const existing = await prisma.item.findFirst({ where: { id, userId } })
+      const householdId = await requireCatalogRole(ctx, 'manager')
+      // The item must be the household's before it is deleted
+      const existing = await prisma.item.findFirst({ where: { id, householdId } })
       if (!existing) return false
-      // Cascade handles InventoryLog, RecipeItem, CartItem, ItemTag, ItemVendor via onDelete: Cascade
+
+      // ── THE LIVE EVENTS (households H3c-2 task D.4) ──
+      //
+      // The delete cascades (onDelete: Cascade in schema.prisma) into rows
+      // other screens show by LOCATION: `ItemStock`, `InventoryLog` and
+      // `CartItem`. The web does not refetch stock, logs or carts for
+      // `CATALOG` (decision Q1 of the H3c-2 plan), so this sends `STOCK`,
+      // `LOG` and `CART` itself, each only at the locations where it had
+      // rows. After the delete those rows are gone, so their locations are
+      // read BEFORE it. `ItemTag`, `ItemVendor` and `RecipeItem` cascade too;
+      // they are catalog rows, covered by `CATALOG`.
+      //
+      // The locations are passed without a household, so `publishChange`
+      // reads each LOCATION's household. That is the rule for location-level
+      // events, even though today an item's rows are only at locations of
+      // its own household.
+      //
+      // Not one transaction with the delete: a row added between the reads
+      // and the delete is deleted with no event for its location. That tab
+      // catches up on its next refetch.
+      const stockRows = await prisma.itemStock.findMany({
+        where: { itemId: id },
+        select: { locationId: true },
+      })
+      const logRows = await prisma.inventoryLog.findMany({
+        where: { itemId: id },
+        select: { locationId: true },
+        distinct: ['locationId'],
+      })
+      const cartItemRows = await prisma.cartItem.findMany({
+        where: { itemId: id },
+        select: { cartId: true },
+      })
+      const cartRows =
+        cartItemRows.length === 0
+          ? []
+          : await prisma.cart.findMany({
+              where: { id: { in: [...new Set(cartItemRows.map((r) => r.cartId))] } },
+              select: { locationId: true },
+            })
+      const at = (rows: { locationId: string }[]) => rows.map((r) => ({ locationId: r.locationId }))
+
       await prisma.item.delete({ where: { id } })
+
+      await publishHouseholdChange(ctx, ['CATALOG'], householdId)
+      await publishChange(ctx, ['STOCK'], at(stockRows))
+      await publishChange(ctx, ['LOG'], at(logRows))
+      await publishChange(ctx, ['CART'], at(cartRows))
       return true
     },
   },

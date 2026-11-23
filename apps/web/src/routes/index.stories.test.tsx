@@ -92,10 +92,14 @@ describe('Pantry index stories smoke tests', () => {
       await screen.findByRole('status')
       // Local Dexie has seeded items and cloud mode is on, which is exactly
       // what makes PostLoginMigrationDialog decide there is data to migrate
-      // — MIGRATION_PROMPTED_KEY (set by setupOfflineStory) is what stops it
-      // opening on top of the page. Confirmed by a mutation check: removing
-      // that key from the helper makes this assertion fail with the dialog's
-      // "Import local data to cloud?" title present.
+      // — MIGRATION_PROMPTED_KEY (set by setupOfflineStory) is meant to stop
+      // it opening on top of the page. This used to say a mutation check
+      // proved it. Re-run on 2026-11-19: with that key removed from the
+      // helper this test stays GREEN, with or without the household wait
+      // added that day
+      // (docs/global/bugs/2026-11-19-bug-manual-import-names-no-household.md).
+      // So it is a negative control: it shows no dialog, but does not prove
+      // which check keeps it shut.
       expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
     })
   })

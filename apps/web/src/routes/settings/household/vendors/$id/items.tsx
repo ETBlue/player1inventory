@@ -7,6 +7,7 @@ import { EmptyState } from '@/components/shared/EmptyState'
 import { useInnerPageScrollRef } from '@/components/shared/LayoutInnerPages'
 import { useCreateItem, useItems, useTagTypes, useUpdateItem } from '@/hooks'
 import { useItemSortData } from '@/hooks/useItemSortData'
+import { usePermissions } from '@/hooks/usePermissions'
 import { useRecipes } from '@/hooks/useRecipes'
 import { useScrollRestoration } from '@/hooks/useScrollRestoration'
 import { useSortFilter } from '@/hooks/useSortFilter'
@@ -18,6 +19,7 @@ import {
   filterItemsByRecipes,
   filterItemsByVendors,
 } from '@/lib/filterUtils'
+import { showSaveError } from '@/lib/saveError'
 import { sortItems } from '@/lib/sortUtils'
 import type { Recipe, Vendor } from '@/types'
 
@@ -36,6 +38,10 @@ function VendorItemsTab() {
   // item goes into the catalog and is stocked in no location (D3). This tab
   // creates directly rather than through a dialog, so it opts in here.
   const createItem = useCreateItem({ catalogOnly: true })
+  // A household member sees the assignments read only (households H5 task
+  // F.5): the checkboxes show what is assigned but are disabled, and there
+  // is no "Create item" from search.
+  const { canEditCatalog, roleKnown } = usePermissions()
   const { data: vendors = [] } = useVendors()
   const { data: recipes = [] } = useRecipes()
 
@@ -118,6 +124,9 @@ function VendorItemsTab() {
         id: itemId,
         updates: { vendorIds: newVendorIds },
       })
+    } catch (err) {
+      // Shown, not left unhandled: this runs straight off a click
+      showSaveError(err)
     } finally {
       setSavingItemIds((prev) => {
         const next = new Set(prev)
@@ -177,8 +186,10 @@ function VendorItemsTab() {
         id: newItem.id,
         updates: { vendorIds: [vendorId] },
       })
-    } catch {
-      // input stays populated for retry
+    } catch (err) {
+      // The typed name stays in the search box, so the user can try again.
+      // Before, this catch showed nothing.
+      showSaveError(err)
     }
   }
 
@@ -233,7 +244,10 @@ function VendorItemsTab() {
         items={items}
         vendors={vendors}
         recipes={recipes}
-        onCreateFromSearch={handleCreateFromSearch}
+        onCreateFromSearch={canEditCatalog ? handleCreateFromSearch : undefined}
+        createReadOnlyNote={
+          roleKnown && !canEditCatalog ? t('items.createReadOnly') : undefined
+        }
         hasExactMatch={hasExactMatch}
         isCreating={createItem.isPending || updateItem.isPending}
         className="bg-transparent border-none"
@@ -294,7 +308,7 @@ function VendorItemsTab() {
                       handleToggle(item.id, item.vendorIds)
                     }
                     isPending={savingItemIds.has(item.id)}
-                    disabled={savingItemIds.has(item.id)}
+                    disabled={!canEditCatalog || savingItemIds.has(item.id)}
                   />
                 </div>
               )

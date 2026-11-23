@@ -145,3 +145,23 @@ export const Saving: Story = {
     onDirtyChange,
   },
 }
+
+// A household member on the Info tab (households H5 task F.5): every field
+// is readOnly, the switch and the select are disabled, and there is no Save.
+export const InfoSectionReadOnly: Story = {
+  name: 'Info Section, read only (household member)',
+  args: {
+    initialValues: editValues,
+    sections: ['info'],
+    readOnly: true,
+  },
+}
+
+export const StockSectionReadOnly: Story = {
+  name: 'Stock Section, read only (location viewer)',
+  args: {
+    initialValues: editValues,
+    sections: ['stock'],
+    readOnly: true,
+  },
+}

@@ -5,7 +5,7 @@ query GetVendors {
   }
 }
 
-mutation CreateVendor($name: String!, $locationId: ID!) {
+mutation CreateVendor($name: String!, $locationId: ID) {
   createVendor(name: $name, locationId: $locationId) {
     id
     name

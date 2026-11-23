@@ -1,6 +1,8 @@
 import { createFileRoute, Navigate } from '@tanstack/react-router'
 import {
+  ArrowLeft,
   ChefHat,
+  History,
   Home,
   MapPin,
   ShelvingUnit,
@@ -8,8 +10,11 @@ import {
   Store,
   Tags,
   User,
+  Users,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { HouseholdSwitcher } from '@/components/household/HouseholdSwitcher'
+import { HouseholdLabel } from '@/components/settings/HouseholdLabel'
 import { SettingsNavCard } from '@/components/settings/SettingsNavCard'
 import {
   UserLabel,
@@ -22,7 +27,11 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion'
+import { Button } from '@/components/ui/button'
+import { useBackToAppPage } from '@/hooks/useBackToAppPage'
+import { useDataMode } from '@/hooks/useDataMode'
 import { useIsDesktop } from '@/hooks/useIsDesktop'
+import { usePermissions } from '@/hooks/usePermissions'
 
 export const Route = createFileRoute('/settings/')({
   component: Settings,
@@ -39,11 +48,26 @@ function Settings() {
 
 function SettingsAccordion() {
   const { t } = useTranslation()
+  const { mode } = useDataMode()
+  const { canReadActivity } = usePermissions()
+  // The same Back as the desktop household sidebar's: this page is the mobile
+  // copy of that sidebar, and mobile settings pages have no bottom bar (owner
+  // request, 2026-11-23), so this is the way out of settings.
+  const goBack = useBackToAppPage()
 
   return (
     <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
       <Toolbar>
-        <h1 className="px-3">{t('settings.title')}</h1>
+        <Button
+          variant="neutral-ghost"
+          size="icon"
+          className="shrink-0"
+          aria-label={t('navigation.back')}
+          onClick={goBack}
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
+        <h1 className="min-w-0">{t('settings.title')}</h1>
         <span className="h-8" />
       </Toolbar>
 
@@ -53,7 +77,11 @@ function SettingsAccordion() {
             <AccordionTrigger className="px-4">
               <span className="flex items-center gap-4">
                 <Home className="h-5 w-5 text-foreground-muted shrink-0" />
-                {t('settings.household.title')}
+                {/* The household's name in cloud mode, "My data" in local
+                    mode. The desktop 🏠 link uses the same component. */}
+                <span className="min-w-0 break-words">
+                  <HouseholdLabel />
+                </span>
               </span>
             </AccordionTrigger>
             <AccordionContent className="p-0 space-y-px">
@@ -63,6 +91,16 @@ function SettingsAccordion() {
                 description={t('settings.household.general.description')}
                 to="/settings/household"
               />
+              {/* Second, as the design numbers it. Cloud only: local mode
+                  has no members (households H5b task G.9). */}
+              {mode === 'cloud' && (
+                <SettingsNavCard
+                  icon={Users}
+                  label={t('settings.household.members.title')}
+                  description={t('settings.household.members.description')}
+                  to="/settings/household/members"
+                />
+              )}
               <SettingsNavCard
                 icon={MapPin}
                 label={t('settings.locations.label')}
@@ -93,6 +131,20 @@ function SettingsAccordion() {
                 description={t('settings.tags.description')}
                 to="/settings/household/tags"
               />
+              {/* Eighth, after Tags. Owner and managers in cloud only:
+                  local mode has no log (households H6 task J.6). */}
+              {mode === 'cloud' && canReadActivity && (
+                <SettingsNavCard
+                  icon={History}
+                  label={t('settings.household.activity.title')}
+                  description={t('settings.household.activity.description')}
+                  to="/settings/household/activity"
+                />
+              )}
+              {/* Ninth, **Switch to…** (households H7 task L.4). It opens
+                  the dropdown, not a page. Cloud only, every role: it
+                  renders nothing in local mode. */}
+              <HouseholdSwitcher variant="card" />
             </AccordionContent>
           </AccordionItem>
 

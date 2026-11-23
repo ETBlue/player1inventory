@@ -9,6 +9,7 @@ import {
 import { useEffect, useState } from 'react'
 import { db } from '@/db'
 import { createLocation } from '@/db/operations'
+import { LOCAL_LOCATION_SORT_KEY } from '@/lib/locationSort'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
 import { DEFAULT_LOCATION_ID } from '@/types'
@@ -58,7 +59,11 @@ function DefaultOnlyStory() {
   )
 }
 
-function WithLocationsStory() {
+/**
+ * `sort`: the local **Sort by** choice (households H7b, owner decision
+ * O54-B), written to `localStorage['location-sort']` before the page mounts.
+ */
+function WithLocationsStory({ sort }: { sort?: 'name' | 'custom' }) {
   const [queryClient] = useState(
     () => new QueryClient({ defaultOptions: { queries: { retry: false } } }),
   )
@@ -66,6 +71,12 @@ function WithLocationsStory() {
 
   useEffect(() => {
     async function setup() {
+      try {
+        if (sort) localStorage.setItem(LOCAL_LOCATION_SORT_KEY, sort)
+        else localStorage.removeItem(LOCAL_LOCATION_SORT_KEY)
+      } catch {
+        // A blocked storage shows Custom, which is still a valid story.
+      }
       await db.delete()
       await db.open()
       // Ensure the default exists (fresh open seeds it), then add extras.
@@ -86,7 +97,7 @@ function WithLocationsStory() {
       setReady(true)
     }
     setup()
-  }, [])
+  }, [sort])
 
   if (!ready) return <div>Loading...</div>
 
@@ -113,4 +124,12 @@ export const DefaultOnly: Story = {
 
 export const WithLocations: Story = {
   render: () => <WithLocationsStory />,
+}
+
+/**
+ * Local mode sorted by Name (households H7b, owner decision O54-B): Beach
+ * House, My Home, Office. No row can be dragged under Name.
+ */
+export const LocalSortedByName: Story = {
+  render: () => <WithLocationsStory sort="name" />,
 }

@@ -4,14 +4,17 @@ import {
   useRouterState,
 } from '@tanstack/react-router'
 import { ArrowLeft, ArrowUpFromLine, Check, Loader2, X } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import { ItemCard } from '@/components/item/ItemCard'
 import { ItemListToolbar } from '@/components/item/ItemListToolbar'
 import { ItemSearchTail } from '@/components/item/ItemSearchTail'
+import { NoLocationsGate } from '@/components/location/NoLocationsGate'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { ListSectionDivider } from '@/components/shared/ListSectionDivider'
 import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
+import { ReadOnlyNote } from '@/components/shared/ReadOnlyNote'
 import { Toolbar } from '@/components/shared/Toolbar'
 import {
   AlertDialog,
@@ -38,25 +41,48 @@ import {
   useVendorCart,
   useVendors,
 } from '@/hooks'
+import {
+  useActiveLocationRights,
+  useCreateHere,
+} from '@/hooks/useActiveLocationRights'
 import { useItemSearchTailWiring } from '@/hooks/useItemSearchTailWiring'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
 import { useScrollRestoration } from '@/hooks/useScrollRestoration'
+import { isCartChangedError } from '@/hooks/useShoppingCart'
 import { useShowStock } from '@/hooks/useShowStock'
 import { useSortFilter } from '@/hooks/useSortFilter'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
-import { buildCheckoutLogQuantities } from '@/lib/checkoutQuantities'
 import { filterItems, filterItemsByRecipes } from '@/lib/filterUtils'
 import { isInactiveHere, isStockedHere } from '@/lib/quantityUtils'
+import { showSaveError } from '@/lib/saveError'
 import { sortItems } from '@/lib/sortUtils'
-import type { PantryItem } from '@/types'
+import { isBeingBought, type PantryItem } from '@/types'
 
 export const Route = createFileRoute('/shopping/$vendorId')({
-  component: VendorCart,
+  component: VendorCartRoute,
 })
+
+// Households H5 task F.7: with no location, the page is not rendered at all
+// (`NoLocationsGate`), so none of its location-scoped reads run.
+function VendorCartRoute() {
+  return (
+    <NoLocationsGate>
+      <VendorCart />
+    </NoLocationsGate>
+  )
+}
 
 function VendorCart() {
   const { t } = useTranslation()
+  // Households H5: creating from search needs the catalog AND the location
+  // right; quick update and the cart need the location right (task F.6).
+  const { canCreate, createReadOnlyNote } = useCreateHere()
+  const { canEditHere, isViewerHere } = useActiveLocationRights()
+  // The disabled cart controls name the view-only note in
+  // `aria-describedby`. Only for a KNOWN viewer: the note renders only then,
+  // and an id that names nothing tells a screen reader nothing.
+  const viewOnlyNoteId = useId()
   const navigate = useNavigate()
   const { vendorId: vendorIdParam } = Route.useParams()
   const cartVendorId: string | null =
@@ -92,8 +118,10 @@ function VendorCart() {
         packedQuantity: 0,
         unpackedQuantity: 0,
       })
-    } catch {
-      // input stays populated for retry
+    } catch (err) {
+      // The typed name stays in the search box, so the user can try again.
+      // Before, this catch showed nothing.
+      showSaveError(err)
     }
   }
 
@@ -313,14 +341,16 @@ function VendorCart() {
     })
     .reduce((sum, ci) => sum + ci.quantity, 0)
 
-  // What `checkout` writes into each inventory log's `quantity`: each bought
-  // item's on-hand total in PACKAGE units AFTER the purchase. The rule, the
-  // term order and the `ci.quantity > 0` filter all live in the helper, with
-  // unit tests in `lib/checkoutQuantities.test.ts`. Issue #336.
-  //
-  // `items` here is a `PantryItem`, so it carries the joined per-location
-  // stock AND the global `amountPerPackage` the helper needs.
-  const checkoutLogQuantities = buildCheckoutLogQuantities(cartItems, items)
+  // What the cloud `checkout` is told: every row of this cart being bought
+  // (`isBeingBought`, `quantity > 0`), with the amount this screen shows.
+  // ALL of the cart's rows, not only the ones the vendor filter above keeps:
+  // the server buys every row being bought and refuses with `CART_CHANGED`
+  // when the list leaves one out. The server computes each log total itself
+  // (households H3b task B.5); before that the page sent one total per item
+  // (issue #336). Local `checkout` ignores this.
+  const checkoutRows = cartItems
+    .filter(isBeingBought)
+    .map((ci) => ({ cartItemId: ci.id, quantity: ci.quantity }))
 
   function handleToggleCart(item: PantryItem) {
     const ci = cartItemMap.get(item.id)
@@ -330,16 +360,21 @@ function VendorCart() {
         s.delete(item.id)
         return s
       })
+    // Before, a failed write only cleared the pending row and said nothing
+    const failed = (err: unknown) => {
+      clearPending()
+      showSaveError(err)
+    }
     setPendingItemIds((prev) => new Set(prev).add(item.id))
     if (ci) {
       removeFromCart.mutate(ci.id, {
         onSuccess: clearPending,
-        onError: clearPending,
+        onError: failed,
       })
     } else if (cart) {
       addToCart.mutate(
         { cartId: cart.id, itemId: item.id, quantity: 1 },
-        { onSuccess: clearPending, onError: clearPending },
+        { onSuccess: clearPending, onError: failed },
       )
     } else {
       clearPending()
@@ -358,7 +393,14 @@ function VendorCart() {
       setPendingItemIds((prev) => new Set(prev).add(item.id))
       updateCartItem.mutate(
         { cartItemId: ci.id, quantity: qty },
-        { onSuccess: clearPending, onError: clearPending },
+        {
+          onSuccess: clearPending,
+          // Before, a failed write only cleared the pending row
+          onError: (err) => {
+            clearPending()
+            showSaveError(err)
+          },
+        },
       )
     }
   }
@@ -377,7 +419,11 @@ function VendorCart() {
           showTags={false}
           showTagSummary={false}
           isChecked={!!ci}
-          disabled={pendingItemIds.has(item.id) || !cart}
+          // A location viewer sees what is in the cart and how much, but
+          // cannot change it (households H5 task F.6)
+          disabled={pendingItemIds.has(item.id) || !cart || !canEditHere}
+          // and is told why: the controls point at the view-only note
+          controlsDescribedBy={isViewerHere ? viewOnlyNoteId : undefined}
           isPending={pendingItemIds.has(item.id)}
           {...(ci ? { controlAmount: ci.quantity } : {})}
           onCheckboxToggle={() => handleToggleCart(item)}
@@ -426,7 +472,8 @@ function VendorCart() {
           >
             {t('shopping.toolbar.cartCount', { count: cartTotal })}
           </span>
-          {cartItems.length > 0 && (
+          {/* No abandon and no checkout for a location viewer (H5 task F.6) */}
+          {canEditHere && cartItems.length > 0 && (
             <>
               <Button
                 size="icon"
@@ -454,6 +501,13 @@ function VendorCart() {
           )}
         </Toolbar>
 
+        {isViewerHere && (
+          <ReadOnlyNote
+            id={viewOnlyNoteId}
+            text={t('common.locationViewOnly')}
+          />
+        )}
+
         <ItemListToolbar
           className="bg-transparent border-none"
           sortBy={sortBy}
@@ -464,7 +518,16 @@ function VendorCart() {
           }}
           items={vendorScopedItems}
           recipes={recipes}
-          onCreateFromSearch={handleCreateFromSearch}
+          onCreateFromSearch={
+            // Creating here also stocks the item here: a catalog right AND a
+            // location right (households H5 tasks F.5 and F.6). No button,
+            // no Enter, and a note that says why.
+            canCreate ? handleCreateFromSearch : undefined
+          }
+          createReadOnlyNote={
+            // A viewer already sees the same reason above the list
+            isViewerHere ? undefined : createReadOnlyNote
+          }
           hasExactMatch={hasExactGlobalMatch}
           isCreating={createItem.isPending}
         />
@@ -563,8 +626,10 @@ function VendorCart() {
                       replace: true,
                     })
                     setShowAbandonDialog(false)
-                  } catch {
-                    // mutation failed; dialog stays open so user can retry
+                  } catch (err) {
+                    // The dialog stays open so the user can retry. Before,
+                    // nothing on screen said the cart was not abandoned.
+                    showSaveError(err)
                   }
                 }
               }}
@@ -608,7 +673,7 @@ function VendorCart() {
                   try {
                     await checkout.mutateAsync({
                       cartId: cart.id,
-                      items: checkoutLogQuantities,
+                      items: checkoutRows,
                       note,
                       logKey,
                       logParams,
@@ -619,8 +684,19 @@ function VendorCart() {
                       replace: true,
                     })
                     setShowCheckoutDialog(false)
-                  } catch {
-                    // mutation failed; dialog stays open so user can retry
+                  } catch (err) {
+                    // The shared cart changed after this screen loaded (cloud
+                    // only). `useCheckout` has already reloaded the cart's
+                    // rows, so close the dialog and let the user check the
+                    // cart again before retrying.
+                    if (isCartChangedError(err)) {
+                      setShowCheckoutDialog(false)
+                      toast.error(t('shopping.cartChanged'))
+                    } else {
+                      // Any other failure: the dialog stays open so the user
+                      // can retry. Before, nothing on screen said so.
+                      showSaveError(err)
+                    }
                     return
                   }
                   setIsCheckoutRefetching(true)

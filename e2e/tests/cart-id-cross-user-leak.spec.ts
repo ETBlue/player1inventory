@@ -5,103 +5,94 @@ import { makeGql } from '../utils/cloud'
 
 // ── WHAT THIS FILE PROVES ────────────────────────────────────────────────────
 //
-// That a BARE cart id — one with no location prefix, such as `'no-vendor'` —
-// can no longer be used by one account to reach another account's `Cart` row.
-// Two users import a cart under that id. The first one wins the id. The second
-// one is REFUSED with `FORBIDDEN`, and writes nothing.
+// That one HOUSEHOLD cannot reach another household's `Cart` row through an
+// import, against real Postgres. Three tests:
 //
-// Four pieces of the server make that true, all read from the code:
+// | Test | Cart id imported             | Answer                                   |
+// |------|------------------------------|------------------------------------------|
+// | 1    | a BARE id, `no-vendor`       | `BAD_USER_INPUT` for BOTH households, nothing in the batch written |
+// | 2    | household A's id, `${locA}:no-vendor`, imported by B | `FORBIDDEN`; B's cart item naming it is skipped |
+// | 3    | each household's own prefixed id | both written, one row each           |
 //
-//   1. `Cart.id` is a GLOBAL primary key with no `userId` in it
-//      (apps/server/prisma/schema.prisma), so one account can hold an id for
-//      everybody. That has not changed and cannot change here.
+// ── WHAT CHANGED IN HOUSEHOLDS H4 (task E.6) ─────────────────────────────────
+//
+// Until H4 test 1 was the leak test itself: A imported a cart under the bare
+// id `no-vendor`, then B was refused the same id with `FORBIDDEN`. Since
+// households H4 task E.1 (issue #361, decision T6) a cart id MUST start with
+// its location id and a colon, so A's own import of `no-vendor` is refused
+// with `BAD_USER_INPUT` before anything reads the cart table. Test 1 now
+// pins that refusal, for both households.
+//
+// The leak guard did not go away; it moved to the only cart id shape that can
+// still be imported. Test 2 is the old test 1 with a prefixed id: B names A's
+// cart id. That id's prefix is A's location, where B has no role, so
+// `cartVerdict` (apps/server/src/lib/authz.ts) refuses it BEFORE it reads the
+// cart table. B therefore cannot even learn whether the id is taken.
+//
+// Each user is alone in a household of their own: each first request makes
+// one (first sign-in, `ensureHousehold` in apps/server/src/lib/household.ts).
+// Neither holds any role on the other's locations. The opposite case, two
+// people in ONE household who DO share a cart, is `shared-cart.spec.ts`.
+//
+// What the server does, read from the code:
+//
+//   1. `Cart.id` is a GLOBAL primary key (apps/server/prisma/schema.prisma), so
+//      one household can hold an id for everybody.
 //   2. `bulkCreateShoppingCarts` (apps/server/src/resolvers/import.resolver.ts)
-//      now calls `requireOwnRowIdsOrUnclaimed(ctx, 'cart', carts)` before its
-//      first write. A cart id held by a stranger throws `FORBIDDEN`; an id no
-//      row holds is free; an id the caller already owns is skipped. It used to
-//      ask `prisma.cart.findUnique({ where: { id } })` — UNSCOPED — and
-//      `continue` when any row answered, so the second user got no cart row of
-//      their own and no error either.
-//   3. `bulkCreateCartItems` resolves `cartId` with
-//      `findFirst({ where: { id: cartId, userId } })` — SCOPED. It used to use
-//      the same unscoped `findUnique`, so the second user's cart items were
-//      created pointing at the first user's cart.
-//   4. `bulkUpsertCartItems` carries the same scoped lookup, so the `replace`
-//      import strategy cannot do it either.
+//      refuses a bare id with `BAD_USER_INPUT` (`resolveCartLocations`), then
+//      checks every id with `requireOwnRowIdsOrUnclaimed(ctx, 'cart', …)`: a
+//      prefix that is not a location of the target household where the caller
+//      is `participant` or higher is `FORBIDDEN`, before the cart table is read.
+//   3. `bulkCreateCartItems` resolves `cartId` in `resolveCartItemParents`
+//      among the target household's writable locations only, and SKIPS a row
+//      whose cart it cannot find there. So B's cart items cannot land in A's
+//      cart.
 //
-// This is the ONLY real-SQL, two-user test of that guard. Every other test of
-// it runs against the hand-written Prisma fake in
-// `apps/server/src/resolvers/import-ownership-cart.resolver.test.ts`.
+// Every other test of these rules runs against the hand-written Prisma fake
+// (`import-ownership-cart.resolver.test.ts`, `import-role-gate.resolver.test.ts`).
 //
 // ── WHAT THIS FILE DOES *NOT* PROVE ──────────────────────────────────────────
 //
-// **It does not prove anything about the CLIENT.** This spec hands the bare id
-// to the server itself. Whether the client ever sends one is a separate
-// question, answered by a unit test:
+// **Nothing about the CLIENT.** This spec hands the ids to the server itself.
+// Whether the web client ever sends a bare id is answered by unit tests in
+// `apps/web/src/lib/importData.test.ts`: a local backup's carts keep their
+// location prefix, and a legacy file's carts get one (`upgradeLegacyPayload`).
 //
-//     apps/web/src/lib/importData.test.ts
-//     → describe('importCloudData — a cart id keeps its location prefix (PR 4b task 3)')
+// **It covers two mutations, not the whole import surface.** It reaches
+// `bulkCreateShoppingCarts` and `bulkCreateCartItems`. The other import
+// mutations are covered by the server unit tests only.
 //
-// Those tests are green since cloud locations PR 4b, which stopped
-// `flattenPayloadForCloud` slicing the location prefix off on the way to
-// cloud. So two layers now stand between a backup and another account's cart:
-// the client keeps the prefix, and the server refuses a stranger's id anyway.
-//
-// **It covers two mutations, not the whole import surface.** The guard runs in
-// nine `bulkCreate*` and nine `bulkUpsert*` mutations. This file reaches
-// `bulkCreateShoppingCarts` and `bulkCreateCartItems`. The other sixteen are
-// covered by the server unit tests only, against the fake.
-//
-// **It does not prove the refusal is atomic.** "One forbidden row writes
-// nothing at all" is asserted in the server unit tests, which send a batch of
-// several carts. This file sends one cart per call.
-//
-// ── ISSUE #327 IS CLOSED BY THIS BRANCH ──────────────────────────────────────
-//
-// The unscoped `findUnique`-then-`continue` / `-upsert` pattern was never
-// specific to carts. Issue **#327** tracked it across the whole import
-// surface: nine `bulkUpsert*` mutations let one user take ownership of
-// another's row, and nine `bulkCreate*` mutations silently dropped the
-// caller's own row because a stranger held the id.
-//
-// Branch `fix/import-ownership-guard` closes it. `requireOwnRowOrUnclaimed`
-// (apps/server/src/lib/authz.ts) is the one function that decides account
-// ownership for all nine models, and
-// `requireOwnRowIdsOrUnclaimed` (import.resolver.ts) applies it to a whole
-// payload before the first write. See
-// `docs/features/settings/2026-10-28-design-import-ownership-guard.md`.
-//
-// **So this file is no longer a negative control.** It used to be labelled one
-// — green before the fix and green after it, because PR 4b changed only the
-// client. That is over: test 1 below asserts a refusal that did not exist
-// before this branch, so it is red on `main` and green here.
+// **One person in two households is not here.** The E2E route that adds a
+// person to a household refuses a person who already has one (409), so issue
+// #381's two-household cases are tested only against the fake.
 //
 // ── WHY THERE IS NO BROWSER ──────────────────────────────────────────────────
 //
 // `VITE_E2E_TEST_USER_ID` is baked into the web build as a single value
 // (e2e/playwright.config.ts), so the browser can only ever be `E2E_USER_ID`.
 // A second user is reachable only by setting the `x-e2e-user-id` header per
-// request, which is what `makeGql(request, userId)` does. Everything below is
-// GraphQL, like `location-scoped-writes.spec.ts` and `cleanup-endpoint.spec.ts`.
-// This file runs in the `cloud` project only — named in that project's
-// `testMatch` and in the `local` project's `testIgnore`.
+// request, which is what `makeGql(request, userId)` does. This file runs in
+// the `cloud` project only — named in that project's `testMatch` and in the
+// `local` project's `testIgnore`.
 //
 // ── TEARDOWN COVERS BOTH USERS ───────────────────────────────────────────────
 //
-// `/e2e/cleanup` deletes `{ where: { userId } }` for one user per call, so both
-// hooks below call it twice. The second user's rows are invisible to every
-// other cloud spec's teardown, so leaving them behind would fail a later spec
-// for a reason nobody would trace back here.
+// `/e2e/cleanup` deletes the households ONE user owns per call (since
+// households H3a task 3.10), so `beforeEach` below calls it twice. The second
+// user's rows are invisible to every other cloud spec's teardown, so leaving
+// them behind would fail a later spec for a reason nobody would trace back
+// here.
 
 type Row = { id: string }
 type CartItemRow = { id: string; cartId: string; itemId: string }
 
 // A bare cart id: no location prefix, no colon. This is the shape
 // `flattenPayloadForCloud` produced before cloud locations PR 4b, and the
-// shape a hand-edited backup can still carry.
+// shape a hand-edited backup can still carry. Refused since households H4
+// task E.1 (issue #361).
 const BARE_CART_ID = 'no-vendor'
 
-const LOCATIONS = `query { locations { id name isDefault } }`
+const LOCATIONS = `query { locations { id name } }`
 const CREATE_ITEM = `mutation ($input: CreateItemInput!) {
   createItem(input: $input) { id }
 }`
@@ -117,46 +108,87 @@ const CART_ITEM_COUNT = `query ($itemId: ID!, $locationId: ID) {
   cartItemCountByItem(itemId: $itemId, locationId: $locationId)
 }`
 
-/** Both users, in both hooks. One call deletes one user. */
+/** The first location of `gql`'s household. The first request makes it. */
+async function firstLocationId(
+  gql: ReturnType<typeof makeGql>,
+): Promise<string> {
+  const { locations } = await gql<{ locations: { id: string }[] }>(LOCATIONS)
+  const id = locations[0]?.id
+  if (!id) throw new Error('no location after first sign-in')
+  return id
+}
+
+/** Both users, in `beforeEach`, in one call (E2E speed plan, task S.4). */
 async function cleanupBothUsers(
   request: Parameters<typeof cleanupCloudData>[0],
 ): Promise<void> {
-  await cleanupCloudData(request, E2E_USER_ID)
-  await cleanupCloudData(request, E2E_SECOND_USER_ID)
+  await cleanupCloudData(request, [E2E_USER_ID, E2E_SECOND_USER_ID])
 }
 
 test.beforeEach(async ({ request }) => {
-  // Guards against a previous run that crashed before its teardown.
+  // The only cleanup of each test: it starts clean whatever ran before it (E2E speed plan, D7).
   await cleanupBothUsers(request)
 })
 
-test.afterEach(async ({ request }) => {
-  await cleanupBothUsers(request)
-})
-
-test.describe('cloud import — a bare cart id another account holds is refused', () => {
-  test('user cannot import a cart under a bare id that another account holds', async ({
+test.describe('cloud import — a cart id of another household is refused', () => {
+  test('user cannot import a cart under a bare id, in either household', async ({
     request,
   }) => {
-    // Given two separate accounts, each with their own default location and item
+    // Given two separate households, each with its own first location ("Home")
     const gqlA = makeGql(request, E2E_USER_ID)
     const gqlB = makeGql(request, E2E_SECOND_USER_ID)
-
-    const { locations: locationsA } = await gqlA<{
-      locations: { id: string; isDefault: boolean }[]
-    }>(LOCATIONS)
-    const { locations: locationsB } = await gqlB<{
-      locations: { id: string; isDefault: boolean }[]
-    }>(LOCATIONS)
-    const defaultA = locationsA.find((l) => l.isDefault)?.id
-    const defaultB = locationsB.find((l) => l.isDefault)?.id
-    expect(defaultA).toBeTruthy()
-    expect(defaultB).toBeTruthy()
-    // The two accounts really are separate accounts, not one account read
-    // twice. Without this, every assertion below would pass against a server
-    // that ignored the header entirely.
+    const defaultA = await firstLocationId(gqlA)
+    const defaultB = await firstLocationId(gqlB)
+    // The two really are separate households, not one read twice. Without
+    // this, every assertion below would pass against a server that ignored
+    // the header.
     expect(defaultA).not.toBe(defaultB)
 
+    // When each imports a batch with the bare id `no-vendor` AND a new,
+    // correctly prefixed cart id. The prefixed id is what makes "nothing in
+    // the batch is written" able to fail (H4 plan, rule 17): a server that
+    // refused the bare id row by row would still write it.
+    //
+    // Then each batch is refused with `BAD_USER_INPUT`. `makeGql` throws the
+    // GraphQL errors as JSON text, so the regex matches the error CODE.
+    for (const [gql, locationId] of [
+      [gqlA, defaultA],
+      [gqlB, defaultB],
+    ] as const) {
+      await expect(
+        gql<{ bulkCreateShoppingCarts: Row[] }>(BULK_CREATE_CARTS, {
+          carts: [{ id: `${locationId}:no-vendor` }, { id: BARE_CART_ID }],
+        }),
+      ).rejects.toThrow(/"code":"BAD_USER_INPUT"/)
+    }
+
+    // And neither household holds any cart row
+    const cartsA = await gqlA<{ allCarts: Row[] }>(ALL_CARTS)
+    const cartsB = await gqlB<{ allCarts: Row[] }>(ALL_CARTS)
+    expect(cartsA.allCarts).toEqual([])
+    expect(cartsB.allCarts).toEqual([])
+
+    // And the same batch without the bare id IS written: the positive
+    // control, so the two empty lists above cannot come from a mutation that
+    // writes nothing at all
+    const created = await gqlA<{ bulkCreateShoppingCarts: Row[] }>(
+      BULK_CREATE_CARTS,
+      { carts: [{ id: `${defaultA}:no-vendor` }] },
+    )
+    expect(created.bulkCreateShoppingCarts.map((c) => c.id)).toEqual([
+      `${defaultA}:no-vendor`,
+    ])
+  })
+
+  test('user cannot import a cart under another household’s cart id, nor put cart items in it', async ({
+    request,
+  }) => {
+    // Given two separate households, each with its own first location and item
+    const gqlA = makeGql(request, E2E_USER_ID)
+    const gqlB = makeGql(request, E2E_SECOND_USER_ID)
+    const defaultA = await firstLocationId(gqlA)
+    const defaultB = await firstLocationId(gqlB)
+    expect(defaultA).not.toBe(defaultB)
     const { createItem: itemA } = await gqlA<{ createItem: Row }>(CREATE_ITEM, {
       input: { name: 'Milk A' },
     })
@@ -164,137 +196,82 @@ test.describe('cloud import — a bare cart id another account holds is refused'
       input: { name: 'Milk B' },
     })
 
-    // When account A imports a backup whose cart id has no location prefix
-    const createdForA = await gqlA<{ bulkCreateShoppingCarts: Row[] }>(
-      BULK_CREATE_CARTS,
-      { carts: [{ id: BARE_CART_ID }] },
-    )
-    // Then A holds the id. A free id is still free — the guard refuses a
-    // stranger's row, never a new one.
-    expect(createdForA.bulkCreateShoppingCarts.map((c) => c.id)).toEqual([
-      BARE_CART_ID,
-    ])
+    // And household A holds the cart `${defaultA}:no-vendor`
+    const cartIdA = `${defaultA}:no-vendor`
+    await gqlA(BULK_CREATE_CARTS, { carts: [{ id: cartIdA }] })
 
-    // When account B then imports a backup using that same bare id
-    // Then the whole mutation is REFUSED. `makeGql` throws when the response
-    // carries GraphQL errors, and its message is `JSON.stringify(json.errors)`.
-    //
-    // Measured in process on 2026-10-28 with this repo's own `@apollo/server`:
-    // a `GraphQLError('Forbidden', { extensions: { code: 'FORBIDDEN' } })` —
-    // which is byte for byte what `requireOwnRowOrUnclaimed` throws — comes
-    // back as
-    // `[{"message":"Forbidden",...,"extensions":{"code":"FORBIDDEN",...}}]`.
-    // So the regex below matches the error CODE, not the message: the message
-    // is `Forbidden`, in mixed case.
-    //
-    // THIS IS THE LINE THE CART GUARD OWNS. Delete
-    // `requireOwnRowIdsOrUnclaimed(ctx, 'cart', carts)` from
-    // `bulkCreateShoppingCarts` and this assertion is the one that goes red.
-    // Nothing else in this test changes: A still holds the row and B still has
-    // none, either way.
-    //
-    // UNVERIFIED PREDICTION, not a measurement — no Playwright run was made
-    // for it. With the guard gone there is no existence check left at all, so
-    // `prisma.cart.create` should reach A's primary key and Postgres should
-    // answer `P2002`. That is still a rejection, with the wrong error inside
-    // it, so the regex should fail rather than the `await` itself. If instead
-    // somebody restores the old unscoped `findUnique`-then-`continue`, the
-    // call RESOLVES with `[]` and this line fails for not rejecting at all.
+    // When B imports a cart under A's cart id
+    // Then the whole mutation is REFUSED with `FORBIDDEN`: the id's prefix is
+    // a location of another household. THIS IS THE LINE THE CART GUARD OWNS.
     await expect(
       gqlB<{ bulkCreateShoppingCarts: Row[] }>(BULK_CREATE_CARTS, {
-        carts: [{ id: BARE_CART_ID }],
+        carts: [{ id: cartIdA }],
       }),
-    ).rejects.toThrow(/FORBIDDEN/)
+    ).rejects.toThrow(/"code":"FORBIDDEN"/)
 
-    // And the one `no-vendor` cart row in the database still belongs to A,
-    // unchanged. Asserted BEFORE B's absence, so a query that returned nothing
-    // at all could not satisfy both.
+    // And A still holds its one cart (asserted BEFORE B's absence, so a query
+    // that returned nothing could not satisfy both), and B holds none
     const cartsA = await gqlA<{ allCarts: Row[] }>(ALL_CARTS)
-    expect(cartsA.allCarts.map((c) => c.id)).toEqual([BARE_CART_ID])
-
-    // And B has no cart row. Same outcome as before this branch, now because
-    // B was told no instead of being silently skipped.
+    expect(cartsA.allCarts.map((c) => c.id)).toEqual([cartIdA])
     const cartsB = await gqlB<{ allCarts: Row[] }>(ALL_CARTS)
     expect(cartsB.allCarts.map((c) => c.id)).toEqual([])
 
-    // When A puts a cart item in A's own cart
-    // Then it is written — the positive control for everything below. It
-    // proves `bulkCreateCartItems` works at all, so B's empty result cannot be
-    // a broken mutation.
+    // When A puts a cart item in its own cart
+    // Then it is written — the positive control for B's empty result below
     const itemsForA = await gqlA<{ bulkCreateCartItems: CartItemRow[] }>(
       BULK_CREATE_CART_ITEMS,
       {
         cartItems: [
-          { id: 'ci-a', cartId: BARE_CART_ID, itemId: itemA.id, quantity: 1 },
+          { id: 'ci-a', cartId: cartIdA, itemId: itemA.id, quantity: 1 },
         ],
       },
     )
-    expect(itemsForA.bulkCreateCartItems).toHaveLength(1)
-    expect(itemsForA.bulkCreateCartItems[0].cartId).toBe(BARE_CART_ID)
+    expect(itemsForA.bulkCreateCartItems.map((ci) => ci.cartId)).toEqual([
+      cartIdA,
+    ])
 
-    // When B imports a cart item naming A's cart id
-    // Then nothing is written. B's cart items can no longer land inside A's
-    // cart row, which is the second half of the leak.
-    //
-    // THIS IS THE LINE TASK 8's SCOPED LOOKUP OWNS. Change
-    // `prisma.cart.findFirst({ where: { id: cartId, userId } })` back to
-    // `prisma.cart.findUnique({ where: { id: cartId } })` in
-    // `bulkCreateCartItems` and this assertion should go red reading
-    // `Expected length: 0 / Received length: 1`. UNVERIFIED PREDICTION — no
-    // Playwright run was made for it. It fails on a VALUE, not on a missing
-    // element, which is why the length is asserted here and not only the
-    // absence from `allCartItems` below.
-    //
-    // The call does NOT throw. A cart the caller may not use is skipped
-    // exactly like a cart that is gone, on purpose: a partial backup
-    // legitimately names a missing parent, and a distinguishable refusal would
-    // turn the mutation into a probe for another account's ids.
+    // When B imports a cart item naming A's cart
+    // Then nothing is written, and the call does not throw. A cart the caller
+    // may not use is skipped exactly like a cart that is gone, on purpose: a
+    // partial backup legitimately names a missing parent, and a refusal here
+    // would turn the mutation into a probe for another household's ids.
+    // THIS IS THE LINE THE SCOPED CART LOOKUP IN `resolveCartItemParents` OWNS.
     const itemsForB = await gqlB<{ bulkCreateCartItems: CartItemRow[] }>(
       BULK_CREATE_CART_ITEMS,
       {
         cartItems: [
-          { id: 'ci-b', cartId: BARE_CART_ID, itemId: itemB.id, quantity: 3 },
+          { id: 'ci-b', cartId: cartIdA, itemId: itemB.id, quantity: 3 },
         ],
       },
     )
     expect(itemsForB.bulkCreateCartItems).toHaveLength(0)
 
-    // And the two accounts' cart items read back the way they were written:
-    // A has one, B has none. `allCartItems` is scoped by `CartItem.userId`.
+    // And the cart items read back the way they were written: A has one, B
+    // none
     const allForA = await gqlA<{ allCartItems: CartItemRow[] }>(ALL_CART_ITEMS)
     const allForB = await gqlB<{ allCartItems: CartItemRow[] }>(ALL_CART_ITEMS)
     expect(allForA.allCartItems.map((ci) => ci.id)).toEqual(['ci-a'])
-    expect(allForA.allCartItems.map((ci) => ci.cartId)).toEqual([BARE_CART_ID])
     expect(allForB.allCartItems.map((ci) => ci.id)).toEqual([])
 
-    // And the harm is gone, read through the number the app shows.
-    // `cartItemCountByItem` with a `locationId` resolves through
-    // `where: { itemId, userId, cart: { locationId } }`, so it reads the
-    // cart's `locationId` COLUMN rather than parsing the id string. It is the
-    // number the shopping page and the Stock tab's "remove from location"
-    // confirmation both display.
-    //
-    // A's own row counts at A's own location — the positive control, so a
-    // query that counted nothing could not pass the two zeros below.
-    const countForAAtOwnLocation = await gqlA<{ cartItemCountByItem: number }>(
+    // And through the number the app shows. `cartItemCountByItem` with a
+    // `locationId` reads the cart's `locationId` COLUMN, not the id string.
+    // A's own row counts at A's location (the positive control); B's item has
+    // no cart row anywhere.
+    const countA = await gqlA<{ cartItemCountByItem: number }>(
       CART_ITEM_COUNT,
       { itemId: itemA.id, locationId: defaultA },
     )
-    expect(countForAAtOwnLocation.cartItemCountByItem).toBe(1)
-
-    // B owns no cart item anywhere. Before this branch B owned one that B
-    // could find nowhere: counted whole-account, but at none of B's own
-    // locations, because the cart it hung from was at a location of A's.
-    const countForBAnywhere = await gqlB<{ cartItemCountByItem: number }>(
+    expect(countA.cartItemCountByItem).toBe(1)
+    const countBAnywhere = await gqlB<{ cartItemCountByItem: number }>(
       CART_ITEM_COUNT,
       { itemId: itemB.id, locationId: null },
     )
-    expect(countForBAnywhere.cartItemCountByItem).toBe(0)
-    const countForBAtOwnLocation = await gqlB<{ cartItemCountByItem: number }>(
+    expect(countBAnywhere.cartItemCountByItem).toBe(0)
+    const countBAtOwn = await gqlB<{ cartItemCountByItem: number }>(
       CART_ITEM_COUNT,
       { itemId: itemB.id, locationId: defaultB },
     )
-    expect(countForBAtOwnLocation.cartItemCountByItem).toBe(0)
+    expect(countBAtOwn.cartItemCountByItem).toBe(0)
   })
 
   test('a location-prefixed cart id gives each account its own cart row', async ({
@@ -314,15 +291,15 @@ test.describe('cloud import — a bare cart id another account holds is refused'
     const gqlA = makeGql(request, E2E_USER_ID)
     const gqlB = makeGql(request, E2E_SECOND_USER_ID)
 
-    // Given each account's own default location
+    // Given each account's own first location, "Home"
     const { locations: locationsA } = await gqlA<{
-      locations: { id: string; isDefault: boolean }[]
+      locations: { id: string }[]
     }>(LOCATIONS)
     const { locations: locationsB } = await gqlB<{
-      locations: { id: string; isDefault: boolean }[]
+      locations: { id: string }[]
     }>(LOCATIONS)
-    const defaultA = locationsA.find((l) => l.isDefault)?.id as string
-    const defaultB = locationsB.find((l) => l.isDefault)?.id as string
+    const defaultA = locationsA[0]?.id as string
+    const defaultB = locationsB[0]?.id as string
     expect(defaultA).not.toBe(defaultB)
 
     // When each imports its no-vendor cart under the composite id

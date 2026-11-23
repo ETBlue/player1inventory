@@ -1,12 +1,21 @@
 import { ApolloClient, ApolloLink } from '@apollo/client'
+import { CombinedGraphQLErrors } from '@apollo/client/errors'
 import { SetContextLink } from '@apollo/client/link/context'
+import { ErrorLink } from '@apollo/client/link/error'
 import { HttpLink } from '@apollo/client/link/http'
 import { GraphQLWsLink } from '@apollo/client/link/subscriptions'
 import { getMainDefinition } from '@apollo/client/utilities'
 import { createClient } from 'graphql-ws'
 import { isOffline } from '@/hooks/useIsOffline'
+import i18n from '@/i18n'
+import { CLIENT_ID } from './clientId'
 import { cloudCache, createCache } from './cloudCache'
 import { DEFAULT_GRAPHQL_HTTP_URL, DEFAULT_GRAPHQL_WS_URL } from './constants'
+import {
+  getShownHouseholdId,
+  recoverFromHouseholdChange,
+} from './householdGuard'
+import { registerLiveSocket } from './liveSocket'
 import { offlineWriteLink } from './offlineWriteLink'
 import { createStaleReadRetryLink } from './staleReadRetryLink'
 
@@ -66,18 +75,149 @@ const httpLink = new HttpLink({
   uri: import.meta.env.VITE_GRAPHQL_HTTP_URL ?? DEFAULT_GRAPHQL_HTTP_URL,
 })
 
+/**
+ * Sends the app's current language with every GraphQL request, in the
+ * `x-app-language` header (households H3a, decision H3).
+ *
+ * The server uses it on a person's first request to name their new household
+ * and its first location in that language. It accepts only `en` and `tw`, and
+ * reads anything else as `en`.
+ *
+ * The language is read when each request is sent, not when the client is
+ * built, so a language change in Settings applies to the next request.
+ */
+function currentLanguage(): string | undefined {
+  return i18n.resolvedLanguage ?? i18n.language ?? undefined
+}
+
+const languageLink = new SetContextLink(({ headers }) => {
+  const language = currentLanguage()
+  return {
+    headers: {
+      ...headers,
+      ...(language ? { 'x-app-language': language } : {}),
+    },
+  }
+})
+
+/**
+ * Sends this tab's id (`clientId.ts`) with every HTTP request, in the
+ * `x-client-id` header (households H3c-1, decision P4). The server then does
+ * not send this tab's own changes back to it over the live-updates socket.
+ */
+const clientIdLink = new SetContextLink(({ headers }) => ({
+  headers: { ...headers, 'x-client-id': CLIENT_ID },
+}))
+
+/**
+ * Sends the household THIS PAGE shows with every HTTP request, in the
+ * `x-household-id` header (households H7 task L.3, decision T66). The server
+ * refuses a request with `HOUSEHOLD_CHANGED` when the person now acts in
+ * another household (T67), so a stale tab cannot read or write the wrong
+ * household. See `getShownHouseholdId` for why this is a per-page value and
+ * not the shared `last-household-id`.
+ *
+ * No id yet: no header at all, never an empty string. The socket sends
+ * nothing new: the server checks membership for every live event.
+ */
+const householdIdLink = new SetContextLink(({ headers }) => {
+  const householdId = getShownHouseholdId()
+  return {
+    headers: {
+      ...headers,
+      ...(householdId ? { 'x-household-id': householdId } : {}),
+    },
+  }
+})
+
+/**
+ * Starts the recovery when the server answers `HOUSEHOLD_CHANGED`
+ * (households H7 task L.3, decision T72). It returns nothing, so the error
+ * still reaches the caller and the refused operation is not sent again.
+ * `recoverFromHouseholdChange` acts only on the first refusal of a page load.
+ */
+const householdChangedLink = new ErrorLink(({ error, operation }) => {
+  if (
+    CombinedGraphQLErrors.is(error) &&
+    error.errors.some((e) => e.extensions?.code === 'HOUSEHOLD_CHANGED')
+  ) {
+    void recoverFromHouseholdChange(operation.client)
+  }
+})
+
+/**
+ * The HTTP half of both clients: the four header links, the
+ * `HOUSEHOLD_CHANGED` link, then the network. `identityLink` is the Clerk
+ * token or the E2E user id.
+ */
+function httpChain(identityLink: ApolloLink): ApolloLink {
+  return ApolloLink.from([
+    languageLink,
+    clientIdLink,
+    householdIdLink,
+    identityLink,
+    householdChangedLink,
+    httpLink,
+  ])
+}
+
+/**
+ * The live-updates socket (households H3c-1). Same URL and path as HTTP.
+ *
+ * `connectionParams` runs again for every new socket, including each
+ * reconnect, so a reconnect after the server's 60-minute age limit sends a
+ * fresh token. The server refuses a socket with no `clientId` (close code
+ * 4401, which the client never retries).
+ *
+ * `lazy` is left at its default, `true`: the socket opens with the first
+ * subscription and closes as soon as the last one ends. That is what closes
+ * the socket on sign-out: `LiveUpdatesRunner` unsubscribes when the user id goes
+ * away. `dispose()` is NOT used for that, because a disposed client never
+ * retries again, and React's StrictMode runs every effect cleanup once on
+ * mount, which would leave the socket without retries for the whole session.
+ */
+function createLiveSocket(identity: () => Promise<Record<string, string>>) {
+  return createClient({
+    url: import.meta.env.VITE_GRAPHQL_WS_URL ?? DEFAULT_GRAPHQL_WS_URL,
+    connectionParams: async () => {
+      const language = currentLanguage()
+      return {
+        ...(await identity()),
+        clientId: CLIENT_ID,
+        ...(language ? { language } : {}),
+      }
+    },
+  })
+}
+
+/** Subscriptions go to the socket, everything else over HTTP. */
+function isSubscription({ query }: ApolloLink.Operation) {
+  const def = getMainDefinition(query)
+  return def.kind === 'OperationDefinition' && def.operation === 'subscription'
+}
+
 // E2E test client: sends a static x-e2e-user-id header instead of a Clerk JWT.
 // Used by main.tsx when VITE_E2E_TEST_USER_ID is set (never in production).
 export function createApolloClientForE2E(userId: string) {
   const e2eLink = new SetContextLink(({ headers }) => ({
     headers: { ...headers, 'x-e2e-user-id': userId },
   }))
-  return new ApolloClient({
-    // The same stale-read guard as the production client, so cloud E2E runs
-    // the code users run.
-    link: createStaleReadRetryLink().concat(e2eLink).concat(httpLink),
+  // The server reads `e2eUserId` only when it runs in E2E mode.
+  const socket = createLiveSocket(async () => ({ e2eUserId: userId }))
+  const splitLink = ApolloLink.split(
+    isSubscription,
+    new GraphQLWsLink(socket),
+    httpChain(e2eLink),
+  )
+  const client = new ApolloClient({
+    // The same stale-read guard, headers (language, tab id, shown
+    // household), `HOUSEHOLD_CHANGED` link and socket as the production
+    // client, so cloud E2E runs the code users run.
+    link: createStaleReadRetryLink().concat(splitLink),
     cache: createCache(),
   })
+  registerLiveSocket(client, socket)
+  return client
 }
 
 export function createApolloClient(getToken: () => Promise<string | null>) {
@@ -91,32 +231,24 @@ export function createApolloClient(getToken: () => Promise<string | null>) {
     }
   })
 
-  const wsLink = new GraphQLWsLink(
-    createClient({
-      url: import.meta.env.VITE_GRAPHQL_WS_URL ?? DEFAULT_GRAPHQL_WS_URL,
-      connectionParams: async () => {
-        const token = await resolveToken(getToken)
-        return token ? { authorization: `Bearer ${token}` } : {}
-      },
-    }),
-  )
+  const socket = createLiveSocket(async () => {
+    const token = await resolveToken(getToken)
+    return token ? { authorization: `Bearer ${token}` } : {}
+  })
 
   const splitLink = ApolloLink.split(
-    ({ query }) => {
-      const def = getMainDefinition(query)
-      return (
-        def.kind === 'OperationDefinition' && def.operation === 'subscription'
-      )
-    },
-    wsLink,
-    authLink.concat(httpLink),
+    isSubscription,
+    new GraphQLWsLink(socket),
+    httpChain(authLink),
   )
 
-  return new ApolloClient({
+  const client = new ApolloClient({
     // `createStaleReadRetryLink` sits after `offlineWriteLink`, so a mutation
     // refused offline never reaches the server and is not counted. Pinned by
     // "does not make a waiting query send again" in `client.test.ts`.
     link: offlineWriteLink.concat(createStaleReadRetryLink()).concat(splitLink),
     cache: cloudCache,
   })
+  registerLiveSocket(client, socket)
+  return client
 }

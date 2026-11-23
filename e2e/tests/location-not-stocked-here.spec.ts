@@ -86,8 +86,10 @@ const ELSEWHERE_RECIPE = 'Cold Brew'
 // sets for UI-driven setup.
 //
 // 'HOME' and 'OFFICE' are symbolic keys, not ids. HOME is the default location,
-// which is also the active one — local falls back to the `isDefault` row and so
-// does cloud (src/hooks/useActiveLocation.tsx).
+// which is also the active one. Local falls back to the `isDefault` row; cloud
+// has no default since households H3a and falls back to the FIRST location by
+// `order`, which is where `seedCloudFixture` puts HOME
+// (src/hooks/useActiveLocation.tsx).
 const FIXTURE: Fixture = {
   locations: [
     { key: 'HOME', name: 'My Home', isDefault: true },
@@ -158,17 +160,15 @@ test.beforeEach(async ({ page, request, baseURL }) => {
     localStorage.setItem('e2e-skip-onboarding', 'true')
   })
   if (baseURL === CLOUD_WEB_URL) {
-    // Guards against a previous run that crashed before its teardown.
+    // The only cleanup of each test: it starts clean whatever ran before it (E2E speed plan, D7).
     await cleanupCloudData(request)
   }
 })
 
-test.afterEach(async ({ page, request, baseURL }) => {
-  if (baseURL === CLOUD_WEB_URL) {
-    // Cloud mode: delete this user's rows through the E2E cleanup endpoint.
-    await cleanupCloudData(request)
-    return
-  }
+test.afterEach(async ({ page, baseURL }) => {
+  // Cloud mode: nothing to clean here. Each test cleans up in its own
+  // beforeEach (E2E speed plan, decision D7).
+  if (baseURL === CLOUD_WEB_URL) return
   // Local mode: clear IndexedDB, localStorage, and sessionStorage.
   await page.goto('/')
   await page.evaluate(async () => {

@@ -203,7 +203,6 @@ mutation BulkCreateLocations($locations: [LocationInput!]!) {
     id
     name
     order
-    isDefault
     createdAt
     updatedAt
   }
@@ -214,7 +213,6 @@ mutation BulkUpsertLocations($locations: [LocationInput!]!) {
     id
     name
     order
-    isDefault
     createdAt
     updatedAt
   }
@@ -252,4 +250,30 @@ mutation BulkUpsertItemStocks($itemStocks: [ItemStockImportInput!]!) {
 
 mutation ClearAllData {
   clearAllData
+}
+
+# One activity row for a finished cloud import (households H6, owner decision
+# O33-A). `importCloudData` sends it once, after the last batch, with the
+# number of rows of each kind it sent. It publishes nothing.
+mutation RecordImport($counts: ImportCountsInput!) {
+  recordImport(counts: $counts)
+}
+
+# Asked before the first write of a cloud import (households H4 task E.2).
+# `checkImportIds` in lib/importData.ts sends the file's ids in chunks of at
+# most 1000.
+query ImportCheck($ids: ImportCheckInput!, $forClear: Boolean) {
+  importCheck(ids: $ids, forClear: $forClear) {
+    anotherHousehold
+    blockedLocationIds
+    renameBlockedLocationIds
+    missingLocationIds
+    missingItemIds
+    blockedRows {
+      inventoryLogs
+      itemStocks
+      carts
+      cartItems
+    }
+  }
 }

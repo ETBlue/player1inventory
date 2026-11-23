@@ -14,6 +14,8 @@ import {
   useUpdateItem,
 } from '@/hooks'
 import { useAddTagType } from '@/hooks/useAddTagType'
+import { usePermissions } from '@/hooks/usePermissions'
+import { showSaveError } from '@/lib/saveError'
 import type { TagColor } from '@/types'
 
 export const Route = createFileRoute('/items/$id/relation/tags')({
@@ -26,12 +28,16 @@ function TagTypeSection({
   onToggle,
   onAddTag,
   loadingTagId,
+  readOnly = false,
 }: {
   tagType: { id: string; name: string; color: TagColor }
   item: { tagIds: string[] }
   onToggle: (tagId: string) => void
-  onAddTag: (typeId: string) => void
+  /** Left out for a household member: no "New Tag" button. */
+  onAddTag?: ((typeId: string) => void) | undefined
   loadingTagId?: string | null
+  /** A household member cannot toggle: the badges are aria-disabled. */
+  readOnly?: boolean
 }) {
   const { t } = useTranslation()
   const { data: tagsWithDepth = [] } = useTagsWithDepth(tagType.id)
@@ -76,10 +82,11 @@ function TagTypeSection({
                 role="button"
                 aria-pressed={isSelected}
                 aria-busy={isLoading}
+                aria-disabled={readOnly || undefined}
                 variant={
                   isSelected ? tagType.color : `${tagType.color}-inverse`
                 }
-                className={`cursor-pointer z-10 relative${isLoading ? ' pointer-events-none' : ''}`}
+                className={`${readOnly ? 'cursor-default' : 'cursor-pointer'} z-10 relative${isLoading ? ' pointer-events-none' : ''}`}
                 onClick={() => onToggle(tag.id)}
               >
                 {tag.name}
@@ -92,15 +99,17 @@ function TagTypeSection({
             </div>
           )
         })}
-        <Button
-          variant="neutral-ghost"
-          size="sm"
-          className="px-0 py-0 gap-1 text-xs -my-1"
-          onClick={() => onAddTag(tagType.id)}
-        >
-          <Plus />
-          {t('items.tags.newTag.button')}
-        </Button>
+        {onAddTag && (
+          <Button
+            variant="neutral-ghost"
+            size="sm"
+            className="px-0 py-0 gap-1 text-xs -my-1"
+            onClick={() => onAddTag(tagType.id)}
+          >
+            <Plus />
+            {t('items.tags.newTag.button')}
+          </Button>
+        )}
       </div>
     </div>
   )
@@ -111,6 +120,10 @@ function TagsTab() {
   const { id } = Route.useParams()
   const { data: item } = useItem(id)
   const updateItem = useUpdateItem()
+  // A household member sees what is assigned and cannot change it
+  // (households H5 task F.5): presses write nothing, the badges are
+  // aria-disabled, and there is no "New …" button.
+  const { canEditCatalog } = usePermissions()
   const { data: tagTypes = [] } = useTagTypes()
   const [addTagDialog, setAddTagDialog] = useState<string | null>(null)
   const [newTagName, setNewTagName] = useState('')
@@ -121,25 +134,38 @@ function TagsTab() {
   const [loadingTagId, setLoadingTagId] = useState<string | null>(null)
 
   const handleAddTag = async () => {
-    if (addTagDialog && newTagName.trim()) {
-      const newTag = await createTag.mutateAsync({
+    if (!addTagDialog || !newTagName.trim()) return
+    let newTag: Awaited<ReturnType<typeof createTag.mutateAsync>>
+    try {
+      newTag = await createTag.mutateAsync({
         name: newTagName.trim(),
         typeId: addTagDialog,
       })
-      if (newTag?.id && item) {
-        // Immediately assign the new tag to the current item
-        updateItem.mutate({
+    } catch (err) {
+      // The dialog stays open with the name, so the user can try again.
+      // Before, this was an unhandled rejection with nothing on screen.
+      showSaveError(err)
+      return
+    }
+    // The tag exists now, so the dialog closes even if the assign below
+    // fails: trying again would create the same tag a second time.
+    setNewTagName('')
+    setAddTagDialog(null)
+    if (newTag?.id && item) {
+      // Immediately assign the new tag to the current item
+      try {
+        await updateItem.mutateAsync({
           id,
           updates: { tagIds: [...item.tagIds, newTag.id] },
         })
+      } catch (err) {
+        showSaveError(err)
       }
-      setNewTagName('')
-      setAddTagDialog(null)
     }
   }
 
   const toggleTag = async (tagId: string) => {
-    if (!item || loadingTagId !== null) return
+    if (!item || !canEditCatalog || loadingTagId !== null) return
 
     const newTagIds = item.tagIds.includes(tagId)
       ? item.tagIds.filter((id) => id !== tagId)
@@ -148,6 +174,9 @@ function TagsTab() {
     setLoadingTagId(tagId)
     try {
       await updateItem.mutateAsync({ id, updates: { tagIds: newTagIds } })
+    } catch (err) {
+      // Shown, not left unhandled: this runs straight off a click
+      showSaveError(err)
     } finally {
       setLoadingTagId(null)
     }
@@ -163,12 +192,14 @@ function TagsTab() {
             title={t('items.tags.empty.title')}
             description={t('items.tags.empty.description')}
           />
-          <Button
-            variant="neutral-outline"
-            onClick={() => setNewTagTypeOpen(true)}
-          >
-            {t('items.tags.newTagType.button')}
-          </Button>
+          {canEditCatalog && (
+            <Button
+              variant="neutral-outline"
+              onClick={() => setNewTagTypeOpen(true)}
+            >
+              {t('items.tags.newTagType.button')}
+            </Button>
+          )}
         </div>
       ) : (
         <div className="space-y-3">
@@ -184,7 +215,8 @@ function TagsTab() {
                 tagType={tagType}
                 item={item}
                 onToggle={toggleTag}
-                onAddTag={setAddTagDialog}
+                onAddTag={canEditCatalog ? setAddTagDialog : undefined}
+                readOnly={!canEditCatalog}
                 loadingTagId={loadingTagId}
               />
             ))}
@@ -215,7 +247,13 @@ function TagsTab() {
         onNameChange={setNewTagTypeName}
         onAdd={async () => {
           if (!newTagTypeName.trim()) return
-          await addTagType({ name: newTagTypeName.trim() })
+          try {
+            await addTagType({ name: newTagTypeName.trim() })
+          } catch (err) {
+            // The dialog stays open with the name, so the user can try again
+            showSaveError(err)
+            return
+          }
           setNewTagTypeName('')
           setNewTagTypeOpen(false)
         }}

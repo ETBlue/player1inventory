@@ -1,6 +1,8 @@
 ### Active-Location Scoping
 
-One app-wide **active location** scopes every stock-bearing page. It is held by `useActiveLocation()` (provider in `__root.tsx`, persisted in localStorage under a per-mode key, `active-location-id:local` / `active-location-id:cloud`, and validated against the loaded location list (a stale id falls back to the `isDefault` location)) and switched from the `LocationSwitcher`. The active id is part of the TanStack Query keys, so switching it refetches rather than reusing another location's cache.
+One app-wide **active location** scopes every stock-bearing page. It is held by `useActiveLocation()` (provider in `__root.tsx`, persisted in localStorage under a per-mode key, `active-location-id:local` / `active-location-id:cloud`, and validated against the loaded location list (a stale id falls back to the `isDefault` location in local mode and to the first location in cloud mode)) and switched from the `LocationSwitcher`. The active id is part of the TanStack Query keys, so switching it refetches rather than reusing another location's cache.
+
+**The switcher's order and the visits (households H7b, task M.4).** The switcher lists the locations in the person's chosen sort, the same one as Settings › Locations (`useLocationSort().sorted`, owner decision O53-A). In cloud, each change of the active location, the first one after a page load included, sends `markLocationVisited` once (O55-A); the server writes at most once a minute per location. Local mode never sends it. See `apps/web/src/hooks/CLAUDE.md` (`useLocationSort`, `useActiveLocation`).
 
 **Where the switcher lives depends on the breakpoint.** At `lg+` it is in the desktop `Sidebar` (`variant="full"`, showing the location name); below `lg` there is no sidebar and it stays in the pantry/shopping/cooking page toolbars (`variant="compact"`, the single-letter glyph, each site passing `className="lg:hidden"`). Exactly one copy is visible at any width, and the set of pages that have a switcher is unchanged. See `components/CLAUDE.md` for the jsdom duplicate-accessible-name hazard this creates in tests.
 
@@ -10,7 +12,7 @@ One app-wide **active location** scopes every stock-bearing page. It is held by 
 | **Shopping** (`/shopping`, `/shopping/$vendorId`) | Which carts exist — carts are per `(location × vendor)`; checkout consumes this location's stock and stamps its logs |
 | **Cooking** (`/cooking`) | Which recipe items are consumable — an item not stocked here is shown unavailable and never consumed |
 
-The **item detail Stock tab** is the deliberate exception: it pages across **all** locations rather than following the active one (it opens there and keeps naming it — the caption calls it the "current location"). See `items/CLAUDE.md`. Settings pages (tags, vendors, recipes, shelves, locations) are location-independent — those entities are global, and since issue #247 part 2 their four `…/items` assignment tabs enforce it: no stock rendered (`ItemCard showStock={false}`), no active/inactive bucketing, and create-from-search creates inline via `useCreateItem({ catalogOnly: true })`, writing no `ItemStock`. No Settings tab mounts `NewItemDialog`, so none of them can stock an item here at all. See `settings/CLAUDE.md`. The desktop `Sidebar` mirrors the split spatially — the three location-aware links sit under the switcher, and 🏠 "My data" (the household settings) is pinned to the bottom.
+The **item detail Stock tab** is the deliberate exception: it pages across **all** locations rather than following the active one (it opens there and keeps naming it — the caption calls it the "current location"). See `items/CLAUDE.md`. Settings pages (tags, vendors, recipes, shelves, locations) are location-independent — those entities are global, and since issue #247 part 2 their four `…/items` assignment tabs enforce it: no stock rendered (`ItemCard showStock={false}`), no active/inactive bucketing, and create-from-search creates inline via `useCreateItem({ catalogOnly: true })`, writing no `ItemStock`. No Settings tab mounts `NewItemDialog`, so none of them can stock an item here at all. See `settings/CLAUDE.md`. The desktop `Sidebar` mirrors the split spatially — the three location-aware links sit under the switcher, and the 🏠 household entry (the household settings; the household's name in cloud mode, "My data" in local mode) is pinned to the bottom.
 
 **Cloud mode has locations (PR 2).** `Location` and `ItemStock` gained a Prisma + GraphQL backend in cloud-locations PR 1, and PR 2 moved the web client onto them: `useLocations` is dual-mode, `useItems`/`useStockedItems` read `PantryData($locationId)` and join through the same `joinItemStock` local mode calls, and `useAddItemToLocation` / `useRemoveItemFromLocation` send their cloud mutations instead of throwing. **Every `isCloud` stock bypass in the item/pantry path is deleted**, not ported — `useShowStock`, `useItemSearchTail`, `useItemSearchTailWiring` and `NewItemDialog` carry no mode branch at all any more.
 
@@ -18,13 +20,94 @@ The **item detail Stock tab** is the deliberate exception: it pages across **all
 
 **The Info tab's unit switch works in cloud since PR 3c.** `applyUnitSwitch` is now in `itemStock.graphql`, and `buildStockConversions` no longer gates on `isLocal`. Before that the cloud schema had no such mutation, so a cloud unit switch left every location's tracked quantities in the OLD unit.
 
-**Multi-row writes must be atomic in cloud too.** Local mode wraps them in a Dexie transaction (`consumeRecipesBatch`, `applyUnitSwitchBatch`); the cloud counterpart is a **single combined GraphQL mutation** wrapping all the affected rows in one server-side `prisma.$transaction`, not a sequence of Apollo calls. The item unit switch is the worked example — see `items/CLAUDE.md`. **`consumeRecipes` is still the outstanding one**: its resolver writes row by row with no transaction, so a cooking session that fails partway can leave some items consumed and some not.
+**Multi-row writes must be atomic in cloud too.** Local mode wraps them in a Dexie transaction (`consumeRecipesBatch`, `applyUnitSwitchBatch`); the cloud counterpart is a **single combined GraphQL mutation** wrapping all the affected rows in one server-side `prisma.$transaction`, not a sequence of Apollo calls. The item unit switch is the worked example — see `items/CLAUDE.md`. **`consumeRecipes` joined them in households H3b task B.6.** Until then its resolver wrote row by row with no transaction, so a cook that failed partway left some items consumed and some not. Now every stock row, log and recipe mark is written in one `prisma.$transaction`, or none is.
 
 **Catalog-only create is live in cloud (PR 2 Task 9).** `useCreateItem({ catalogOnly: true })` is honoured in both modes: cloud creates the item and then skips the follow-up `upsertItemStock`. The four Settings
 assignment tabs create items stocked in **no** location, via
 `useCreateItem({ catalogOnly: true })`, and that now means the same thing on both sides.
 No new GraphQL affordance was needed: the cloud branch runs `createItem` and simply omits
 the follow-up `upsertItemStock` the pantry's Add flow performs. See `settings/CLAUDE.md`.
+
+### No locations (cloud, households H5 task F.7)
+
+**A cloud person can have no location at all** since F.7: the household's last location
+can be deleted (decision H13 lifted, owner answer O8), and a member can be added with no
+location role. Then Pantry (`/`), Shopping (`/shopping`), a cart (`/shopping/$vendorId`)
+and Cooking (`/cooking`) show `NoLocationsEmptyState`: "You have no locations in this
+household yet." / 「你在這個家庭還沒有據點。」 and **Create a location** / 「建立據點」, which
+opens the same Add Location dialog as the settings page.
+
+**Since households H6a, an owner can also get here on purpose**: **Delete all locations**
+in the household danger zone deletes every location and makes no new "Home" (owner
+decision O34-A). The catalog stays, so **Create a location** starts again with it. The
+**Clear household** purge is different: it re-creates "Home" with the owner as organizer.
+
+- **`NoLocationsGate`** (`components/location/NoLocationsGate/`) wraps each of the four
+  route components (`PantryRoute`, `ShoppingIndexRoute`, `VendorCartRoute`,
+  `CookingRoute`), and since the review of F.7 the item page's Stock tab (`ItemStockTab`)
+  and log tab (`ItemHistoryRoute`). The page is its CHILD, so none of the page's hooks run
+  while the empty screen shows. Tested in `routes/noLocations.cloud.test.tsx` (including
+  that a still-loading list does not show it) and `routes/items/$id/noLocations.cloud.test.tsx`.
+- **The settings Items tabs need no gate.** `useItems()` reads the catalog from `GetItems`
+  when the household has no location (review of F.7), so those tabs list every item, with
+  no stock.
+- It shows the screen only when `mode === 'cloud'` and `useLocations().data` is a loaded,
+  EMPTY array. While loading, or after a failed read with nothing cached, `data` is
+  `undefined` and the page renders as before. **Known gap:** "as before" for the item Stock
+  tab after a failed read means a blank tab (`stock.tsx`, `if (!viewed) return null`), with
+  no error and no retry. Older than H5; recorded in the H5 plan's *Known gaps*.
+- **Before F.7 these pages showed a spinner forever** with an empty list: every
+  location-scoped read waits for `useCloudLocationKnown`, which never became true (Review
+  Focus case 3).
+- `ActiveLocationProvider` clears the stale active id when the cloud list is empty (see
+  `hooks/CLAUDE.md`).
+- **Losing the active location** (households H5c task H.7, owner decision O27-A). When the
+  person leaves it, an owner removes their role, or it is deleted, the tab moves to their
+  first other location, or to this empty screen, with no reload. One toast says "You no
+  longer have access to {location}." / 「你已經沒有{location}的權限了。」. Only when this tab
+  had shown that location during this page visit; never on a cold load with an old stored
+  id. The leaving tab moves because `useLeaveLocation` reads `GetLocations` again; another
+  tab moves on the live `LOCATION` event. No toast for the person's own act: deleting the
+  location themselves, or a `clear` import, which replaces every location. See
+  `hooks/CLAUDE.md`, `useActiveLocation()`.
+- Local mode never gets here: its default location cannot be deleted.
+- Tested in `routes/noLocations.cloud.test.tsx` (all four pages, the dialog, and a
+  one-location control), E2E in `e2e/tests/settings/locations.spec.ts` (cloud: delete the
+  last location, see the empty pantry, create one; and axe scans of the empty screen, light
+  and dark, because `a11y.spec.ts` does not run in cloud).
+
+### Read-only views by role (cloud, households H5)
+
+Local mode has no roles, so none of this applies there. Every check reads `usePermissions()` (`src/hooks/usePermissions.ts`). It only hides what the server would refuse; the server checks every write.
+
+**A household `member` (task F.5) may not change the catalog.** On these pages:
+
+| Page | What a member does not get | What says why |
+| --- | --- | --- |
+| Pantry list, shelf view, cart page (`ItemListToolbar` search) | `Create item` from search, and Enter does not create | a line under the search row, `items.createReadOnly` ("Only a household owner or manager can create a new item."), passed as `createReadOnlyNote` |
+| Pantry Add dialog (`NewItemDialog`) | the `Create "<name>"` option and button, and the package unit field | the same text, under the list of matches |
+| The search tail on all five surfaces | the group action (Apply vendor, Add to recipe, Add to shelf) | `items.searchTail.catalogReadOnly` on the row ("Only an owner or manager can add it here.") |
+| Cooking (`CookingControlBar` search) | `Create` from search, and Enter does not create | `cookingControlBar.createReadOnly` ("Only a household owner or manager can create a new recipe.") under the search row |
+| Cooking empty state | `Create recipe` | `settings.catalogReadOnly` instead of "Create your first recipe" |
+
+The search notes show with the same trigger as the button they replace: a search with no exact match. Picking an existing item in the Add dialog, `Add to {location}` in the tail, and cooking itself are NOT catalog writes, so a member keeps them. Marking a recipe as cooked needs only household `member` (H5 decision O10); a guard test (`routes/cooking.readOnly.test.tsx`) checks that a member who is a participant can check a recipe, change an amount and press Done.
+
+**No note while the role is unknown.** `roleKnown` is `false` while `GetHousehold` loads and when it failed with nothing cached. The write controls stay hidden (the safe default), but none of the notes above shows: for an owner it would be untrue.
+
+**A location `viewer` (task F.6) may not change the ACTIVE location's stock, carts or cooking.** Read through `useActiveLocationRights()` (`canEditHere`, `isViewerHere`) and `useCreateHere()`:
+
+| Page | What a viewer does not get | What stays |
+| --- | --- | --- |
+| Pantry list, shelf, vendor and recipe views | the quick-update button; the Add button; the empty pantry's Create item; `Create item` from search; the search tail's `Add to {location}` | every row and its numbers; a search still lists the items stocked only at another location, in the "not stocked here" section, with no action (owner decision 2026-11-17) |
+| Cart page (`/shopping/$vendorId`) | Cancel and Done; the checkboxes and amount buttons are DISABLED, not hidden, so they still show what is in the cart and how much; `Create item` and `Add to {location}` from search | the rows, the amounts, a catalog group action such as Apply vendor for a household manager, the "not stocked here" rows with no action |
+| Cooking | Cancel and Done (the cook button, H5 decision O10); the recipe and item checkboxes are disabled | the list, the stock status, Create recipe for a household manager |
+| Item Stock tab | see `items/CLAUDE.md` | |
+
+The cart page, the cooking page and the empty pantry say why: `common.locationViewOnly` ("You can view this location, but not change it."). On the pantry list and shelf view the same text shows under the search row where Create would have been. The `LocationSwitcher` badge "View only" (task F.4) is on every one of these pages too.
+
+`ActiveLocationProvider` sends `bootstrapCarts` only where the caller is `participant` or higher (Review Focus 2). A viewer still reads the carts: `vendorCart` gives a viewer an unsaved empty cart (task F.2).
+
+The location role and the household role are two checks (Review Focus 4): a household manager who is a viewer here keeps every catalog action (Apply vendor, Add to recipe, Create recipe) and loses every stock action. Tests: `routes/locationViewer.test.tsx` (a viewer and a participant who differ only in the role at the active location, plus a household member who is a viewer).
 
 ### Pantry Page (`/`)
 
@@ -182,7 +265,7 @@ Two-level route structure (mirrors `items/` pattern):
 
 **`'no-vendor'` sentinel:** The URL segment `no-vendor` maps to `vendorId: null` in the database. Items with no vendors assigned appear exclusively in the no-vendor cart.
 
-**Active-location scoping (PR D, and cloud since PR 3b):** carts are per **(location × vendor)** in BOTH modes, keyed `${locationId}:${vendorId | 'no-vendor'}` (parsed by `parseCartId` — never by string prefix, so a vendor id containing `:` can't be mistaken for a location). Every cart hook (`useVendorCart`, `useAllActiveCarts`, `useLastPurchasedByVendor`) threads `activeLocationId`: local carries it in the query key, cloud sends it as a `vendorCart` variable or filters `allCarts` by the parsed id. Checkout consumes from the **cart's own** location's `ItemStock` and stamps that `locationId` on the `InventoryLog` rows it writes. The URL carries only the vendor — the location comes from the global active-location state, so a `/shopping/$vendorId` URL means a different cart under a different active location. Carts are **bootstrapped up front** by `ActiveLocationProvider` whenever the active location changes — `bootstrapCarts(locationId)` in Dexie for local, the `bootstrapCarts(locationId: ID!)` mutation for cloud; `getCart` is a pure read.
+**Active-location scoping (PR D, and cloud since PR 3b):** carts are per **(location × vendor)** in BOTH modes, keyed `${locationId}:${vendorId | 'no-vendor'}` (parsed by `parseCartId` — never by string prefix, so a vendor id containing `:` can't be mistaken for a location). Every cart hook (`useVendorCart`, `useAllActiveCarts`, `useLastPurchasedByVendor`) threads `activeLocationId`: local carries it in the query key, cloud sends it as a `vendorCart` variable or filters `allCarts` by the parsed id. Checkout consumes from the **cart's own** location's `ItemStock` and stamps that `locationId` on the `InventoryLog` rows it writes. The URL carries only the vendor — the location comes from the global active-location state, so a `/shopping/$vendorId` URL means a different cart under a different active location. Carts are **bootstrapped up front** by `ActiveLocationProvider` whenever the active location changes — `bootstrapCarts(locationId)` in Dexie for local, the `bootstrapCarts(locationId: ID!)` mutation for cloud (since households H5 task F.6 only where the caller is `participant` or higher); `getCart` is a pure read.
 
 ---
 
@@ -259,6 +342,8 @@ Row 2 (ItemListToolbar):
 **Pinned items:** Same behavior as before — quantity 0, stay in cart after checkout, move to the same vendor's new cart.
 
 **Checkout:** `logKey` is always `'shopping.log.purchasedAt'`; `logParams` is `{ vendor: vendor?.name ?? t('shopping.noVendor') }`. After checkout → navigate to `/shopping`.
+
+**Cloud checkout sends what the screen showed (households H3b task B.5).** The page sends every row of the cart being bought (`isBeingBought`), as `{ cartItemId, quantity }`, and no stock total. A cart is shared at its location, so a co-member may change it after this screen loaded; the server then refuses with `CART_CHANGED` and writes nothing. `useCheckout` reloads the cart's rows, and the page closes the dialog and shows the toast `shopping.cartChanged` ("This cart changed. Please check and try again."). Any other failure keeps the dialog open and shows `common.saveFailed` (since 2026-11-19; before, it showed nothing). Abandon, create-from-search, and checking, unchecking or changing the amount of a row show the same toast when the write fails (`docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md`). See `hooks/CLAUDE.md`, `useCheckout()`.
 
 **Abandon:** After abandoning → navigate to `/shopping`.
 
@@ -360,6 +445,8 @@ Row 3:            [A / T here · N empty · N low stock]
 **State** (in `CookingControlBar`):
 - `searchVisible: boolean` — whether the search input row is visible; initialized from `!!q`
 
+**Cloud cooking sends the amount used, not final numbers (households H3b task B.6).** `handleConfirmDone` sends one `{ itemId, delta, note, logKey, logParams }` per item, where `delta` is minus the amount used (the inventory log's signed change, the same in both modes). It no longer computes `packedQuantity`, `unpackedQuantity` or the log `quantity`. The cloud server reads the stock row at the cook's location, locks it (`SELECT … FOR UPDATE`), applies the shared `consumeItem` and writes the log total with `getPackedTotal`, all in one transaction. Before B.6 two people cooking the same item from the same screen sent the same final numbers, and one use was lost. Local mode computes the same numbers as before, now inside `useConsumeRecipes` from the `localStock` the page passes (see `hooks/CLAUDE.md`). Any failure shows one toast, `cooking.consumeFailed`, and the dialog stays open. Before B.6 a failure showed nothing.
+
 **`lastCookedAt`:** When Done is confirmed, `lastCookedAt` is recorded on each Recipe that had at least one item checked. This timestamp drives the `recent` sort order.
 
 **Files:**
@@ -367,6 +454,202 @@ Row 3:            [A / T here · N empty · N low stock]
 - `src/routes/cooking.test.tsx` — integration tests
 - `src/routes/cooking.stories.tsx` — Storybook stories (Default, WithRecipes, WithCheckedRecipe, WithExpandedRecipe, WithActiveToolbar, WithSearch, SortByRecent, SortByCount, StockStatusHealthy, StockStatusPartial, StockStatusUnavailable, NotStockedHereSplit)
 - `src/components/recipe/CookingControlBar/index.tsx` — second-row toolbar component
+
+### Join Page (`/join/$token`, households H5b task G.7)
+
+The page an invite link opens. Plan: `docs/global/permissions/2026-11-18-households-plan-h5b.md`.
+
+| Mode, status | What shows |
+|---|---|
+| local | `join.needsCloud` and **Sign in to join**. It sets `data-mode` to `cloud`, never `migration-strategy` and never `migration-prompted`, then reloads. So no copy starts, and local data is not touched. The "Copy local data?" question waits on `/join/…`, `/sign-in` and `/sign-up` (`isCopyPromptPausedPath`), and **Join** adds the joined household to `migration-skip-households` (`skipCopyPromptIn`), so it is never asked there (O12-A). It still comes in any other household, for example the person's own. Until 2026-11-19 the button set `migration-prompted`, which turned the question off on the device for good (`docs/global/bugs/2026-11-19-bug-join-turns-off-copy-prompt.md`) |
+| cloud, loading | the spinner |
+| cloud, `VALID` | `join.title` with the household name, `join.invitedBy`, the roles (household role, then each location as stored, never `capitalize`), **Join** |
+| cloud, `ALREADY_MEMBER` | the household name, `join.alreadyMember`, a link to the pantry |
+| cloud, `INVALID` | `join.invalid` and a link to the pantry. No name, even if one were sent |
+
+**Join** runs `joinHousehold`, then `skipCopyPromptIn(id)`, then `switchToHousehold(id, { to: '/' })`, which ends on
+the pantry. It must NOT reload the join page: the invite is used now, so `invitePreview`
+answers INVALID and the person would read "This invite is no longer valid" right after
+joining. A refusal with `extensions.reason` `INVITE_INVALID` or `ALREADY_MEMBER`
+(`hasGraphQLErrorReason`) shows the matching text in an `<output>` (role `status`), and
+focus moves to it (the Join button it replaces held the focus). An `OfflineWriteError`
+shows no second toast (`offlineWriteLink` showed one). Any other error shows the toast
+`join.error` and keeps the button. Every state has an `h1`: `join.heading` ("Join a
+household") where there is no household name to show.
+
+Three things could send a new person away from the link. Each is handled:
+
+- **The onboarding redirect.** `shouldRedirectToOnboarding` returns `false` for `/join/…`
+  (decision T25). Tested as a unit and on the real page with an empty database.
+- **Sign-in and sign-up.** `CloudAuthGuard` sends a signed-out person to
+  `/sign-in?redirect=<path>`, except on `/sign-in` and `/sign-up` themselves
+  (`isAuthPage` in `lib/authPages.ts`). `/sign-in` follows `safeRedirectPath(redirect)`
+  (`lib/safeRedirect.ts`) and passes the path to Clerk's `forceRedirectUrl`. Clerk's
+  **Sign up** link goes to our own `/sign-up?redirect=<path>` (the `signUpUrl` prop;
+  `authPageUrl`), and `/sign-up` passes the path to `<SignUp>`'s `forceRedirectUrl`. Its
+  **Sign in** link goes back to `/sign-in` with the same `redirect`. `<SignUp>` uses
+  `routing="hash"`, so the e-mail code step stays on `/sign-up?redirect=…`.
+  `ClerkProvider` gets `signInUrl` and `signUpUrl` (`main.tsx`), so no Clerk flow falls
+  back to Clerk's hosted pages (decision T24). **Until 2026-11-23 a sign-up did NOT
+  return**: there was no `/sign-up` page, Clerk's link went to its hosted page, which
+  keeps no `?redirect=`, and `signUpForceRedirectUrl` is not put on that link
+  (`docs/global/bugs/2026-11-23-bug-join-redirect-lost-on-sign-up.md`). Only a manual check
+  with real Clerk proves Clerk follows these props; E2E has no Clerk. `safeRedirectPath`
+  resolves the path with `new URL` against this site and checks the RESULT, because
+  `/..//evil.example` and `/%2e%2e//evil.example` pass a plain "starts with `//`" check
+  and still resolve to another host.
+- **Local mode**, the default for a new visitor: the row above.
+
+`/join/…` is full-screen (`isFullscreenPage`).
+
+**The household guard (decision T23).** `HouseholdChangeGuard` (`apollo/`) mounts in the
+root in cloud mode, in the Clerk tree and the E2E tree. It acts only on a `GetHousehold`
+answer from the SERVER (`networkStatus === ready`): the query is `cache-and-network`, and
+the first answer may come from the cache restored from `Player1InventoryCloudCache`. When
+the server answers a household id other than the one this tab saw first (or, before it has
+seen one, the household this PAGE shows: `getShownHouseholdId()`, read from
+`last-household-id` once on the page's first request; not the key read again now, which
+another tab may already have changed — review of H7 task L.3, F2), it calls `switchToHousehold` with no target:
+`clearCache()` (memory and the saved copy; `LAST_USER_ID_KEY` stays), remove
+`active-location-id:cloud`, store the id, reload this page. If the cache cannot be cleared
+it logs and does not reload.
+
+**What reaches it, and what does not.** It sees any change that leaves the person in
+ANOTHER household: a join made in another tab, or a leave or a removal when the person has
+a second household. **A leave or a removal that leaves the person in NO household does not
+reach it**: `GetHousehold` then fails with `NO_HOUSEHOLD`, there is no id, and the old
+household's rows stay in memory and in `Player1InventoryCloudCache`. The no-household
+screen clears them (see *No household* below). The join page calls `switchToHousehold` itself.
+
+### Switching household and the stale tab (cloud, households H7a)
+
+**Switch to…** (`HouseholdSwitcher`, see `components/CLAUDE.md`) is the household sidebar's
+item 9 and an item of the mobile `/settings` accordion, cloud only. Choosing another
+household calls `setActiveHousehold`, then `switchToHousehold(id, { to })`: the same one step as
+above (cache in memory and in `Player1InventoryCloudCache` cleared, `active-location-id:cloud`
+removed, a new page load). **The page stays the same** (since 2026-11-23, owner request): a
+switch on a settings page loads that settings page again; a settings page that names a row id
+of the old household (`/settings/household/<section>/<id>…`) goes to its section's list page;
+any other page loads `/`. The switcher is only on settings pages, so in practice the person
+stays where they were. The tab's page history is emptied too, so Back cannot open an old id.
+See `useMyHouseholds` in `hooks/CLAUDE.md`. So no cart row, stock or name of the old household stays on screen
+(the design's known gap "Household switch shows the previous household's cart" is closed;
+`household-switch.spec.ts` test 1). **Create new** sends
+`createHousehold(name, alsoWhenMember: true)` and switches the same way, to the same page.
+
+**A page limited by role, after a switch to a household where the person has less right.**
+Checked 2026-11-23; nothing new was added. Activity (`/settings/household/activity`) shows
+its no-access note and a link back for a `member`, as it does when a member opens the URL.
+Members shows the list with the member's own buttons. A location's people page is never
+reloaded after a switch: it names a location id, so the switch loads Settings › Locations.
+
+**A stale tab cannot read or write the other household** (owner decision O21, decisions
+T66, T67, T72). Every HTTP request carries `x-household-id`: the id this PAGE shows
+(`getShownHouseholdId()`), read once per page load and changed only by
+`setLastHouseholdId` and `forgetHousehold`. When the person switched or left in another
+tab or on another device, the server answers `HOUSEHOLD_CHANGED` to every field that calls
+`requireHousehold`, and nothing is written. The error link in `apollo/client.ts` then runs
+`recoverFromHouseholdChange()` once per page load: it asks `GetHousehold` (`no-cache`), stores
+the message for this tab in `sessionStorage`, and calls `switchToHousehold` (or
+`forgetHousehold` on `NO_HOUSEHOLD`). The failed write is not sent again. After the reload
+`HouseholdChangedNotice` (beside `OfflineBanner` in `__root.tsx`) shows, once:
+
+| Language | Text (owner decisions O51-A and O56-A) |
+|---|---|
+| en | "You are now in {household}. This page still showed {oldHousehold}, so it was reloaded. If you were saving a change, it was not saved." |
+| tw | 「你目前在 {household}。這個頁面還停留在 {oldHousehold}，所以重新載入了。如果你剛才在儲存變更，那筆變更沒有儲存。」 |
+
+Without the old name (the cache did not hold it) the text says "another household" /
+「另一個家庭」 (`householdChanged.noticeNoOldName`).
+
+**What this does not cover** (H7 plan, *Known gaps*): cart, stock and log fields check a
+location role (`requireLocationRole`), not `requireHousehold`, so they never answer
+`HOUSEHOLD_CHANGED`. A stale tab's cart, stock and log writes land in the household the tab
+SHOWS (not the other one); the tab recovers on its next catalog read. An old bundle sends no
+header and has no check. The person's other tabs learn of a switch only on their next
+request.
+
+### No household (cloud, households H5b task G.8)
+
+**A cloud person can be in NO household** after they leave or are removed, and since
+households H6a also after the owner deletes the household (owner decision O38-A). The owner's
+own tab moves at once (`useDeleteHousehold`); every other member gets no live event (the
+household has no members left to deliver to) and sees this screen on their next request,
+unless they are in another household. A brand-new
+person never is: their first request makes a household. The server then answers
+`NO_HOUSEHOLD` (a `GraphQLError` code), and every page shows `NoHouseholdScreen`: "You are
+not in any household." and three actions (owner decision O19): **Create a household**
+(O16-A), **Switch to offline mode** and **Sign in to another account**.
+
+- **`NoHouseholdGate`** (`components/household/NoHouseholdGate/`) wraps the `<Outlet />`
+  inside `Layout` in `__root.tsx`. It shows the screen only when `mode === 'cloud'` and
+  `useHousehold().errorCode === 'NO_HOUSEHOLD'`. **The CODE, never "the query failed"**: a
+  network error or offline shows the page as before. `errorCode` is set even when the old
+  household is still cached: Apollo keeps the cached answer in `data` next to the error
+  (measured on 4.1.6), so `isError` is `false` then, and a gate on `isError` would never
+  show the screen to a person just removed.
+- **Not on `/join/…`, `/sign-in` or `/sign-up`.** A person with no household can still open an invite
+  link and sign in.
+- **When the screen first shows, it clears the old household's data once**, with no
+  reload. `HouseholdChangeGuard` cannot do it: there is no new id. Exactly what is cleared:
+  1. `forgetHousehold()` (`apollo/householdGuard.ts`): `clearCache()` empties the Apollo
+     cache in memory and the saved copy in `Player1InventoryCloudCache`; it removes
+     `last-household-id` and `active-location-id:cloud`. It keeps `cloud-cache-user-id`.
+  2. Then `client.refetchQueries({ include: 'active' })`. **Emptying the cache does not
+     change what a MOUNTED query shows**: Apollo sends it no new result. Without the
+     refetch the sidebar kept the old household's name (`HouseholdLabel`) and the switcher
+     its locations. A refetch first reports "loading" with no data, so those readers show
+     their empty state, then fail with `NO_HOUSEHOLD` with nothing cached.
+- **Once shown, the screen stays** until a household arrives. A refetch first reports
+  "loading" with no error; showing the page for that moment would flash it. The id cached
+  when the screen first showed (the household just lost) never counts as "arrived": a
+  switch to it would load `/`, get `NO_HOUSEHOLD` and show the screen again, on every load.
+- **A new account in the same tab starts again.** Sign-out goes to `/sign-in`, where the
+  gate stays mounted, and the old account's `NO_HOUSEHOLD` answer stays in Apollo. When the
+  Clerk user id changes to ANOTHER account (signed out, `null`, does not count; the same
+  account again does not count), the gate remounts with a fresh state, shows the page, and
+  refetches `GetHousehold`. Only that fresh answer can show the screen. The E2E build has no
+  Clerk and one account per page load, so it skips this.
+- **Create a household** sends `createHousehold(name)`, with no `alsoWhenMember` (so a
+  second tab that created or joined first still gets `ALREADY_IN_HOUSEHOLD`; **Switch to… ›
+  Create new** sends `alsoWhenMember: true` since H7a). An empty field sends `name: null`
+  (the server's default name); never `""`, which the server refuses as a blank name. On
+  success: `switchToHousehold(id, { to: '/' })`, because the server sends the creating tab
+  no live event. `ALREADY_IN_HOUSEHOLD` (another tab created or joined first) asks
+  `GetHousehold` from the network and switches to that household. A refused name shows
+  `settings.household.name.invalidError` in an `<output>` that is always mounted (empty when
+  there is no error), and focus goes back to the name field; an `OfflineWriteError` shows no
+  second toast; any other error shows `noHousehold.error` and the button stays.
+- **How a person leaves the screen without creating a household** (owner decision O19,
+  2026-11-18). The gate also covers `/settings`, so on a phone the screen must hold these:
+  - **Switch to offline mode** sets `localStorage['data-mode'] = 'local'`
+    (`DATA_MODE_STORAGE_KEY`) and reloads, like Switch with "Start Fresh" in
+    `DataModeCard`. No copy (no cloud data) and no confirm (nothing is lost). The Clerk
+    session stays alive. After the reload the gate is off (it returns its children when
+    `mode !== 'cloud'`), so the normal local app shows. When the person switches back to
+    cloud later (Settings, **Switch...**), they need no sign-in and land on this screen
+    again, with Create.
+  - **Sign in to another account** runs `clearCache()` first, then Clerk's `signOut()`, and
+    keeps cloud mode, like Sign Out in `DataModeCard` without "switch to offline". A failed
+    clear signs nothing out and shows `noHousehold.signOutError`. The button is disabled
+    while it runs. `CloudAuthGuard` then loads `/sign-in`, where the gate is off. When
+    another account signs in, the gate starts again and asks `GetHousehold` for that
+    account (see *A new account in the same tab* above), and `ApolloWrapper` clears the
+    cache again on the account change. **Not shown in the E2E build**: it calls
+    `useClerk()`, and the E2E build has no `ClerkProvider`. So no E2E test can press it;
+    `NoHouseholdScreen.test.tsx` carries it.
+  - **No plain Sign out** on the screen (O19).
+- **The person's other tabs** get the `LOCATION` event of `createHousehold`. It refetches
+  every active query, the FAILED `GetHousehold` included (tested in
+  `apollo/liveUpdates.test.ts`), and the gate then calls `switchToHousehold(id, { to: '/' })`.
+- Tests: `components/household/NoHouseholdGate/NoHouseholdGate.test.tsx` (when it shows),
+  `NoHouseholdScreen.test.tsx` (the create and the two other actions),
+  `routes/noHousehold.cloud.test.tsx` (the real
+  root, with real Apollo hooks). The gate has no story: it needs a router, and in Storybook
+  `forgetHousehold` would clear the real cloud cache. The screen has stories.
+
+A story that mounts a cloud page must store its household as the last one
+(`cloudRoleStorySetup` does), or the guard reloads Storybook.
 
 ### Onboarding Page
 

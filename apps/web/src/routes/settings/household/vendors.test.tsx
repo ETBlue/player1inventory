@@ -7,6 +7,18 @@ import type { Vendor } from '@/types'
 
 // Mock TanStack Router
 const mockNavigate = vi.fn()
+// This file renders the page with no QueryClient and a mocked
+// `@/db/operations`, so the real `usePermissions` (which reads the location
+// list) cannot run here. Local mode allows everything; the role rules are
+// tested in `routes/settings/household/catalogReadOnly.test.tsx`.
+vi.mock('@/hooks/usePermissions', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/hooks/usePermissions')>()
+  return {
+    ...real,
+    usePermissions: () => real.permissionsFor({ mode: 'local' }),
+  }
+})
+
 vi.mock('@tanstack/react-router', async () => {
   const actual = await vi.importActual('@tanstack/react-router')
   return {
@@ -84,13 +96,13 @@ const mockVendors: Vendor[] = [
 // that shape and need no cast.
 //
 // What the page reads: `vendors/index.tsx:22` reads `useVendors().data` and
-// `.isLoading`; `:24` and `:77` read `useDeleteVendor().mutate(id)`;
+// `.isLoading`; the delete button awaits `useDeleteVendor().mutateAsync(id)`;
 // `NewVendorDialog` reads `useCreateVendor().mutateAsync` and `.isPending`.
 const setupMocks = (
   vendors: Vendor[] = mockVendors,
   vendorCounts: Map<string, number> = new Map(),
 ) => {
-  const mutate = vi.fn(async (_id: string) => {})
+  const mutate = vi.fn(async (_id: string) => true)
   const goBack = vi.fn()
   vi.mocked(useVendors).mockReturnValue({
     data: vendors,
@@ -98,8 +110,8 @@ const setupMocks = (
     isError: false,
   })
   vi.mocked(useDeleteVendor).mockReturnValue({
-    mutate,
-    mutateAsync: vi.fn(async (_id: string) => true),
+    mutate: vi.fn(async (_id: string) => {}),
+    mutateAsync: mutate,
     isPending: false,
   })
   vi.mocked(useVendorItemCounts).mockReturnValue(vendorCounts)

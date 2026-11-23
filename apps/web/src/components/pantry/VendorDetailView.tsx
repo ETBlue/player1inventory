@@ -11,6 +11,7 @@ import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { Button } from '@/components/ui/button'
 import { useStockedItems, useUpdateItem } from '@/hooks'
+import { useActiveLocationRights } from '@/hooks/useActiveLocationRights'
 import { useItemSearchTailWiring } from '@/hooks/useItemSearchTailWiring'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes } from '@/hooks/useRecipes'
@@ -57,6 +58,7 @@ export function VendorDetailView({ vendorId }: VendorDetailViewProps) {
   const { search, isTagsVisible } = useUrlSearchAndFilters()
 
   const [pendingItemIds, setPendingItemIds] = useState<Set<string>>(new Set())
+  const { canEditHere } = useActiveLocationRights()
   const [quickUpdateItemId, setQuickUpdateItemId] = useState<string | null>(
     null,
   )
@@ -178,9 +180,10 @@ export function VendorDetailView({ vendorId }: VendorDetailViewProps) {
   // so `mutateAsync` resolves only once the two have resettled together and
   // the wiring hook re-enables the rows against fresh data. What the guard
   // still covers is every path that does NOT await that refetch: `mutate` call
-  // sites, cloud mode (whose `useUpdateItem` does not pass
-  // `awaitRefetchQueries`), and any concurrent write from another surface or
-  // tab landing between this render and the press.
+  // sites, cloud mode (whose `useUpdateItem` does not wait for its `GetItems`
+  // refetch after a configuration edit like this one; it waits only for the
+  // stock lists after a stock edit), and any concurrent write from another
+  // surface or tab landing between this render and the press.
   async function handleApplyVendor(item: PantryItem) {
     if (isUnsorted || !vendor) return
     if ((item.vendorIds ?? []).includes(vendor.id)) return
@@ -273,7 +276,10 @@ export function VendorDetailView({ vendorId }: VendorDetailViewProps) {
       showTags={isTagsVisible}
       disabled={pendingItemIds.has(item.id)}
       isPending={pendingItemIds.has(item.id)}
-      onQuickUpdate={() => setQuickUpdateItemId(item.id)}
+      // A location viewer may not change the stock (households H5 task F.6)
+      {...(canEditHere && {
+        onQuickUpdate: () => setQuickUpdateItemId(item.id),
+      })}
     />
   )
 

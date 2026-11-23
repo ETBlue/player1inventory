@@ -28,7 +28,14 @@ export interface CreateShelfInput {
 interface AddShelfDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSubmit: (data: CreateShelfInput) => void
+  /**
+   * May return a promise. The dialog closes and clears its fields only when
+   * it resolves. When it rejects, the dialog stays open with what the user
+   * typed, so they can try again. The dialog swallows the rejection; the
+   * caller shows the message (see
+   * docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md).
+   */
+  onSubmit: (data: CreateShelfInput) => void | Promise<void>
   isPending?: boolean
 }
 
@@ -67,8 +74,8 @@ export function AddShelfDialog({
     resetForm()
   }
 
-  const handleSubmit = () => {
-    if (nameError) return
+  const handleSubmit = async () => {
+    if (nameError || isPending) return
 
     const data: CreateShelfInput = {
       name: name.trim(),
@@ -85,7 +92,12 @@ export function AddShelfDialog({
       }
     }
 
-    onSubmit(data)
+    try {
+      await onSubmit(data)
+    } catch {
+      // Kept open with the fields as typed; the caller showed the message
+      return
+    }
     handleClose()
   }
 

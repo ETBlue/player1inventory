@@ -69,10 +69,27 @@ export async function readStockAt(
 export type LocationRow = {
   id: string
   name: string
-  isDefault: boolean
+  /**
+   * The location the app treats as home.
+   *
+   * LOCAL: the row Dexie flags `isDefault` ("My Home", id `'local'`).
+   *
+   * CLOUD: the FIRST location in the `locations` answer. A household has no
+   * default location since households H3a task 3.12, and the server dropped
+   * the `isDefault` column in task 3.14. The server returns the list by
+   * `order`, then by `id`, and the web app treats the first one as the
+   * fallback active location (`useActiveLocation`). It is also the location
+   * "Import into which location?" checks first when it opens (households H4
+   * decision O3). The cloud import has no remap of its own any more:
+   * `fetchCloudDefaultLocationId` was deleted in households H4 task E.4. Two
+   * locations can share `order` 0 (a household's fresh "Home" and a restored
+   * backup's first location), and then `id` decides; look such a location up
+   * by NAME.
+   */
+  isHome: boolean
 }
 
-const LOCATIONS = `query { locations { id name isDefault } }`
+const LOCATIONS = `query { locations { id name } }`
 
 /**
  * Every location the current backend holds, in whatever order it returns them.
@@ -83,9 +100,9 @@ const LOCATIONS = `query { locations { id name isDefault } }`
  *
  * A LOCATION IS LOOKED UP BY NAME, NEVER BY ID — see `byName` below. The ids
  * differ between the modes on purpose: the local default is the `'local'`
- * sentinel, a cloud default is a server-generated cuid, and the import remap
- * rewrites the payload's default onto whichever of the two the destination
- * holds. The NAME is the one thing a fixture can assert in both directions.
+ * sentinel, a cloud location is a server-generated cuid, and the import remap
+ * rewrites the payload's default onto the destination's home location. The
+ * NAME is the one thing a fixture can assert in both directions.
  */
 export async function readLocations(
   page: Page,
@@ -94,16 +111,24 @@ export async function readLocations(
 ): Promise<LocationRow[]> {
   if (baseURL === CLOUD_WEB_URL) {
     const gql = makeGql(request)
-    const { locations } = await gql<{ locations: LocationRow[] }>(LOCATIONS)
-    return locations
+    const { locations } = await gql<{
+      locations: { id: string; name: string }[]
+    }>(LOCATIONS)
+    return locations.map((row, index) => ({
+      id: row.id,
+      name: row.name,
+      isHome: index === 0,
+    }))
   }
-  const rows = (await readRows(page, 'locations')) as unknown as Array<
-    LocationRow & { isDefault?: boolean }
-  >
+  const rows = (await readRows(page, 'locations')) as unknown as Array<{
+    id: string
+    name: string
+    isDefault?: boolean
+  }>
   return rows.map((row) => ({
     id: row.id,
     name: row.name,
-    isDefault: row.isDefault === true,
+    isHome: row.isDefault === true,
   }))
 }
 

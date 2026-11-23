@@ -94,7 +94,9 @@ So it is an equivalent change, not a missing test.
 - Rows that the old code already allowed may exist in a real database: a tag whose
   `typeId` or `parentId` names another account's row. This fix stops new ones but does
   not find or repair old ones. Because `Tag_typeId_fkey` is `ON DELETE RESTRICT`, such a
-  tag still makes the owner's `deleteTagType` return `false`.
+  tag still makes the owner's `deleteTagType` return `false`. (Since the `add_households`
+  migration the constraint is `ON DELETE NO ACTION`, which refuses the same way. That
+  migration also counts these rows with a `RAISE NOTICE`; see its step 8b.)
 - The same kind of unchecked reference exists elsewhere (report only): `createItem` /
   `updateItem` `tagIds` and `vendorIds` (issue #273), `createRecipe` / `updateRecipe`
   `items[].itemId`, `createShelf` / `updateShelf` `itemIds` and `filterConfig` ids, and

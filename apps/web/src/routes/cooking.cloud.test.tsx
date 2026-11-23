@@ -6,6 +6,7 @@ import {
 } from '@tanstack/react-router'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { toast } from 'sonner'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ConsumeRecipesMutationVariables } from '@/generated/graphql'
 import { activeLocationStorageKey } from '@/hooks/useActiveLocation'
@@ -46,6 +47,55 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
   return {
     ...original,
+    // `PostLoginMigrationDialog` in `__root.tsx` offers the copy into another
+    // household (households H7 task L.5), so in cloud mode it calls these.
+    // This factory replaces `src/test/setup.ts`'s, so they are stubbed here
+    // too: the real hooks need an ApolloProvider.
+    useMyHouseholdsQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useSetActiveHouseholdMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useCreateHouseholdMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    // The ownership offer banner in `__root.tsx` (households H6b, task K.6)
+    // calls these in cloud mode. This factory replaces `src/test/setup.ts`'s,
+    // so they are stubbed here too: the real hooks need an ApolloProvider.
+    useMyOwnershipOffersQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+      refetch: () => Promise.resolve(),
+    }),
+    useAcceptOwnershipOfferMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useDeclineOwnershipOfferMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useDismissOwnershipOfferMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    // `useItems` reads the catalog from `GetItems` in a household with no
+    // location (households H5, review of task F.7). This factory replaces
+    // setup.ts's, so it must stub that hook too: the real one needs an
+    // ApolloProvider even when skipped.
+    useGetItemsQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+      networkStatus: 7,
+      refetch: () => Promise.resolve(),
+    }),
     // `useLocations` is dual-mode, so it calls `useGetLocationsQuery` in BOTH
     // modes (skipped in local). This per-file factory REPLACES the one in
     // `src/test/setup.ts` rather than layering on it, so the location stubs
@@ -79,6 +129,20 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
     ],
+    // Households H7b task M.4: the switcher's sort and the visit.
+    useMyLocationSortQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useSetLocationSortMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useMarkLocationVisitedMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
     // The pantry hooks read `PantryData` now, not `GetItems`. The fixture
     // below is still written as an item list; `asPantryDataResult` lifts each
     // item's inline stock values into the ItemStock row the join reads.
@@ -90,6 +154,8 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     useGetVendorsQuery: () => emptyQuery,
     useLastPurchaseDatesQuery: () => emptyQuery,
     useCreateRecipeMutation: () => [vi.fn(), {}],
+    // The sidebar's 🏠 entry reads the household name (`HouseholdLabel`).
+    useGetHouseholdQuery: () => emptyQuery,
   }
 })
 
@@ -261,19 +327,54 @@ describe('Use (Cooking) Page — cloud mode', () => {
     )
     await user.click(screen.getByRole('button', { name: /confirm/i }))
 
-    // Then the consume mutation is sent with the item's consumed quantity, and
-    // with the ACTIVE location — LOC_A, not the `'local'` sentinel and not the
-    // caller's default resolved server-side. `ConsumeRecipesInput.locationId`
-    // is `ID!` since PR 3b Task 4.
+    // Then the consume mutation is sent with the ACTIVE location — LOC_A, not
+    // the `'local'` sentinel and not the caller's default resolved
+    // server-side. `ConsumeRecipesInput.locationId` is `ID!` since PR 3b Task 4.
     await waitFor(() => expect(mockConsumeRecipes).toHaveBeenCalled())
     const { variables } = callArgs(mockConsumeRecipes.mock, 0)[0]
     expect(variables.input.locationId).toBe(LOC_A)
     expect(variables.input.recipeIds).toEqual([CLOUD_RECIPE.id])
     expect(variables.input.items).toHaveLength(1)
-    expect(elementAt(variables.input.items, 0)).toMatchObject({
+    // And the item carries the amount used and nothing else (households H3b
+    // task B.6): `delta` is minus the 2 used, and there is NO
+    // `packedQuantity`, `unpackedQuantity` or `quantity`. The server computes
+    // those from its own stock row. `toEqual`, not `toMatchObject`, so an
+    // extra key the client still computed fails here — this mock is typed,
+    // but an extra key in a mock's recorded call is not a type error.
+    expect(elementAt(variables.input.items, 0)).toEqual({
       itemId: CLOUD_ITEM.id,
       delta: -2,
-      packedQuantity: 3,
+      note: 'consumed via Pasta',
+      logKey: 'cooking.log.consumedVia',
+      logParams: { recipes: 'Pasta' },
     })
+  })
+
+  it('user sees one error message when cooking fails, and the dialog stays open', async () => {
+    // Given the server refuses the cook (any cause: a lost connection, a
+    // refused role, a rolled-back transaction)
+    mockConsumeRecipes.mockRejectedValue(new Error('boom'))
+    const errorToast = vi.spyOn(toast, 'error')
+    renderPage()
+    const user = userEvent.setup()
+
+    // When the user checks the recipe and confirms Done
+    await waitFor(() =>
+      expect(screen.getByLabelText('Pasta')).toBeInTheDocument(),
+    )
+    await user.click(screen.getByLabelText('Pasta'))
+    await user.click(screen.getByRole('button', { name: /done/i }))
+    await user.click(await screen.findByRole('button', { name: /confirm/i }))
+
+    // Then one error toast is shown, with the cooking failure message
+    await waitFor(() =>
+      expect(errorToast).toHaveBeenCalledWith(
+        'Could not finish cooking. Please try again.',
+      ),
+    )
+    expect(errorToast).toHaveBeenCalledTimes(1)
+    // And the dialog stays open so the user can retry
+    expect(screen.getByRole('button', { name: /confirm/i })).toBeInTheDocument()
+    errorToast.mockRestore()
   })
 })

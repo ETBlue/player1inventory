@@ -23,6 +23,15 @@
  * the same holds for `DELETE /e2e/cleanup`, which deletes a user's data and
  * their `User` row.
  *
+ * Since households H3a task 3.11, also `POST /e2e/household-members`
+ * (lib/e2eHouseholds.ts). It adds anybody to anybody's household with no
+ * check of who asks.
+ *
+ * Since E2E speed plan task S.6, also `GET /e2e/database`
+ * (lib/e2eDatabase.ts). It answers which E2E database the server uses and
+ * how many migrations it has. It answers no URL, but a production server has
+ * no reason to tell anyone about its database.
+ *
  * "Inside" is checked on the parsed syntax tree, with the TypeScript parser,
  * not by comparing text positions. A route placed after the block's closing
  * brace is outside it, and a position check against the `if` line alone would
@@ -144,9 +153,32 @@ describe('index.ts mounts the E2E-only routes', () => {
     ['post', '/e2e/users', 'e2eCreateUserHandler'],
     ['post', '/e2e/users/:id/deleted', 'e2eUserDeletedHandler'],
     ['get', '/e2e/users/:id', 'e2eReadUserHandler'],
+    ['post', '/e2e/household-members', 'e2eAddHouseholdMemberHandler'],
+    ['get', '/e2e/database', 'e2eDatabaseHandler'],
   ])('mounts %s %s once, inside the block', (method, path, handler) => {
     const found = routeMounts().filter((m) => m.path === path)
     expect(found).toEqual([{ receiver: 'app', method, path, handler, insideE2eBlock: true }])
+  })
+
+  it('creates the e2e_cleanup SQL function once, inside the block (E2E speed plan, task S.2)', () => {
+    // A production server must never create it (decision D4). Every call of
+    // `installE2eCleanupFunction` in index.ts, at any depth.
+    const [block] = e2eBlocks()
+    const body = block?.thenStatement
+    const calls: boolean[] = []
+    const visit = (node: ts.Node) => {
+      if (
+        ts.isCallExpression(node) &&
+        node.expression.getText(SOURCE) === 'installE2eCleanupFunction'
+      ) {
+        calls.push(
+          body !== undefined && node.getStart(SOURCE) >= body.getStart(SOURCE) && node.end <= body.end,
+        )
+      }
+      ts.forEachChild(node, visit)
+    }
+    visit(SOURCE)
+    expect(calls).toEqual([true])
   })
 
   it('mounts every /e2e route inside the block', () => {
@@ -155,9 +187,10 @@ describe('index.ts mounts the E2E-only routes', () => {
     const e2eRoutes = routeMounts().filter(
       (m) => m.path === '/e2e' || m.path.startsWith('/e2e/'),
     )
-    // The cleanup route and the three user routes. A route added later is
-    // checked too.
-    expect(e2eRoutes.length).toBeGreaterThanOrEqual(4)
+    // The cleanup route, the three user routes, the household member
+    // route (task 3.11) and the database route (E2E speed plan task S.6). A
+    // route added later is checked too.
+    expect(e2eRoutes.length).toBeGreaterThanOrEqual(6)
     expect(e2eRoutes.filter((m) => !m.insideE2eBlock)).toEqual([])
   })
 
@@ -211,12 +244,14 @@ describe('index.ts mounts the E2E-only routes', () => {
     expect(routers).toEqual([])
   })
 
-  it('names the four E2E handlers nowhere outside the block, except in the import', () => {
+  it('names the six E2E handlers nowhere outside the block, except in the import', () => {
     const handlers = [
       'e2eCleanupHandler',
       'e2eCreateUserHandler',
       'e2eUserDeletedHandler',
       'e2eReadUserHandler',
+      'e2eAddHouseholdMemberHandler',
+      'e2eDatabaseHandler',
     ]
     const [block] = e2eBlocks()
     const body = block?.thenStatement

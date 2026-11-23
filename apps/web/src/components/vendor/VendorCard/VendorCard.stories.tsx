@@ -82,3 +82,12 @@ export const WithNoItems: Story = {
     onDelete: () => console.log('Delete Costco'),
   },
 }
+
+// A household member (households H5 task F.5): no `onDelete`, so no Delete
+// button. The name still links to the vendor page.
+export const ReadOnly: Story = {
+  args: {
+    vendor,
+    itemCount: 3,
+  },
+}

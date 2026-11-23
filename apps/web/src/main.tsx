@@ -10,12 +10,15 @@ import { createRoot } from 'react-dom/client'
 import { ApolloWrapper } from './apollo/ApolloWrapper'
 import { createApolloClientForE2E } from './apollo/client'
 import { cloudCache } from './apollo/cloudCache'
+import { LiveUpdatesRunner } from './apollo/LiveUpdatesRunner'
 import { getLastSignedInUserId, restoreCache } from './apollo/persistence'
 import { bootstrapCloudMode } from './bootstrap'
 import { db } from './db'
 import { bootstrapCarts } from './db/operations'
+import { SIGN_IN_PATH, SIGN_UP_PATH } from './lib/authPages'
 import type { DataMode } from './lib/dataMode'
 import { DATA_MODE_STORAGE_KEY, DEFAULT_DATA_MODE } from './lib/dataMode'
+import { getE2ETestUserId } from './lib/e2eUser'
 import { unregisterAllServiceWorkers } from './lib/unregisterServiceWorker'
 import { routeTree } from './routeTree.gen'
 
@@ -59,9 +62,12 @@ if (!rootElement) throw new Error('Root element not found')
 const root = createRoot(rootElement)
 
 function renderApp() {
-  const e2eTestUserId = import.meta.env.VITE_E2E_TEST_USER_ID as
-    | string
-    | undefined
+  // The build-time E2E user, or the per-context override a two-browser spec
+  // sets in `localStorage` (households H5 task F.8). `undefined` in every
+  // production build, whatever `localStorage` holds (`lib/e2eUser.ts`).
+  // Read once here and passed down, so the header, the socket and the
+  // Account card all use one id.
+  const e2eTestUserId = getE2ETestUserId()
 
   if (mode === 'cloud' && e2eTestUserId) {
     // E2E test mode: bypass Clerk, send a static user ID header to the server.
@@ -69,6 +75,7 @@ function renderApp() {
     root.render(
       <StrictMode>
         <ApolloProvider client={createApolloClientForE2E(e2eTestUserId)}>
+          <LiveUpdatesRunner userId={e2eTestUserId} exposeForE2E />
           <QueryClientProvider client={queryClient}>
             <RouterProvider router={router} />
           </QueryClientProvider>
@@ -82,7 +89,18 @@ function renderApp() {
 
     root.render(
       <StrictMode>
-        <ClerkProvider publishableKey={publishableKey}>
+        {/*
+          Both URLs are set, so no Clerk flow falls back to Clerk's hosted
+          pages, which drop our `?redirect=` (docs/global/bugs/
+          2026-11-23-bug-join-redirect-lost-on-sign-up.md). With only
+          `signInUrl` set, Clerk would run sign-up inside the sign-in page
+          (`/sign-in#/create`), a flow we do not use.
+        */}
+        <ClerkProvider
+          publishableKey={publishableKey}
+          signInUrl={SIGN_IN_PATH}
+          signUpUrl={SIGN_UP_PATH}
+        >
           <ApolloWrapper>
             <QueryClientProvider client={queryClient}>
               <RouterProvider router={router} />

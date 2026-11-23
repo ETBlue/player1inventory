@@ -1,8 +1,26 @@
 import { composeStories } from '@storybook/react'
 import { render, screen, waitFor } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from 'vitest'
+import { cloudRoleStorySetup } from '@/test/cloudRoleStory'
 import { setupOfflineStory } from '@/test/offlineStoryHelpers'
 import * as stories from './cooking.stories'
+
+// The real generated hooks and Apollo React hooks, so the `MockedProvider`
+// of `MemberReadOnly` takes effect. `setup.ts` stubs both for every other
+// test. The local stories read Dexie, and their Apollo hooks skip.
+vi.mock('@/generated/graphql', async (importOriginal) => await importOriginal())
+vi.mock(
+  '@apollo/client/react',
+  async (importOriginal) => await importOriginal(),
+)
 
 // cooking.stories uses Dexie (fake-indexeddb/auto handles this in test setup)
 // and ApolloProvider (no-op client, set up in the story itself).
@@ -22,6 +40,7 @@ const {
   StockStatusPartial,
   StockStatusUnavailable,
   NotStockedHereSplit,
+  MemberReadOnly,
 } = composeStories(stories)
 
 describe('Cooking stories smoke tests', () => {
@@ -64,7 +83,11 @@ describe('Cooking stories smoke tests', () => {
       render(<Offline />)
       const banner = await screen.findByRole('status')
       expect(banner).toHaveTextContent(/offline/i)
-      expect(banner).toHaveTextContent(/hours ago/i)
+      // `waitFor`, not a bare `expect`: the banner exists before its sync
+      // time is read (`getLastSyncedAt` in a `useEffect`), so a synchronous
+      // check races that read and loses under load. Same fix and reason as
+      // routes/index.stories.test.tsx (63f3b919).
+      await waitFor(() => expect(banner).toHaveTextContent(/hours ago/i))
     })
 
     it('does not open PostLoginMigrationDialog on top of the page', async () => {
@@ -149,5 +172,19 @@ describe('Cooking stories smoke tests', () => {
       expect(screen.getByText('0 / 2 here')).toBeInTheDocument(),
     )
     expect(screen.getByLabelText('Thai Curry')).toBeDisabled()
+  })
+
+  it('MemberReadOnly shows the read-only empty state and no Create recipe', async () => {
+    // composeStories does not run a story's `beforeEach`, so it runs here
+    onTestFinished(cloudRoleStorySetup())
+    render(<MemberReadOnly />)
+    // The note first: it shows only once the role has loaded as `member`.
+    // While the role loads, Create recipe is hidden for every role.
+    expect(
+      await screen.findByText(
+        'Only a household owner or manager can add or change these.',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Create recipe' })).toBeNull()
   })
 })

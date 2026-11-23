@@ -1,10 +1,18 @@
 import { GraphQLError } from 'graphql'
 import type { Prisma } from '@prisma/client'
-import { type LocationRole, requireLocationRole } from '../lib/authz.js'
-import { cartIdFor, parseCartId } from '../lib/cartId.js'
-import { isBeingBought } from '../lib/checkout.js'
+import {
+  householdOfLocation,
+  type LocationRole,
+  locationIdsWithRole,
+  requireHousehold,
+  requireLocationItems,
+  requireLocationRole,
+  roleAtLeast,
+} from '../lib/authz.js'
+import { cartIdFor, getPackedTotal, parseCartId } from '@p1i/types'
 import { prisma } from '../lib/prisma.js'
 import { ensureStockAtLocation, writeStock } from '../lib/itemStockWrite.js'
+import { publishChange } from '../lib/publishChange.js'
 import { type Context, requireAuth } from '../context.js'
 import type { Cart, CartItem, Resolvers } from '../generated/graphql.js'
 
@@ -12,12 +20,12 @@ import type { Cart, CartItem, Resolvers } from '../generated/graphql.js'
  * Read the location out of a cart id, then check the caller may use it.
  *
  * Since PR 3b every `Cart.id` is `${locationId}:${vendorId | 'no-vendor'}`
- * (lib/cartId.ts), so a cart id that arrives from the client carries a location
+ * (`cartIdFor` in `@p1i/types`), so a cart id that arrives from the client carries a location
  * id that also arrives from the client. It goes through `requireLocationRole`
  * before it reaches any query — that call is the one authorization seam for
  * location data (lib/authz.ts). Do NOT replace it with a
  * `row.userId === ctx.userId` test: root CLAUDE.md forbids that, because it
- * denies a legitimate `member` of a shared location.
+ * denies a legitimate `participant` of a shared location.
  *
  * A pre-PR-3b cart id has no ':' at all, so it parses as a location id that no
  * `Location` row matches and this throws FORBIDDEN. That is the intended
@@ -35,57 +43,198 @@ async function requireCartLocation(
 }
 
 /**
- * `userId` in the `where` clauses below is a query SCOPE, not an authorization
- * decision. Root CLAUDE.md forbids `row.userId === ctx.userId` as a GUARD; it
- * does not forbid `userId` inside a `where` clause, which only narrows what
- * the query can match. Authorization is `requireCartLocation` above.
+ * Find a cart row for a WRITE (`updateCartItem`, `removeFromCart`), and check
+ * the caller may change it.
  *
- * This note used to cite `mirrorItemStockToItem` in lib/stockDualWrite.ts as
- * the other place the distinction was written down. Cloud locations PR 5
- * deleted that module; the rule did not change.
+ * Returns `null` both for an id no row holds and for a row at a location the
+ * caller holds NO role on. The two must look the same, so a stranger cannot
+ * use these mutations to learn which cart-item ids exist. That keeps what the
+ * code did before households H3b: the old lookup was `{ id, userId }`, so a
+ * stranger's id and an unknown id were both "not found".
  *
- * ── EVERY `CartItem.userId` FILTER BELOW MUST BE RE-DERIVED FOR HOUSEHOLDS ──
+ * A caller who holds a role there, but a weaker one than `role` (a `viewer`),
+ * gets `FORBIDDEN` from `requireCartLocation`. That tells them nothing new:
+ * a viewer can already read every row of the cart through `cartItems`.
  *
- * Issue #358. Two `userId` columns are read in this file, and the households
- * design (docs/global/permissions/2026-10-04-households-design.md, section
- * "Changed models", on the `feature/households` branch) decides OPPOSITE
- * things about them:
+ * `locationIdsWithRole` is the same membership rule as `requireLocationRole`
+ * (decision H18), so "has some role" here and the role check below cannot
+ * disagree about a stale `LocationMember` row.
+ */
+async function findCartItemForWrite(ctx: Context, id: string, role: LocationRole) {
+  const row = await prisma.cartItem.findUnique({ where: { id } })
+  if (!row) return null
+  const { locationId } = parseCartId(row.cartId)
+  if (!(await locationIdsWithRole(ctx)).includes(locationId)) return null
+  await requireCartLocation(ctx, row.cartId, role)
+  return row
+}
+
+/** See the `timeout` option on `checkout`'s transaction. */
+export const CHECKOUT_TIMEOUT_MS = 30_000
+
+/**
+ * The refusal when the cart a checkout names is not the cart the screen
+ * showed (plan decision P4). The web reads `extensions.code`, never the
+ * message: it refetches the cart and asks the user to check and try again.
+ */
+function cartChanged(): GraphQLError {
+  return new GraphQLError(
+    'This cart changed after it was loaded. Load it again and retry the checkout.',
+    { extensions: { code: 'CART_CHANGED' } },
+  )
+}
+
+function byKey<K extends string>(key: K) {
+  return (a: Record<K, string>, b: Record<K, string>) =>
+    a[key] < b[key] ? -1 : a[key] > b[key] ? 1 : 0
+}
+
+type StoredRow = { id: string; cartId: string; itemId: string; quantity: number }
+
+/**
+ * Compare the rows a checkout names with the cart's rows being bought, and
+ * return the rows to buy. Throws `CART_CHANGED` when the two differ in any way:
  *
- *   `Cart.userId`     — DROPPED. A cart belongs to its location and is shared
- *                       by everyone there. So every line below that names it
- *                       STOPS COMPILING, and the compiler lists them for you:
- *                       the `vendorCart` create, `allCarts`, the two
- *                       `bootstrapCarts` calls, and the `abandonCart` lookup.
- *   `CartItem.userId` — KEPT, with a CHANGED MEANING: "added by", not "owns".
- *                       It stops being a scope; scope comes from the cart's
- *                       location. So every filter below that names it KEEPS
- *                       COMPILING and silently answers the wrong question.
+ * | Input                                                | Why it is refused                              |
+ * |------------------------------------------------------|------------------------------------------------|
+ * | an id that is not a row of this cart being bought    | unknown, in another cart, or pinned (amount 0) |
+ * | an amount that differs from the stored amount        | someone changed it after the screen loaded     |
+ * | the same id twice                                    | the screen cannot show one row twice           |
+ * | a stored row being bought that the input leaves out  | someone added it after the screen loaded       |
  *
- * Do not carry a `CartItem.userId` filter across unchanged just because it
- * still type-checks. Re-derive what each query should scope by. The six places
- * that filter on it, and what each would get wrong in a SHARED cart:
+ * `stored` must already be only the rows being bought (`quantity > 0`). A
+ * pinned row is therefore "not a row being bought" here.
  *
- *   `cartItems`            a member sees only the rows they added themselves,
- *                          not what co-members put in the cart
- *   `cartItemCountByItem`  both branches undercount, so the item list's
- *                          "in a cart" marker and the Stock tab's remove
- *                          confirmation both report too few rows
- *   `allCartItems`         export and import lose every co-member's rows
- *   `checkout`'s read      only the caller's rows are bought
- *   `checkout`'s delete    only the caller's bought rows are removed
- *   `abandonCart`'s delete clearing a cart clears only the caller's part
+ * An EMPTY input with no stored rows being bought is accepted, as it was
+ * before task B.5: the checkout writes no stock and no log, and stamps
+ * `lastPurchasedAt`. The web's Done button is disabled when nothing is being
+ * bought, so only a direct API call reaches it. An empty input while the cart
+ * HAS rows being bought is the last row of the table: `CART_CHANGED`.
+ */
+function matchCheckoutInput(
+  stored: StoredRow[],
+  input: ReadonlyArray<{ cartItemId: string; quantity: number }>,
+): StoredRow[] {
+  const byId = new Map(stored.map((r) => [r.id, r]))
+  const seen = new Set<string>()
+  for (const { cartItemId, quantity } of input) {
+    const row = byId.get(cartItemId)
+    if (!row) throw cartChanged()
+    if (seen.has(cartItemId)) throw cartChanged()
+    if (row.quantity !== quantity) throw cartChanged()
+    seen.add(cartItemId)
+  }
+  if (seen.size !== stored.length) throw cartChanged()
+  return stored
+}
+
+type CheckoutEntry = { cartItemId?: string | null; itemId?: string | null; quantity: number }
+
+/**
+ * OLD-BUNDLE SHIM. Remove in the release after households, with
+ * `CheckoutItemInput.itemId` (see `cart.graphql`).
  *
- * Nothing in the suite can fail on any of this. The server tests run against
- * hand-written Prisma fakes seeded with one user, and the cloud E2E specs sign
- * in as `E2E_USER_ID` alone, so "rows this caller added" and "rows in this
- * cart" give the same answer. A real fix needs a two-member fixture;
- * `e2e/tests/cart-id-cross-user-leak.spec.ts` is the two-user pattern, and
- * `makeGql(request, userId)` in `e2e/utils/cloud.ts` supports a second account.
+ * Checks the input's shape, before anything is read. Returns `'new'` when every
+ * entry names a `cartItemId`, `'old'` when every entry names an `itemId` (the
+ * shape of `main`'s web bundle before households). An entry with both, with
+ * neither, or a list that mixes the two is `BAD_USER_INPUT`. An empty list is
+ * `'new'`.
+ */
+function checkoutInputShape(items: ReadonlyArray<CheckoutEntry>): 'new' | 'old' {
+  const isNew = (e: CheckoutEntry) => e.cartItemId != null && e.itemId == null
+  const isOld = (e: CheckoutEntry) => e.itemId != null && e.cartItemId == null
+  if (items.every(isNew)) return 'new'
+  if (items.every(isOld)) return 'old'
+  throw new GraphQLError(
+    'Every checkout entry must name exactly one of cartItemId and itemId, the same one in every entry.',
+    { extensions: { code: 'BAD_USER_INPUT' } },
+  )
+}
+
+/**
+ * OLD-BUNDLE SHIM. Turns old-shape entries (`{ itemId, quantity }`, where
+ * `quantity` was the client's stock total) into new-shape entries. A cart has
+ * at most one row per item (H3b), so the item names the row. The amount is the
+ * STORED amount: `main`'s server bought what the cart held, and so does this.
+ * The old `quantity` is ignored.
  *
- * Issue #358 asks for this warning only. What each query should scope by is a
- * households decision and is NOT made here. `InventoryLog.userId` has the
- * identical shape — kept, meaning "the author" — and is flagged the same way
- * in resolvers/inventoryLog.resolver.ts.
+ * An `itemId` with no row being bought is SKIPPED, as `main`'s server did
+ * (it looked each cart row up in the input and never the other way round).
+ * Refusing it would leave an old device failing on every retry until a
+ * reload, because its stale entry would come back each time.
+ *
+ * What still refuses an old-shape checkout:
+ *
+ * | Case                                               | Refused by                          |
+ * |----------------------------------------------------|-------------------------------------|
+ * | the same `itemId` twice                            | `matchCheckoutInput` (same row twice) |
+ * | a row being bought that the input leaves out       | `matchCheckoutInput`                |
+ * | the row deleted or changed between the read and the claim | the claim's `deleteMany` count |
+ *
+ * The amount rule of `matchCheckoutInput` CANNOT fire here: the amount is
+ * copied from the same read it is compared with. So a co-member's change
+ * that committed BEFORE the read is bought silently, at the new amount. That
+ * is what `main`'s server did too. A change that commits between the read and
+ * the claim still gives `CART_CHANGED`, and the claim still stops a double
+ * buy.
+ */
+function fromOldCheckoutInput(
+  stored: StoredRow[],
+  items: ReadonlyArray<CheckoutEntry>,
+): Array<{ cartItemId: string; quantity: number }> {
+  const byItem = new Map(stored.map((r) => [r.itemId, r]))
+  return items.flatMap((e) => {
+    const row = byItem.get(e.itemId as string)
+    if (!row) return []
+    return [{ cartItemId: row.id, quantity: row.quantity }]
+  })
+}
+
+/**
+ * ── HOW CART DATA IS SCOPED (households H3b) ──
+ *
+ * A cart belongs to its LOCATION and is shared by everyone with a role there.
+ * Nothing in this file scopes a cart read or write by a person.
+ *
+ *   `Cart.userId`     — dropped in task B.3 (migration
+ *                       20261114000000_shared_carts).
+ *   `CartItem.userId` — kept, but it means "added by". It is written once, in
+ *                       the `create` half of `addToCart`'s upsert, and never
+ *                       in an `update`. It is NEVER a `where` key (rule 13 of
+ *                       the H3b plan).
+ *
+ * Who may do what (design D3):
+ *
+ * | Resolver              | Scope                                          | Role         |
+ * |-----------------------|------------------------------------------------|--------------|
+ * | `cartItems`           | `{ cartId }`                                   | `viewer`     |
+ * | `cartItemCountByItem` | carts at `locationIdsWithRole` in the caller's | `viewer`     |
+ * |                       | household (H5 task F.2), or at the one         |              |
+ * |                       | `locationId` given                             |              |
+ * | `allCartItems`        | carts at `locationIdsWithRole`, one household  | any role     |
+ * | `addToCart`           | one row per `(cartId, itemId)`, `increment`    | `participant`|
+ * | `updateCartItem`,     | the row by `id`, then its cart's location      | `participant`|
+ * | `removeFromCart`      |                                                |              |
+ * | `abandonCart`         | every row of `{ cartId }`, pinned ones too     | `participant`|
+ * | `checkout`            | the rows of `{ cartId }` with `quantity > 0`,  | `participant`|
+ * |                       | which must equal the input, in one transaction |              |
+ *
+ * This replaces the issue #358 warning that stood here until task B.4. That
+ * warning listed six `CartItem.userId` filters that would answer the wrong
+ * question in a shared cart. Task B.4 removed four of them (`cartItems`,
+ * `cartItemCountByItem`, `allCartItems`, `abandonCart`'s delete) and
+ * `addToCart`'s lookup. Task B.5 removed the last two, `checkout`'s read and
+ * its delete. **No cart read or write in this file names `userId` in a
+ * `where` any more.** The only `userId` left is the "added by" value in
+ * `addToCart`'s `create` and the author of `checkout`'s inventory logs.
+ *
+ * Authorization is `requireCartLocation` / `requireLocationRole` /
+ * `locationIdsWithRole` (lib/authz.ts). Never `row.userId === ctx.userId`.
+ *
+ * The tests: `cart.resolver.test.ts` runs every resolver here against the
+ * stateful `cartFake` (src/test/cartFake.ts), with two members adding rows to
+ * one cart, so "rows I added" and "rows in this cart" give different answers.
+ * The fake THROWS on a `userId` where key.
  */
 export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
   Query: {
@@ -94,52 +243,66 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
     // omitted argument is now a codegen error rather than a silent read of the
     // wrong location.
     vendorCart: async (_, { vendorId = null, locationId }, ctx) => {
-      const userId = requireAuth(ctx)
+      requireAuth(ctx)
 
-      // `member`, not `viewer`: this query CREATES the cart when it is missing.
-      await requireLocationRole(ctx, locationId, 'member')
+      // `viewer`: this is a read (households H5 task F.2, decision T7). Until
+      // F.2 it asked `participant`, because it creates a missing cart, so a
+      // viewer who opened the Shopping page got FORBIDDEN.
+      const { role } = await requireLocationRole(ctx, locationId, 'viewer')
 
       const cartId = cartIdFor(locationId, vendorId ?? null)
-      let cart = await prisma.cart.findUnique({ where: { id: cartId } })
-      if (!cart) {
-        // Issue #358: this write is what decides what every `Cart.userId`
-        // filter in this file MEANS today — the first person to open a
-        // vendor's cart at a location owns the row. Households drops
-        // `Cart.userId`, so this line stops compiling and the column simply
-        // goes. See the block comment above this object.
-        cart = await prisma.cart.create({
-          data: { id: cartId, userId, locationId },
-        })
+      const cart = await prisma.cart.findUnique({ where: { id: cartId } })
+      if (cart) return cart as unknown as Cart
+      // A read must not write for a role that may not write. A viewer gets an
+      // empty cart with the id the row WILL have, and nothing is saved. When
+      // a participant opens it later, the row is made with that same id, so
+      // the viewer's cached cart stays right.
+      if (!roleAtLeast(role, 'participant')) {
+        return { id: cartId, lastPurchasedAt: null } as unknown as Cart
       }
-      return cart as unknown as Cart
+      // No `userId` since households H3b: a cart belongs to its location
+      // and has no owner.
+      const created = await prisma.cart.create({
+        data: { id: cartId, locationId },
+      })
+      return created as unknown as Cart
     },
 
-    // Whole-account on purpose, like `inventoryLogs`. The shopping page reads
-    // it to show every vendor's "last purchased" and the export path needs
-    // every location's carts or the backup loses rows. Each row's location is
-    // recoverable from its id.
+    // Every location the caller has a role on, like `inventoryLogs`. The
+    // shopping page reads it to show every vendor's "last purchased", and the
+    // export path needs every location's carts or the backup loses rows. Each
+    // row's location is recoverable from its id.
+    //
+    // Scoped by location role since households H3b task B.3, when
+    // `Cart.userId` was dropped. Any role counts, `viewer` included, because
+    // this is a read. `allCartItems` below uses the same scope (task B.4).
+    //
+    // One household only since households H4 task E.5 (decision T15): the
+    // caller's household. A person in two households must not export, or see
+    // on the shopping page, the carts of the other one.
     allCarts: async (_, __, ctx) => {
-      const userId = requireAuth(ctx)
+      requireAuth(ctx)
+      const locationIds = await locationIdsWithRole(ctx, 'viewer', {
+        householdId: await requireHousehold(ctx),
+      })
       return prisma.cart.findMany({
-        where: { userId },
+        where: { locationId: { in: locationIds } },
         orderBy: [{ id: 'asc' }],
       }) as unknown as Promise<Cart[]>
     },
 
+    // Every row of the cart, whoever added it. `viewer` is enough: a read.
     cartItems: async (_, { cartId }, ctx) => {
-      const userId = requireAuth(ctx)
+      requireAuth(ctx)
       await requireCartLocation(ctx, cartId, 'viewer')
-      // Issue #358: `CartItem.userId` becomes "added by" under households and
-      // this filter KEEPS COMPILING. Left as it is, a member of a shared
-      // location sees only the rows they added themselves and not what their
-      // co-members put in the cart. Re-derive the scope from the cart's
-      // location — see the block comment above this object.
-      return prisma.cartItem.findMany({ where: { cartId, userId } }) as unknown as Promise<CartItem[]>
+      return prisma.cartItem.findMany({ where: { cartId } }) as unknown as Promise<CartItem[]>
     },
 
-    // With no `locationId`: whole-account, across every location. It answers
-    // "is this item in any cart", which the item list shows regardless of the
-    // active location.
+    // With no `locationId`: the carts at every location the caller holds a
+    // role on (`locationIdsWithRole`), whoever added the rows. It answers "is
+    // this item in any cart", which the item list shows regardless of the
+    // active location. A location the caller holds no role on is not counted,
+    // even in the caller's own household.
     //
     // With one: only that location's carts. The Stock tab's remove
     // confirmation asks this way, so the number must equal exactly what
@@ -155,227 +318,291 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
     // cart id in JavaScript: the id is derived from this column, and a filter
     // on the derived string can drift from a filter on the source.
     cartItemCountByItem: async (_, { itemId, locationId }, ctx) => {
-      const userId = requireAuth(ctx)
-      if (!locationId) return prisma.cartItem.count({ where: { itemId, userId } })
+      requireAuth(ctx)
+      if (!locationId) {
+        // One household: the caller's (households H5 task F.2, decision T5).
+        // A person in two households holds roles in both, and the item list
+        // asks about the household it shows.
+        const locationIds = await locationIdsWithRole(ctx, 'viewer', {
+          householdId: await requireHousehold(ctx),
+        })
+        return prisma.cartItem.count({ where: { itemId, cart: { locationId: { in: locationIds } } } })
+      }
+      // The role check runs first, so a location the caller holds no role on
+      // is refused before anything is counted.
       await requireLocationRole(ctx, locationId, 'viewer')
-      return prisma.cartItem.count({ where: { itemId, userId, cart: { locationId } } })
+      return prisma.cartItem.count({ where: { itemId, cart: { locationId } } })
     },
 
+    // Every row in the carts at every location the caller holds a role on,
+    // whoever added it. The export reads this, so a backup keeps the rows a
+    // co-member added. Any role counts, `viewer` included: it is a read.
+    // One household only since households H4 task E.5, like `allCarts`.
     allCartItems: async (_, __, ctx) => {
-      const userId = requireAuth(ctx)
-      return prisma.cartItem.findMany({ where: { userId } }) as unknown as Promise<CartItem[]>
+      requireAuth(ctx)
+      const locationIds = await locationIdsWithRole(ctx, 'viewer', {
+        householdId: await requireHousehold(ctx),
+      })
+      return prisma.cartItem.findMany({
+        where: { cart: { locationId: { in: locationIds } } },
+      }) as unknown as Promise<CartItem[]>
     },
   },
 
   Mutation: {
     addToCart: async (_, { cartId, itemId, quantity }, ctx) => {
       const userId = requireAuth(ctx)
-      await requireCartLocation(ctx, cartId, 'member')
-      const existing = await prisma.cartItem.findFirst({ where: { cartId, itemId, userId } })
-      if (existing) {
-        return prisma.cartItem.update({
-          where: { id: existing.id },
-          data: { quantity: existing.quantity + quantity },
-        }) as unknown as Promise<CartItem>
-      }
-      return prisma.cartItem.create({
-        data: { cartId, itemId, quantity, userId },
-      }) as unknown as Promise<CartItem>
+      const locationId = await requireCartLocation(ctx, cartId, 'participant')
+      // The item must be an item of the cart's location's household
+      // (households H3a, task 3.8). Before, any item id was taken on trust.
+      await requireLocationItems(ctx, locationId, [itemId])
+      // One row per item per cart (`@@unique([cartId, itemId])`, task B.3),
+      // whoever adds it (design D2). Two adds of one item sum into one row.
+      //
+      // `increment`, not a total computed here, so two people adding at the
+      // same moment cannot lose one add to a read-then-write race.
+      //
+      // `userId` ("added by") is in `create` only. An add to an existing row
+      // keeps the first adder: never put `userId` in `update`.
+      //
+      // The amount is taken as sent, as before task B.4: no check for zero or
+      // a negative number. Adding 0 to a new item makes a pinned row
+      // (`quantity` 0); adding to a pinned row makes it a row being bought.
+      const written = await prisma.cartItem.upsert({
+        where: { cartId_itemId: { cartId, itemId } },
+        create: { cartId, itemId, quantity, userId },
+        update: { quantity: { increment: quantity } },
+      })
+      // After the write (households H3c-1, task C.4). See `publishChange`.
+      await publishChange(ctx, ['CART'], [{ locationId }])
+      return written as unknown as CartItem
     },
 
     // `id` here is a CartItem id, not a cart id, so the location has to be read
-    // off the row's own `cartId` after it is found.
+    // off the row's own `cartId` after it is found. Any member with
+    // `participant` there may change a row, whoever added it.
     updateCartItem: async (_, { id, quantity }, ctx) => {
-      const userId = requireAuth(ctx)
-      const existing = await prisma.cartItem.findFirst({ where: { id, userId } })
+      requireAuth(ctx)
+      const existing = await findCartItemForWrite(ctx, id, 'participant')
+      // The same answer for an unknown id and for a stranger's row.
       if (!existing) throw new GraphQLError('CartItem not found', { extensions: { code: 'NOT_FOUND' } })
-      await requireCartLocation(ctx, existing.cartId, 'member')
-      return prisma.cartItem.update({
+      const updated = await prisma.cartItem.update({
         where: { id },
         data: { quantity },
-      }) as unknown as Promise<CartItem>
+      })
+      await publishChange(ctx, ['CART'], [{ locationId: parseCartId(existing.cartId).locationId }])
+      return updated as unknown as CartItem
     },
 
     removeFromCart: async (_, { id }, ctx) => {
-      const userId = requireAuth(ctx)
-      const existing = await prisma.cartItem.findFirst({ where: { id, userId } })
+      requireAuth(ctx)
+      const existing = await findCartItemForWrite(ctx, id, 'participant')
+      // `false` for an unknown id and for a stranger's row alike.
       if (!existing) return false
-      await requireCartLocation(ctx, existing.cartId, 'member')
       await prisma.cartItem.delete({ where: { id } })
+      await publishChange(ctx, ['CART'], [{ locationId: parseCartId(existing.cartId).locationId }])
       return true
     },
 
+    // ── CHECKOUT: ONE TRANSACTION, AND THE SCREEN MUST MATCH THE CART ──
+    //
+    // Households H3b task B.5, design section 3 (decision D1). A shared cart
+    // can change under the screen that shows it: a co-member adds a row,
+    // changes an amount, or checks the cart out first. So the client sends
+    // the rows it showed (`{ cartItemId, quantity }`) and this resolver buys
+    // exactly those rows, or nothing.
+    //
+    // The client no longer sends the log total. The server reads `Item`
+    // (`amountPerPackage`) and the stock row itself, and computes the total
+    // with `getPackedTotal` from `@p1i/types`, the rule local mode uses.
+    //
+    // Steps, all inside one interactive transaction:
+    //
+    //   1. read the rows being bought (`quantity > 0`), whoever added them;
+    //   2. compare them with the input (`matchCheckoutInput`): any difference
+    //      is `CART_CHANGED`, and nothing is written;
+    //   3. CLAIM each row: delete it with a `where` that also names the amount
+    //      the screen showed, and require exactly 1 deleted row;
+    //   4. per row: stock the item at the cart's location if needed, add the
+    //      amount, write the log;
+    //   5. stamp `Cart.lastPurchasedAt`.
+    //
+    // Pinned rows (`quantity` 0) are not read, not claimed and stay.
     checkout: async (_, { cartId, items, note, logKey, logParams }, ctx) => {
       const userId = requireAuth(ctx)
-      // The location the CART names, since PR 3b Task 3. `requireCartLocation`
-      // parses it out of the cart id and authorizes it in one step, so the
-      // value below has already been through `requireLocationRole`.
+      // The location the CART names (PR 3b Task 3). `requireCartLocation`
+      // parses it out of the cart id and authorizes it in one step. A stranger,
+      // and a cart id at a location that does not exist, both get the same
+      // `FORBIDDEN` from `requireLocationRole`.
+      const cartLocationId = await requireCartLocation(ctx, cartId, 'participant')
+      // OLD-BUNDLE SHIM: which input shape this is. Refused before any cart
+      // read when the entries mix the two shapes. (The role check above has
+      // already read.)
+      const shape = checkoutInputShape(items)
+      // The locations a copy-on-add may copy stock settings from: the ones the
+      // caller holds a role on (households H3a, task 3.8). Read once, before
+      // the transaction opens, because it reads only membership rows.
       //
-      // It used to be the caller's DEFAULT location, which meant a checkout
-      // made while viewing the Garage moved the Kitchen's stock and wrote an
-      // inventory log against the Kitchen. That was the limitation PR 3a
-      // shipped; Task 1's re-key of `Cart.id` is what made the real location
-      // reachable here.
-      const cartLocationId = await requireCartLocation(ctx, cartId, 'member')
-      // Issue #358: this read decides WHICH rows get bought, and
-      // `CartItem.userId` becomes "added by" under households while this
-      // filter KEEPS COMPILING. Left as it is, a shared checkout moves stock
-      // and writes inventory logs for the caller's rows ONLY. A co-member's
-      // rows are not bought and — with the matching `deleteMany` further down
-      // — stay sitting in the cart, so this is the pair that LOSES DATA rather
-      // than hiding it. Re-derive the scope — see the block comment above this
-      // object.
-      const cartItems = await prisma.cartItem.findMany({ where: { cartId, userId } })
-      // `isBeingBought` is `quantity > 0` (lib/checkout.js). Pinned items
-      // (quantity === 0) stay in the permanent cart — no migration needed.
-      const buyingItems = cartItems.filter(isBeingBought)
+      // Only the CART's household (households H5 task F.2, decision T5). Not
+      // the caller's (`requireHousehold`): a person in two households can
+      // check out a cart of either, and the item is the cart's household's.
+      const sourceLocationIds = await locationIdsWithRole(ctx, 'viewer', {
+        householdId: await householdOfLocation(cartLocationId),
+      })
 
-      // The on-hand total each log row will record, as the CLIENT computed it.
-      // Built once here, not re-derived per item inside the loop below.
-      //
-      // ── WHY THE CLIENT SENDS THIS NUMBER ──
-      //
-      // The log's `quantity` is the item's on-hand total in PACKAGE units. An
-      // item sold in packs keeps a fractional remainder in `unpackedQuantity`,
-      // and turning that remainder back into a fraction of a pack needs
-      // `amountPerPackage` — a global field on `Item`, not on `ItemStock`. The
-      // only stock data this resolver can reach is the per-location
-      // `ItemStock` row, so it cannot do the conversion.
-      //
-      // The log's `quantity` used to be computed below, after the stock write,
-      // as `stock.packedQuantity + stock.unpackedQuantity` — the two columns
-      // added raw. Local mode runs `getPackedTotal({ packedQuantity,
-      // unpackedQuantity, amountPerPackage }) + cartItem.quantity` instead
-      // (apps/web/src/db/operations.ts and src/lib/quantityUtils.ts). The two
-      // disagree whenever an item has an `amountPerPackage` AND a non-zero
-      // `unpackedQuantity`: with `amountPerPackage` 6, 2 packed and 3 unpacked,
-      // buying 1 gave local 3.5 and cloud 6. That is issue #336.
-      //
-      // `consumeRecipes` already works this way — `ConsumeRecipesItemInput`
-      // carries a client-computed `quantity` for the same reason
-      // (src/schema/recipe.graphql).
-      //
-      // `delta` stays server-side as `ci.quantity`. Only the converted total
-      // needs a field the server cannot see.
-      const quantityByItemId = new Map(items.map((i) => [i.itemId, i.quantity]))
+      // `await`, so the event below is published only after the transaction
+      // has COMMITTED. A `CART_CHANGED` refusal, or any other throw, rolls
+      // back and leaves this function before the publish.
+      const purchased = await prisma.$transaction(
+        async (tx) => {
+          // Step 1. No `userId` filter (H3b rule 13): a co-member's rows are
+          // bought too. `quantity: { gt: 0 }` is the SQL form of
+          // `isBeingBought` (`@p1i/types`), the rule the screen uses.
+          const stored = await tx.cartItem.findMany({
+            where: { cartId, quantity: { gt: 0 } },
+          })
 
-      // Resolve every bought item's total BEFORE the first write, so a missing
-      // entry cannot leave half a checkout behind. `.map` runs to completion
-      // before the loop below starts, and `checkout` has no transaction.
-      //
-      // ── THERE IS NO FALLBACK, ON PURPOSE ──
-      //
-      // Falling back to `stock.packedQuantity + stock.unpackedQuantity` would
-      // restore the exact bug above, silently, for any client that stopped
-      // sending the field. A loud `BAD_USER_INPUT` naming the item is the
-      // chosen cost. It means checkout fails for a cloud client running an old
-      // bundle, until the user accepts the service-worker update prompt.
-      //
-      // ── THE ACCEPTED RACE ──
-      //
-      // The client computes these numbers from the cart it rendered. If another
-      // device adds a cart item between that render and the checkout, the new
-      // item has no entry here and the whole checkout fails. The user refetches
-      // and retries. Rare with one account per user, so this is recorded rather
-      // than solved.
-      //
-      // ── THE FILTER MUST MATCH ──
-      //
-      // The client sends one entry per cart item that `isBeingBought` accepts —
-      // the same rule as `buyingItems` above. Both sides now call a function
-      // named for that rule instead of repeating `ci.quantity > 0`: the client
-      // imports it from `@p1i/types`, this file keeps a second copy, and
-      // `src/lib/checkout.test.ts` compares the two. If the rule changes,
-      // change both copies in the same commit, or a legitimate checkout starts
-      // failing on this error.
-      const purchases = buyingItems.map((ci) => {
-        const quantity = quantityByItemId.get(ci.itemId)
-        if (quantity === undefined) {
-          throw new GraphQLError(
-            `checkout: no quantity was supplied for item '${ci.itemId}'. ` +
-              'Every cart item with a quantity above zero needs an entry in `items`.',
-            { extensions: { code: 'BAD_USER_INPUT' } },
+          // Step 2. Throws `CART_CHANGED` before anything is written.
+          const bought = matchCheckoutInput(
+            stored,
+            shape === 'old'
+              ? fromOldCheckoutInput(stored, items)
+              : (items as Array<{ cartItemId: string; quantity: number }>),
           )
-        }
-        return { ci, quantity }
-      })
 
-      const now = new Date()
+          // Step 3. ── WHY THE CLAIM, AND WHY IT NAMES THE AMOUNT ──
+          //
+          // Postgres runs at READ COMMITTED. Two checkouts of the same cart can
+          // both run step 1 before either commits, and both pass step 2. If
+          // each then wrote stock and deleted the rows only at the end, both
+          // would add the purchase to stock: the second `deleteMany` would
+          // just delete 0 rows and nobody would notice. The purchase would be
+          // counted twice.
+          //
+          // So each row is deleted with a count check: it must be 1. In
+          // Postgres the second transaction's DELETE waits for the first
+          // transaction's lock on that row. When the first commits, the
+          // second re-checks its `where` against the committed state, finds
+          // the row gone, deletes 0 rows, and throws `CART_CHANGED`. The
+          // throw rolls back everything the second transaction did.
+          //
+          // The COUNT CHECK is what makes this correct, not the order: a
+          // failed claim after the stock writes would roll them back too.
+          // Claiming first is still the better order. It fails before any
+          // stock row is written or locked, and every checkout then locks
+          // cart rows before stock rows, never the other way round.
+          //
+          // The `where` names the amount the screen showed, not only the id.
+          // A co-member's `updateCartItem` that commits between step 1 and
+          // this line changes the amount; the re-check then finds no row with
+          // that amount, and the checkout is refused instead of buying an
+          // amount nobody saw.
+          //
+          // Rows are claimed in id order, so two checkouts of one cart always
+          // wait on the rows in the same order.
+          for (const row of [...bought].sort(byKey('id'))) {
+            const { count } = await tx.cartItem.deleteMany({
+              where: { id: row.id, cartId, quantity: row.quantity },
+            })
+            if (count !== 1) throw cartChanged()
+          }
 
-      for (const { ci, quantity: finalQuantity } of purchases) {
-        // Stock the item at the cart's location if it is not stocked there yet,
-        // the same copy-on-add local `checkout` has always run
-        // (apps/web/src/db/operations.ts). A no-op on the normal path, where
-        // the row already exists.
-        //
-        // Without it, `writeStock`'s `create` branch opened the row with
-        // `targetQuantity: 0` and `refillThreshold: 0` — and
-        // `targetQuantity === 0` is exactly what every reader treats as "not
-        // active at this location" (`isInactiveHere`,
-        // apps/web/src/lib/quantityUtils.ts). So the item arrived holding stock
-        // it could not be shopped for again. `ensureStockAtLocation` inherits
-        // those two and `dueDate` from a source row instead.
-        //
-        // **Not reachable from the UI today**, and fixed anyway: the cart page
-        // lists only items stocked at the location, and the item-search tail's
-        // third bucket offers "add to location", not "add to cart". This is the
-        // defensive path, and the two modes disagreeing on it is the thing
-        // being removed before households.
-        await ensureStockAtLocation(ci.itemId, cartLocationId, userId)
+          // `amountPerPackage` lives on `Item`, not on `ItemStock`. Read in
+          // the same transaction, once for all rows.
+          const itemIds = [...new Set(bought.map((r) => r.itemId))]
+          const itemRows = await tx.item.findMany({
+            where: { id: { in: itemIds } },
+            select: { id: true, amountPerPackage: true },
+          })
+          const amountPerPackageOf = new Map(
+            itemRows.map((i) => [i.id, i.amountPerPackage ?? undefined]),
+          )
 
-        // The cart location's own stock row, and since PR 5 the ONLY place the
-        // purchase is recorded — `Item`'s five stock columns are gone, and with
-        // them the `prisma.item.update` that used to run here first.
-        //
-        // `increment` rather than a total computed in JavaScript, so two
-        // concurrent checkouts of one item cannot lose an increment to a
-        // read-modify-write race.
-        //
-        // The return value is no longer read. Until issue #336 this was `const
-        // stock = await writeStock(...)` and the next line added the saved
-        // row's two quantity columns together to get the log's `quantity`. That
-        // number now arrives in `items` — see the block above — so the saved
-        // row is not needed here. `writeStock` still returns the saved row,
-        // and `upsertItemStock` (resolvers/itemStock.resolver.ts) is now its
-        // only caller that reads it.
-        await writeStock(ci.itemId, cartLocationId, {
-          packedQuantity: { increment: ci.quantity },
-        })
+          const now = new Date()
+          // Stock rows are written in item id order, so two checkouts that buy
+          // the same items from different carts lock the stock rows in the
+          // same order and cannot deadlock on each other.
+          for (const row of [...bought].sort(byKey('itemId'))) {
+            // Copy-on-add (since 2026-10-07): stock the item at the cart's
+            // location if it is not stocked there yet, inheriting
+            // `targetQuantity`, `refillThreshold` and `dueDate` from another
+            // location the caller can read. Without it `writeStock` would
+            // open the row at `targetQuantity: 0`, which every reader treats
+            // as "not active at this location". A no-op on the normal path.
+            await ensureStockAtLocation(row.itemId, cartLocationId, sourceLocationIds, null, tx)
 
-        await prisma.inventoryLog.create({
-          data: {
-            itemId: ci.itemId,
-            delta: ci.quantity,
-            quantity: finalQuantity,
-            occurredAt: now,
-            userId,
-            // The cart's own location, the same one the stock write above
-            // used. A log row and the stock move it explains must never name
-            // different locations.
-            locationId: cartLocationId,
-            ...(note ? { note } : {}),
-            ...(logKey ? { logKey } : {}),
-            ...(logParams ? { logParams: logParams as Prisma.InputJsonValue } : {}),
-          },
-        })
-      }
+            // `increment`, not a total computed here: another checkout of a
+            // different cart may add to the same stock row at the same time.
+            // The row this returns is the saved row, read under that row's
+            // lock, so the total below includes every committed purchase.
+            const after = await writeStock(
+              row.itemId,
+              cartLocationId,
+              { packedQuantity: { increment: row.quantity } },
+              tx,
+            )
 
-      // Update lastPurchasedAt and delete only active items
-      const updatedCart = await prisma.cart.update({
-        where: { id: cartId },
-        data: { lastPurchasedAt: now },
-      })
-      // Issue #358: the other half of the checkout hazard. `CartItem.userId`
-      // becomes "added by" under households and this filter KEEPS COMPILING,
-      // so only the caller's bought rows are removed. A co-member's rows stay
-      // in the cart after a checkout that did not buy them, which is data
-      // loss and not merely a hidden row. Re-derive the scope — see the block
-      // comment above this object.
-      await prisma.cartItem.deleteMany({
-        where: { cartId, userId, quantity: { gt: 0 } },
-      })
+            // The log's `quantity` is the on-hand total in PACKAGE units after
+            // the purchase: the unpacked remainder becomes a fraction of a
+            // pack. Issue #336: the raw `packed + unpacked` logged 6 where
+            // local mode logged 3.5. `getPackedTotal` is the shared rule.
+            //
+            // The bought amount is already counted in packs and must not be
+            // divided by `amountPerPackage`. Here it is inside
+            // `after.packedQuantity`, which `getPackedTotal` never divides, so
+            // only the unpacked remainder is converted. Local `checkout`
+            // (apps/web/src/db/operations.ts) gives the same number.
+            const total = getPackedTotal({
+              packedQuantity: after.packedQuantity,
+              unpackedQuantity: after.unpackedQuantity,
+              amountPerPackage: amountPerPackageOf.get(row.itemId),
+            })
 
-      return updatedCart as unknown as Cart
+            await tx.inventoryLog.create({
+              data: {
+                itemId: row.itemId,
+                delta: row.quantity,
+                quantity: total,
+                occurredAt: now,
+                // The person who checked out. "Who did it", not a scope.
+                userId,
+                // The cart's own location, the same one the stock write above
+                // used. A log row and the stock move it explains must never
+                // name different locations.
+                locationId: cartLocationId,
+                ...(note ? { note } : {}),
+                ...(logKey ? { logKey } : {}),
+                ...(logParams ? { logParams: logParams as Prisma.InputJsonValue } : {}),
+              },
+            })
+          }
+
+          const cart = (await tx.cart.update({
+            where: { id: cartId },
+            data: { lastPurchasedAt: now },
+          })) as unknown as Cart
+          return { cart, boughtCount: bought.length }
+        },
+        // Prisma's interactive transaction times out after 5 s by default.
+        // A checkout makes about 4 queries per row (copy-on-add check, stock
+        // upsert, log create, claim) plus 3, each a network round trip to the
+        // database. 5 s is about 300 such round trips at 15 ms, so a cart of
+        // around 70 rows could reach it. 30 s leaves room for a large cart on
+        // a slow connection. Hitting the limit is still safe: Prisma rolls
+        // the whole checkout back, and the user gets an error and retries.
+        { timeout: CHECKOUT_TIMEOUT_MS },
+      )
+      // One call, every kind the checkout changed at the cart's location
+      // (households H3c-2 task D.2, decision Q1): the cart rows it claimed
+      // (`CART`), the stock it added to (`STOCK`) and the logs it wrote
+      // (`LOG`). An empty cart writes only `lastPurchasedAt`, so it changes
+      // no stock and no log, and sends `CART` alone.
+      await publishChange(
+        ctx,
+        purchased.boughtCount > 0 ? ['CART', 'STOCK', 'LOG'] : ['CART'],
+        [{ locationId: cartLocationId }],
+      )
+      return purchased.cart
     },
 
     /**
@@ -390,12 +617,17 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
      * is exactly when local mode calls its own version.
      */
     bootstrapCarts: async (_, { locationId }, ctx) => {
-      const userId = requireAuth(ctx)
-      // `member`, not `viewer`: this creates rows.
-      await requireLocationRole(ctx, locationId, 'member')
+      requireAuth(ctx)
+      // `participant`, not `viewer`: this creates rows.
+      await requireLocationRole(ctx, locationId, 'participant')
 
+      // Every vendor of the LOCATION's household, whoever made it (households
+      // H3a, task 3.8). Until then this read `where: { userId }`, so a
+      // location got carts only for the vendors the caller had made, not for
+      // a vendor another member added to the shared catalog.
+      const householdId = await householdOfLocation(locationId)
       const vendors = await prisma.vendor.findMany({
-        where: { userId },
+        where: { householdId },
         select: { id: true },
       })
       // The no-vendor cart first, then one per vendor — the same set local
@@ -418,40 +650,38 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
         // running in parallel can insert one of these ids between the two
         // statements. Without the flag that race raises P2002 and the whole
         // bootstrap fails, taking the carts that were fine with it.
-        await prisma.cart.createMany({
-          data: missing.map((id) => ({ id, userId, locationId })),
+        const { count } = await prisma.cart.createMany({
+          data: missing.map((id) => ({ id, locationId })),
           skipDuplicates: true,
         })
+        // Only when this call really made a cart. `count` is 0 when a
+        // parallel `vendorCart` made every missing one first.
+        if (count > 0) await publishChange(ctx, ['CART'], [{ locationId, householdId }])
       }
 
       // Scoped by `locationId`, so the caller gets this location's carts only —
-      // `allCarts` is the whole-account read. `userId` here is a query SCOPE
-      // (see the comment above this object), not the authorization decision;
-      // that was `requireLocationRole` at the top.
+      // `allCarts` is the read across locations. The authorization decision
+      // was `requireLocationRole` at the top. (Until households H3b this also
+      // filtered by `Cart.userId`, which is gone.)
       return prisma.cart.findMany({
-        where: { userId, locationId },
+        where: { locationId },
         orderBy: [{ id: 'asc' }],
       }) as unknown as Promise<Cart[]>
     },
 
     abandonCart: async (_, { cartId }, ctx) => {
-      const userId = requireAuth(ctx)
-      await requireCartLocation(ctx, cartId, 'member')
-      // Issue #358, and the two lines below need DIFFERENT fixes because they
-      // read different columns.
-      //
-      // The lookup reads `Cart.userId`, which households DROPS, so that line
-      // stops compiling and has to be rewritten in any case — look the cart up
-      // by its id alone, authorized by `requireCartLocation` above.
-      //
-      // The delete reads `CartItem.userId`, which households KEEPS with the
-      // meaning "added by", so that line KEEPS COMPILING and would clear only
-      // the caller's part of a shared cart while every co-member's row stays.
-      // Re-derive its scope — see the block comment above this object.
-      const existing = await prisma.cart.findFirst({ where: { id: cartId, userId } })
+      requireAuth(ctx)
+      await requireCartLocation(ctx, cartId, 'participant')
+      // The lookup is by the cart's id alone since households H3b task B.3,
+      // when `Cart.userId` was dropped. `requireCartLocation` above is the
+      // authorization decision.
+      const existing = await prisma.cart.findUnique({ where: { id: cartId } })
       if (!existing) throw new GraphQLError('Cart not found', { extensions: { code: 'NOT_FOUND' } })
-      // Delete ALL items (including pinned)
-      await prisma.cartItem.deleteMany({ where: { cartId, userId } })
+      // Delete EVERY row of the cart: pinned rows too, and the rows a
+      // co-member added (task B.4). The cart itself stays.
+      const { count } = await prisma.cartItem.deleteMany({ where: { cartId } })
+      // Nothing to tell other tabs when the cart was already empty.
+      if (count > 0) await publishChange(ctx, ['CART'], [{ locationId: existing.locationId }])
       return existing as unknown as Cart
     },
   },

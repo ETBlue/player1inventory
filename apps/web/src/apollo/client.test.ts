@@ -1,12 +1,28 @@
 import type { InMemoryCache } from '@apollo/client'
 import { gql } from '@apollo/client'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import i18n from '@/i18n'
 import {
   createApolloClient,
   createApolloClientForE2E,
   resolveToken,
 } from './client'
+import { CLIENT_ID } from './clientId'
 import { createCache } from './cloudCache'
+import {
+  LAST_HOUSEHOLD_ID_KEY,
+  resetHouseholdGuardForTests,
+  setLastHouseholdId,
+} from './householdGuard'
+
+// The recovery itself is tested in `householdGuard.test.ts`. Here only the
+// question "does the link call it" matters, so it is a spy. The rest of the
+// module (the shown household id) stays real.
+const recoverMock = vi.hoisted(() => vi.fn(async () => {}))
+vi.mock('./householdGuard', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./householdGuard')>()
+  return { ...actual, recoverFromHouseholdChange: recoverMock }
+})
 
 // Mirrors the `itemStocks` selection of the PantryData operation
 // (`apollo/operations/itemStocks.graphql`), trimmed to the fields the cache
@@ -306,6 +322,41 @@ describe('createCache — vendorCart is cached per location', () => {
   })
 })
 
+// Households H5b, task G.9. `HouseholdPerson` has no `id`, so a refetch that
+// brings a shorter list (after a removal) would warn "Cache data may be lost".
+describe('createCache — householdMembers is replaced, not merged', () => {
+  const MEMBERS = gql`
+    query HouseholdMembers {
+      householdMembers {
+        userId
+        displayName
+      }
+    }
+  `
+  const row = (userId: string) => ({
+    __typename: 'HouseholdPerson',
+    userId,
+    displayName: userId,
+  })
+
+  it('user sees the shorter list after a removal, with no data-loss warning', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const cache = createCache()
+    cache.writeQuery({
+      query: MEMBERS,
+      data: { householdMembers: [row('a'), row('b')] },
+    })
+    cache.writeQuery({ query: MEMBERS, data: { householdMembers: [row('a')] } })
+
+    const read = cache.readQuery<{ householdMembers: { userId: string }[] }>({
+      query: MEMBERS,
+    })
+    expect(read?.householdMembers.map((p) => p.userId)).toEqual(['a'])
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+})
+
 describe('both Apollo clients share the cache configuration', () => {
   // The E2E client exists to exercise the production code path; a policy applied
   // to only one of the two caches would make cloud E2E prove nothing.
@@ -398,6 +449,100 @@ describe('createApolloClient — a mutation refused offline', () => {
   })
 })
 
+describe('both Apollo clients send the app language', () => {
+  // Households H3a, decision H3: the server names a new household and its
+  // first location in the language this header carries. Both clients are
+  // tested, because the E2E client exists to run the code users run.
+  const LANGUAGE_PROBE = gql`
+    query LanguageProbe {
+      languageProbe
+    }
+  `
+
+  function headerSent(fetchMock: ReturnType<typeof vi.fn>): string | null {
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined
+    return new Headers(init?.headers).get('x-app-language')
+  }
+
+  it.each([
+    ['production', () => createApolloClient(async () => null)],
+    ['e2e', () => createApolloClientForE2E('e2e-user')],
+  ])('%s client sends x-app-language from the current language', async (_name, makeClient) => {
+    // Given the app is in Traditional Chinese
+    const before = i18n.language
+    await i18n.changeLanguage('tw')
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ data: { languageProbe: 'ok' } }), {
+          headers: { 'content-type': 'application/json' },
+        }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    setOnLine(true)
+    const client = makeClient()
+    try {
+      // When the client sends a query
+      await client.query({ query: LANGUAGE_PROBE, fetchPolicy: 'network-only' })
+
+      // Then the request carries the language
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(headerSent(fetchMock)).toBe('tw')
+
+      // And a language change applies to the next request
+      await i18n.changeLanguage('en')
+      fetchMock.mockClear()
+      await client.query({ query: LANGUAGE_PROBE, fetchPolicy: 'network-only' })
+      expect(headerSent(fetchMock)).toBe('en')
+    } finally {
+      vi.unstubAllGlobals()
+      await client.clearStore()
+      await i18n.changeLanguage(before)
+    }
+  })
+})
+
+describe('both Apollo clients send the tab id', () => {
+  // Households H3c-1, decision P4: the server does not send a change back to
+  // the tab whose `x-client-id` made it.
+  const TAB_PROBE = gql`
+    query TabProbe {
+      tabProbe
+    }
+  `
+
+  it.each([
+    ['production', () => createApolloClient(async () => null)],
+    ['e2e', () => createApolloClientForE2E('e2e-user')],
+  ])('%s client sends x-client-id on every HTTP request', async (_name, makeClient) => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ data: { tabProbe: 'ok' } }), {
+          headers: { 'content-type': 'application/json' },
+        }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    setOnLine(true)
+    const client = makeClient()
+    try {
+      // When the client sends two queries
+      await client.query({ query: TAB_PROBE, fetchPolicy: 'network-only' })
+      await client.query({ query: TAB_PROBE, fetchPolicy: 'network-only' })
+
+      // Then both carry this page load's tab id
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      for (const call of fetchMock.mock.calls as unknown as [
+        string,
+        RequestInit,
+      ][]) {
+        expect(new Headers(call[1].headers).get('x-client-id')).toBe(CLIENT_ID)
+      }
+    } finally {
+      vi.unstubAllGlobals()
+      await client.clearStore()
+    }
+  })
+})
+
 describe('resolveToken', () => {
   it('returns the token when online', async () => {
     // Given the device is online and Clerk answers
@@ -437,5 +582,376 @@ describe('resolveToken', () => {
 
     // Then it stops waiting after the timeout
     expect(token).toBeNull()
+  })
+})
+
+// Households H5c, task H.4. `LocationPerson` has no `id` either. A refetch
+// after a role is removed brings a shorter list for that location, which
+// without a policy warns "Cache data may be lost".
+describe('createCache — locationPeople is replaced, not merged', () => {
+  const PEOPLE = gql`
+    query LocationPeople($locationId: ID!) {
+      locationPeople(locationId: $locationId) {
+        userId
+        displayName
+      }
+    }
+  `
+  const row = (userId: string) => ({
+    __typename: 'LocationPerson',
+    userId,
+    displayName: userId,
+  })
+
+  it('user sees the shorter list after a removal, with no data-loss warning', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const cache = createCache()
+    const variables = { locationId: 'loc-k' }
+    cache.writeQuery({
+      query: PEOPLE,
+      variables,
+      data: { locationPeople: [row('a'), row('b')] },
+    })
+    cache.writeQuery({
+      query: PEOPLE,
+      variables,
+      data: { locationPeople: [row('a')] },
+    })
+
+    const read = cache.readQuery<{ locationPeople: { userId: string }[] }>({
+      query: PEOPLE,
+      variables,
+    })
+    expect(read?.locationPeople.map((p) => p.userId)).toEqual(['a'])
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('two locations keep their own lists', () => {
+    // A control: the policy must not drop the `locationId` from the key
+    const cache = createCache()
+    cache.writeQuery({
+      query: PEOPLE,
+      variables: { locationId: 'loc-k' },
+      data: { locationPeople: [row('a')] },
+    })
+    cache.writeQuery({
+      query: PEOPLE,
+      variables: { locationId: 'loc-g' },
+      data: { locationPeople: [row('b'), row('c')] },
+    })
+    const read = (locationId: string) =>
+      cache
+        .readQuery<{ locationPeople: { userId: string }[] }>({
+          query: PEOPLE,
+          variables: { locationId },
+        })
+        ?.locationPeople.map((p) => p.userId)
+    expect(read('loc-k')).toEqual(['a'])
+    expect(read('loc-g')).toEqual(['b', 'c'])
+  })
+})
+
+// Households H6, task J.5: the activity log comes in pages (decision T54).
+// "Load more" sends `before:` the last id and must ADD its rows. A refetch
+// after a live event sends the first page again (the watched query keeps its
+// first variables) and must put the new rows on top, without losing the
+// pages already loaded and without showing a row twice.
+describe('createCache — householdActivity joins its pages', () => {
+  const ACTIVITY = gql`
+    query HouseholdActivity($before: ID, $first: Int) {
+      householdActivity(before: $before, first: $first) {
+        id
+        createdAt
+      }
+    }
+  `
+  // Newest first. Rows `a` and `b` have the SAME time, as two writes in one
+  // millisecond would; the server orders them by id.
+  const TIMES: Record<string, string> = {
+    x: '2026-11-20T10:09:00.000Z',
+    y: '2026-11-20T10:08:00.000Z',
+    a: '2026-11-20T10:07:00.000Z',
+    b: '2026-11-20T10:07:00.000Z',
+    c: '2026-11-20T10:06:00.000Z',
+    d: '2026-11-20T10:05:00.000Z',
+    e: '2026-11-20T10:04:00.000Z',
+  }
+  const row = (id: string) => ({
+    __typename: 'HouseholdActivityEntry',
+    id,
+    createdAt: TIMES[id],
+  })
+
+  function write(
+    cache: ReturnType<typeof createCache>,
+    variables: { before?: string; first: number },
+    ids: string[],
+  ) {
+    cache.writeQuery({
+      query: ACTIVITY,
+      variables,
+      data: { householdActivity: ids.map(row) },
+    })
+  }
+
+  function read(cache: ReturnType<typeof createCache>) {
+    return cache
+      .readQuery<{ householdActivity: { id: string }[] }>({
+        query: ACTIVITY,
+        variables: { first: 2 },
+      })
+      ?.householdActivity.map((r) => r.id)
+  }
+
+  it('user can load more and sees the next page after the first', () => {
+    const cache = createCache()
+    write(cache, { first: 2 }, ['a', 'b'])
+    write(cache, { before: 'b', first: 2 }, ['c', 'd'])
+    expect(read(cache)).toEqual(['a', 'b', 'c', 'd'])
+  })
+
+  it('user sees a new row on top after a refetch, and keeps the pages already loaded', () => {
+    // Given two pages are shown
+    const cache = createCache()
+    write(cache, { first: 2 }, ['a', 'b'])
+    write(cache, { before: 'b', first: 2 }, ['c', 'd'])
+
+    // When a live event reads the first page again, and one row is new
+    write(cache, { first: 2 }, ['x', 'a'])
+
+    // Then the new row is on top, and no row is lost or shown twice
+    expect(read(cache)).toEqual(['x', 'a', 'b', 'c', 'd'])
+  })
+
+  it('a refetch with the same rows changes nothing', () => {
+    const cache = createCache()
+    write(cache, { first: 2 }, ['a', 'b'])
+    write(cache, { before: 'b', first: 2 }, ['c'])
+    write(cache, { first: 2 }, ['a', 'b'])
+    expect(read(cache)).toEqual(['a', 'b', 'c'])
+  })
+
+  it('a refetch that is all new rows replaces the list, so there is no gap', () => {
+    // Given one page [a, b] is shown
+    const cache = createCache()
+    write(cache, { first: 2 }, ['a', 'b'])
+
+    // When two new rows arrived, so the first page is now [x, y]. The rows
+    // between y and a are not known, so a and b cannot stay below y.
+    write(cache, { first: 2 }, ['x', 'y'])
+
+    // Then the list is the new page; "Load more" brings a and b back
+    expect(read(cache)).toEqual(['x', 'y'])
+  })
+
+  it('a page loaded after a refetch goes after the row it was asked for', () => {
+    // Given [x, a, b] after a refetch
+    const cache = createCache()
+    write(cache, { first: 2 }, ['a', 'b'])
+    write(cache, { first: 2 }, ['x', 'a'])
+    expect(read(cache)).toEqual(['x', 'a', 'b'])
+
+    // When the next two pages arrive
+    write(cache, { before: 'b', first: 2 }, ['c', 'd'])
+    write(cache, { before: 'd', first: 2 }, ['e'])
+
+    // Then every row shows once, in order
+    expect(read(cache)).toEqual(['x', 'a', 'b', 'c', 'd', 'e'])
+  })
+
+  it('a page asked after a row the list no longer holds is dropped, so there is no gap', () => {
+    // A late "Load more" answer that arrives after a refetch replaced the
+    // list: its `before` row is gone, so the rows between are not known.
+    const cache = createCache()
+    write(cache, { first: 2 }, ['x', 'y'])
+    write(cache, { before: 'b', first: 2 }, ['c', 'd'])
+    expect(read(cache)).toEqual(['x', 'y'])
+  })
+})
+
+describe('both Apollo clients send the shown household (households H7 task L.3)', () => {
+  // Decision T66: the server compares this header with the household the
+  // person acts in, and refuses a stale tab with HOUSEHOLD_CHANGED (T67).
+  const HOUSEHOLD_PROBE = gql`
+    query HouseholdProbe {
+      householdProbe
+    }
+  `
+
+  function okFetch() {
+    return vi.fn(
+      async () =>
+        new Response(JSON.stringify({ data: { householdProbe: 'ok' } }), {
+          headers: { 'content-type': 'application/json' },
+        }),
+    )
+  }
+
+  function householdHeaders(fetchMock: ReturnType<typeof vi.fn>) {
+    return (fetchMock.mock.calls as unknown as [string, RequestInit][]).map(
+      (call) => new Headers(call[1].headers).get('x-household-id'),
+    )
+  }
+
+  // Earlier tests in this file already sent requests, and the shown id is
+  // read once per page load. Start each test as a new page load.
+  beforeEach(() => {
+    localStorage.clear()
+    resetHouseholdGuardForTests()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    localStorage.clear()
+    resetHouseholdGuardForTests()
+  })
+
+  it.each([
+    ['production', () => createApolloClient(async () => null)],
+    ['e2e', () => createApolloClientForE2E('e2e-user')],
+  ])('%s client sends x-household-id from the stored id', async (_name, makeClient) => {
+    // Given this device last showed household A
+    localStorage.setItem(LAST_HOUSEHOLD_ID_KEY, 'hh-a')
+    const fetchMock = okFetch()
+    vi.stubGlobal('fetch', fetchMock)
+    setOnLine(true)
+    const client = makeClient()
+    try {
+      // When the client sends a query
+      await client.query({
+        query: HOUSEHOLD_PROBE,
+        fetchPolicy: 'network-only',
+      })
+
+      // Then the request names household A
+      expect(householdHeaders(fetchMock)).toEqual(['hh-a'])
+    } finally {
+      await client.clearStore()
+    }
+  })
+
+  it.each([
+    ['production', () => createApolloClient(async () => null)],
+    ['e2e', () => createApolloClientForE2E('e2e-user')],
+  ])('%s client sends no x-household-id when no id is stored', async (_name, makeClient) => {
+    // Given a device that has shown no household yet
+    const fetchMock = okFetch()
+    vi.stubGlobal('fetch', fetchMock)
+    setOnLine(true)
+    const client = makeClient()
+    try {
+      await client.query({
+        query: HOUSEHOLD_PROBE,
+        fetchPolicy: 'network-only',
+      })
+
+      // Then there is no such header at all, not an empty one
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(householdHeaders(fetchMock)).toEqual([null])
+    } finally {
+      await client.clearStore()
+    }
+  })
+
+  it('keeps the household this page showed when another tab stores a new one', async () => {
+    // Given this page loaded showing household A
+    localStorage.setItem(LAST_HOUSEHOLD_ID_KEY, 'hh-a')
+    const fetchMock = okFetch()
+    vi.stubGlobal('fetch', fetchMock)
+    setOnLine(true)
+    const client = createApolloClient(async () => null)
+    try {
+      await client.query({
+        query: HOUSEHOLD_PROBE,
+        fetchPolicy: 'network-only',
+      })
+
+      // When another tab switches to B (it writes the shared key, then
+      // reloads itself)
+      localStorage.setItem(LAST_HOUSEHOLD_ID_KEY, 'hh-b')
+      await client.query({
+        query: HOUSEHOLD_PROBE,
+        fetchPolicy: 'network-only',
+      })
+
+      // Then this page still says it shows A, so the server can refuse it.
+      // Sending B would make the server answer B's data to a page of A.
+      expect(householdHeaders(fetchMock)).toEqual(['hh-a', 'hh-a'])
+
+      // And when this page itself moves to C, the header follows
+      setLastHouseholdId('hh-c')
+      await client.query({
+        query: HOUSEHOLD_PROBE,
+        fetchPolicy: 'network-only',
+      })
+      expect(householdHeaders(fetchMock)).toEqual(['hh-a', 'hh-a', 'hh-c'])
+    } finally {
+      await client.clearStore()
+    }
+  })
+})
+
+describe('both Apollo clients start the recovery on HOUSEHOLD_CHANGED (households H7 task L.3)', () => {
+  const REFUSED_PROBE = gql`
+    query RefusedProbe {
+      refusedProbe
+    }
+  `
+
+  function refusingFetch(code: string) {
+    return vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            data: null,
+            errors: [{ message: 'refused', extensions: { code } }],
+          }),
+          { headers: { 'content-type': 'application/json' } },
+        ),
+    )
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    recoverMock.mockClear()
+  })
+
+  it.each([
+    ['production', () => createApolloClient(async () => null)],
+    ['e2e', () => createApolloClientForE2E('e2e-user')],
+  ])('%s client calls the recovery once for a HOUSEHOLD_CHANGED answer', async (_name, makeClient) => {
+    vi.stubGlobal('fetch', refusingFetch('HOUSEHOLD_CHANGED'))
+    setOnLine(true)
+    const client = makeClient()
+    try {
+      // When the server refuses a query because the household changed
+      await expect(
+        client.query({ query: REFUSED_PROBE, fetchPolicy: 'network-only' }),
+      ).rejects.toThrow('refused')
+
+      // Then the recovery runs once, with this client, and the error still
+      // reaches the caller (the operation is not sent again)
+      expect(recoverMock).toHaveBeenCalledTimes(1)
+      expect(recoverMock).toHaveBeenCalledWith(client)
+    } finally {
+      await client.clearStore()
+    }
+  })
+
+  it('does not call the recovery for FORBIDDEN', async () => {
+    vi.stubGlobal('fetch', refusingFetch('FORBIDDEN'))
+    setOnLine(true)
+    const client = createApolloClient(async () => null)
+    try {
+      await expect(
+        client.query({ query: REFUSED_PROBE, fetchPolicy: 'network-only' }),
+      ).rejects.toThrow('refused')
+
+      // A low role is not a household change
+      expect(recoverMock).not.toHaveBeenCalled()
+    } finally {
+      await client.clearStore()
+    }
   })
 })

@@ -25,6 +25,7 @@ import {
   getLocationsMock,
   LOC_A,
   LOC_B,
+  markLocationVisitedMock,
 } from '@/test/cloudFixtures'
 
 // Five hooks stay REAL and are served by `MockedProvider` — the locations, the
@@ -108,6 +109,7 @@ const addMock = {
 
 const MOCKS = [
   bootstrapCartsMock,
+  markLocationVisitedMock,
   getLocationsMock,
   getRiceMock,
   riceStocksMock,

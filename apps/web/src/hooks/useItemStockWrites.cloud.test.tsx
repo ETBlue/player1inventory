@@ -1,3 +1,4 @@
+import { useApolloClient } from '@apollo/client/react'
 import {
   MockedProvider,
   type MockedProviderProps,
@@ -7,10 +8,15 @@ import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  ApplyUnitSwitchDocument,
   CreateItemDocument,
   GetItemsDocument,
+  GetLocationsDocument,
+  GetRecipesDocument,
+  type GetRecipesQuery,
   ItemStocksForItemDocument,
   PantryDataDocument,
+  type PantryDataQuery,
   UpdateItemDocument,
   UpsertItemStockDocument,
 } from '@/generated/graphql'
@@ -22,15 +28,22 @@ import {
   getLocationsMock,
   LOC_A,
   LOC_B,
+  markLocationVisitedMock,
 } from '@/test/cloudFixtures'
 import { DEFAULT_LOCATION_ID } from '@/types'
 import {
   ActiveLocationProvider,
   activeLocationStorageKey,
 } from './useActiveLocation'
+import { NoCloudLocationError } from './useCloudLocationId'
 import * as dataModeHooks from './useDataMode'
 import { useItemStocks } from './useItemStocks'
-import { useCreateItem, useStockedItems, useUpdateItem } from './useItems'
+import {
+  useApplyUnitSwitch,
+  useCreateItem,
+  useStockedItems,
+  useUpdateItem,
+} from './useItems'
 
 // The REAL generated hooks, driven through `MockedProvider` with the real
 // documents. `src/test/setup.ts` stubs every generated hook, and a stubbed
@@ -100,12 +113,21 @@ const stocksIn = (locationId: string) =>
 const rowAt = (itemId: string, locationId: string) =>
   stocks.find((s) => s.itemId === itemId && s.locationId === locationId)
 
+// When true, every `PantryData` read fails with a GraphQL error. The write
+// before it still lands, so a failed READ can be told apart from a failed save.
+let failPantry = false
+
 const pantryMock = (locationId: string) => ({
   request: { query: PantryDataDocument, variables: { locationId } },
   maxUsageCount: Number.POSITIVE_INFINITY,
-  result: () => ({
-    data: { items: catalog, itemStocks: stocksIn(locationId) },
-  }),
+  result: () =>
+    failPantry
+      ? {
+          errors: [
+            { message: 'down', extensions: { code: 'INTERNAL_SERVER_ERROR' } },
+          ],
+        }
+      : { data: { items: catalog, itemStocks: stocksIn(locationId) } },
 })
 
 const getItemsMock = {
@@ -206,8 +228,27 @@ const createItemMock = {
   },
 }
 
+const getRecipesMock = {
+  request: { query: GetRecipesDocument },
+  maxUsageCount: Number.POSITIVE_INFINITY,
+  result: () => {
+    count('GetRecipes')
+    return { data: { recipes: [] } }
+  },
+}
+
+const applyUnitSwitchMock = {
+  request: { query: ApplyUnitSwitchDocument, variables: () => true },
+  maxUsageCount: Number.POSITIVE_INFINITY,
+  result: () => {
+    count('ApplyUnitSwitch')
+    return { data: { applyUnitSwitch: pick(MILK, ['createdAt']) } }
+  },
+}
+
 const MOCKS = [
   bootstrapCartsMock,
+  markLocationVisitedMock,
   getLocationsMock,
   getItemsMock,
   pantryMock(LOC_A),
@@ -245,6 +286,7 @@ describe('cloud stock writes go to one location', () => {
     catalog = [MILK, RICE]
     stocks = [MILK_A, MILK_B, RICE_B]
     served = {}
+    failPantry = false
   })
 
   it('user editing stock saves it to the ACTIVE location only', async () => {
@@ -425,7 +467,7 @@ describe('cloud stock writes go to one location', () => {
       localStorage.removeItem(activeLocationStorageKey('cloud'))
     })
 
-    it('user creating an item has it stocked in the real default location', async () => {
+    it('user creating an item has it stocked in the first cloud location', async () => {
       // Given a brand-new cloud session with no remembered location
       const { result } = renderHook(() => useCreateItem(), {
         wrapper: makeWrapper(),
@@ -444,7 +486,7 @@ describe('cloud stock writes go to one location', () => {
         unpackedQuantity: 0,
       })
 
-      // Then the stock landed in the isDefault location — NOT under the
+      // Then the stock landed in the first location — NOT under the
       // `'local'` sentinel, which names no cloud Location and whose upsert the
       // server refuses
       expect(rowAt('item-new', LOC_A)?.targetQuantity).toBe(3)
@@ -453,7 +495,7 @@ describe('cloud stock writes go to one location', () => {
       expect(created?.locationId).toBe(LOC_A)
     })
 
-    it('user editing stock has it written to the real default location', async () => {
+    it('user editing stock has it written to the first cloud location', async () => {
       // Given the same fresh session
       const { result } = renderHook(() => useUpdateItem(), {
         wrapper: makeWrapper(),
@@ -470,5 +512,330 @@ describe('cloud stock writes go to one location', () => {
       expect(rowAt('item-milk', LOC_B)?.packedQuantity).toBe(6)
       expect(rowAt('item-milk', DEFAULT_LOCATION_ID)).toBeUndefined()
     })
+  })
+})
+
+// ── A household with NO location ──────────────────────────────────────────────
+//
+// Real since households H5 task F.7: the last location can be deleted, and a
+// member can be added with no location role. `useCloudLocationId` then answers
+// `undefined`. Review of task F.8, finding N1: the three hooks below each
+// handle that answer, and no test reached any of the three branches.
+describe('cloud writes in a household with no location', () => {
+  const emptyLocations = {
+    request: { query: GetLocationsDocument },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+    result: { data: { locations: [] } },
+  }
+  // Every UpsertItemStock is answered and counted, WHATEVER its location
+  // (`undefined` included). A mock that matched only a real location would
+  // turn a stray write into a link error, which looks like any other failure.
+  const anyUpsert = {
+    request: { query: UpsertItemStockDocument, variables: () => true },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+    result: (vars: Record<string, unknown>) => {
+      count('UpsertItemStock')
+      return {
+        data: {
+          upsertItemStock: cloudStock(
+            'stock-stray',
+            vars.itemId as string,
+            String(vars.locationId),
+            {
+              targetQuantity: 0,
+              refillThreshold: 0,
+              packedQuantity: 0,
+              unpackedQuantity: 0,
+            },
+          ),
+        },
+      }
+    },
+  }
+  // Every PantryData request is counted, whatever its variables, so "no
+  // pantry refetch was sent" can be checked.
+  const anyPantry = {
+    request: { query: PantryDataDocument, variables: () => true },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+    result: () => {
+      count('PantryData')
+      return { data: { items: catalog, itemStocks: [] } }
+    },
+  }
+  const NO_LOCATION_MOCKS = [
+    emptyLocations,
+    getItemsMock,
+    anyPantry,
+    anyUpsert,
+    updateItemMock,
+    createItemMock,
+    getRecipesMock,
+    applyUnitSwitchMock,
+  ]
+
+  beforeEach(() => {
+    vi.mocked(dataModeHooks.useDataMode).mockReturnValue({
+      mode: 'cloud',
+      setMode: vi.fn(),
+    })
+    localStorage.clear()
+    catalog = [MILK, RICE]
+    stocks = []
+    served = {}
+  })
+
+  it('user creating an item with no location gets it in the catalog only', async () => {
+    // Given a household whose location list has loaded and is empty
+    const { result } = renderHook(() => useCreateItem(), {
+      wrapper: makeWrapper(NO_LOCATION_MOCKS),
+    })
+
+    // When the user creates an item (not catalogOnly: a page that would
+    // normally stock it here)
+    const created = await result.current.mutateAsync({
+      name: 'Oat milk',
+      tagIds: [],
+      vendorIds: [],
+      targetUnit: 'package',
+      targetQuantity: 3,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+    })
+
+    // Then the item is in the catalog, and no stock write was sent at all
+    expect(served.CreateItem).toBe(1)
+    expect(catalog.map((i) => i.name)).toContain('Oat milk')
+    expect(served.UpsertItemStock).toBeUndefined()
+    expect(created?.name).toBe('Oat milk')
+    expect(created?.stockId).toBeUndefined()
+  })
+
+  it('user saving a name and a quantity with no location sends nothing', async () => {
+    // Given the same empty household
+    const { result } = renderHook(() => useUpdateItem(), {
+      wrapper: makeWrapper(NO_LOCATION_MOCKS),
+    })
+
+    // When one save carries a configuration change AND a stock field
+    const save = result.current.mutateAsync({
+      id: 'item-milk',
+      updates: { name: 'Whole milk', packedQuantity: 9 },
+    })
+
+    // Then it fails with NoCloudLocationError, and the location was resolved
+    // BEFORE the configuration write: the rename was not sent either
+    await expect(save).rejects.toBeInstanceOf(NoCloudLocationError)
+    expect(served.UpdateItem).toBeUndefined()
+    expect(served.UpsertItemStock).toBeUndefined()
+    expect(catalog.find((i) => i.id === 'item-milk')?.name).toBe('Milk')
+  })
+
+  it('user switching units with no location skips only the pantry refetch', async () => {
+    // Given the same empty household
+    const { result } = renderHook(() => useApplyUnitSwitch(), {
+      wrapper: makeWrapper(NO_LOCATION_MOCKS),
+    })
+
+    // When a unit switch with no stock rows is saved
+    await result.current.mutateAsync({
+      itemId: 'item-milk',
+      updates: { targetUnit: 'measurement' },
+      stockConversions: [],
+      recipeUpdates: [],
+    })
+
+    // Then the switch was sent, the catalog and recipes were refetched, and
+    // no PantryData request was sent (there is no location to name)
+    expect(served.ApplyUnitSwitch).toBe(1)
+    expect(served.GetRecipes).toBeGreaterThanOrEqual(1)
+    expect(served.PantryData).toBeUndefined()
+  })
+})
+
+// ── A failed read after a saved write ─────────────────────────────────────────
+//
+// The server saved the write, then the pantry list could not be read again (a
+// weak connection, for example). The call must still resolve: the screen must
+// not show a saved write as failed (docs/global/bugs/
+// 2026-11-18-bug-failed-refetch-rejects-saved-write.md). A failed WRITE must
+// still reject. And the call must still WAIT for the read, because callers
+// work out values again from the fresh lists after their `await`.
+describe('cloud stock writes whose refresh fails', () => {
+  const NEW_ITEM_INPUT = {
+    name: 'Oat milk',
+    tagIds: [],
+    vendorIds: [],
+    targetUnit: 'package' as const,
+    targetQuantity: 3,
+    refillThreshold: 1,
+    packedQuantity: 0,
+    unpackedQuantity: 0,
+  }
+  const SWITCH_MOCKS = [...MOCKS, getRecipesMock, applyUnitSwitchMock]
+
+  beforeEach(() => {
+    vi.mocked(dataModeHooks.useDataMode).mockReturnValue({
+      mode: 'cloud',
+      setMode: vi.fn(),
+    })
+    localStorage.clear()
+    localStorage.setItem(activeLocationStorageKey('cloud'), LOC_A)
+    catalog = [MILK, RICE]
+    stocks = [MILK_A, MILK_B, RICE_B]
+    served = {}
+    failPantry = false
+  })
+
+  /**
+   * The pantry's stock rows for one location, as the cache holds them now.
+   * `returnPartialData`, because the created item's catalog row in this
+   * fixture lacks some fields `PantryData` selects; only `itemStocks` matters.
+   */
+  function cachedPantry(
+    client: ReturnType<typeof useApolloClient>,
+    locationId: string,
+  ) {
+    return client.cache.diff<PantryDataQuery>({
+      query: PantryDataDocument,
+      variables: { locationId },
+      returnPartialData: true,
+      optimistic: false,
+    }).result?.itemStocks
+  }
+
+  it("user's new item is not shown as failed when the refresh after it fails", async () => {
+    // Given the pantry list cannot be read
+    failPantry = true
+    const { result } = renderHook(() => useCreateItem(), {
+      wrapper: makeWrapper(),
+    })
+
+    // When the user creates an item, which the server saves
+    const created = await result.current.mutateAsync(NEW_ITEM_INPUT)
+
+    // Then the call resolves with the saved row, not an error
+    expect(created?.stockId).toBe(`stock-item-new-${LOC_A}`)
+    expect(rowAt('item-new', LOC_A)?.targetQuantity).toBe(3)
+  })
+
+  it("user's saved stock change is not shown as failed when the refresh fails", async () => {
+    // Given the pantry list cannot be read
+    failPantry = true
+    const { result } = renderHook(() => useUpdateItem(), {
+      wrapper: makeWrapper(),
+    })
+
+    // When the user saves 9 packed, which the server saves
+    await result.current.mutateAsync({
+      id: 'item-milk',
+      updates: { packedQuantity: 9 },
+    })
+
+    // Then the call resolved, and the row moved
+    expect(rowAt('item-milk', LOC_A)?.packedQuantity).toBe(9)
+  })
+
+  it("user's unit switch is not shown as failed when the refresh fails", async () => {
+    // Given the pantry list cannot be read
+    failPantry = true
+    const { result } = renderHook(() => useApplyUnitSwitch(), {
+      wrapper: makeWrapper(SWITCH_MOCKS),
+    })
+
+    // When the user confirms a unit switch, which the server saves
+    await result.current.mutateAsync({
+      itemId: 'item-milk',
+      updates: { targetUnit: 'measurement' },
+      stockConversions: [],
+      recipeUpdates: [],
+    })
+
+    // Then the call resolved, and the switch was sent once
+    expect(served.ApplyUnitSwitch).toBe(1)
+  })
+
+  it('a failed stock write still rejects', async () => {
+    // Given a server that refuses the stock write
+    const refused = {
+      request: { query: UpsertItemStockDocument, variables: () => true },
+      maxUsageCount: Number.POSITIVE_INFINITY,
+      result: {
+        errors: [{ message: 'no', extensions: { code: 'FORBIDDEN' } }],
+      },
+    }
+    const { result } = renderHook(() => useUpdateItem(), {
+      wrapper: makeWrapper([
+        bootstrapCartsMock,
+        markLocationVisitedMock,
+        getLocationsMock,
+        pantryMock(LOC_A),
+        refused,
+      ]),
+    })
+
+    // When the user saves a quantity
+    const save = result.current.mutateAsync({
+      id: 'item-milk',
+      updates: { packedQuantity: 9 },
+    })
+
+    // Then the call rejects
+    await expect(save).rejects.toThrow('no')
+  })
+
+  // Controls: the call still WAITS for the read. Nothing below is mounted
+  // except the hook, so the only thing that can fill the cache is the
+  // refetch the hook awaits.
+  it('a create resolves only after the pantry list has been read again', async () => {
+    const { result } = renderHook(
+      () => ({ create: useCreateItem(), client: useApolloClient() }),
+      { wrapper: makeWrapper() },
+    )
+
+    await result.current.create.mutateAsync(NEW_ITEM_INPUT)
+
+    expect(
+      cachedPantry(result.current.client, LOC_A)?.map((s) => s.itemId),
+    ).toContain('item-new')
+  })
+
+  it('a stock edit resolves only after the pantry list has been read again', async () => {
+    const { result } = renderHook(
+      () => ({ update: useUpdateItem(), client: useApolloClient() }),
+      { wrapper: makeWrapper() },
+    )
+
+    await result.current.update.mutateAsync({
+      id: 'item-milk',
+      updates: { packedQuantity: 9 },
+    })
+
+    expect(
+      cachedPantry(result.current.client, LOC_A)?.find(
+        (s) => s.itemId === 'item-milk',
+      )?.packedQuantity,
+    ).toBe(9)
+  })
+
+  it('a unit switch resolves only after the lists have been read again', async () => {
+    const { result } = renderHook(
+      () => ({ apply: useApplyUnitSwitch(), client: useApolloClient() }),
+      { wrapper: makeWrapper(SWITCH_MOCKS) },
+    )
+
+    await result.current.apply.mutateAsync({
+      itemId: 'item-milk',
+      updates: { targetUnit: 'measurement' },
+      stockConversions: [],
+      recipeUpdates: [],
+    })
+
+    expect(cachedPantry(result.current.client, LOC_A)).toHaveLength(1)
+    expect(
+      result.current.client.readQuery<GetRecipesQuery>({
+        query: GetRecipesDocument,
+      })?.recipes,
+    ).toEqual([])
   })
 })

@@ -2,14 +2,12 @@ type TagType {
   id: ID!
   name: String!
   color: String!
-  userId: String!
 }
 
 type Tag {
   id: ID!
   name: String!
   typeId: String!
-  userId: String!
   parentId: String
 }
 

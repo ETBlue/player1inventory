@@ -119,17 +119,19 @@ async function seedItem(
 }
 
 // Prevent empty-data redirect to /onboarding so tests can navigate freely.
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async ({ page, request, baseURL }) => {
+  // Cloud mode: start from a clean account. The cleanup runs here only, not
+  // in afterEach (E2E speed plan, decision D7).
+  if (baseURL === CLOUD_WEB_URL) await cleanupCloudData(request)
   await page.addInitScript(() => {
     localStorage.setItem('e2e-skip-onboarding', 'true')
   })
 })
 
-test.afterEach(async ({ page, request, baseURL }) => {
-  if (baseURL === CLOUD_WEB_URL) {
-    // Cloud mode: delete all test data from the database via the E2E cleanup endpoint.
-    await cleanupCloudData(request)
-  } else {
+test.afterEach(async ({ page, baseURL }) => {
+  // Cloud mode: nothing to clean here. Each test cleans up in its own
+  // beforeEach (E2E speed plan, decision D7).
+  if (baseURL !== CLOUD_WEB_URL) {
     // Local mode: clear IndexedDB, localStorage, and sessionStorage.
     await page.goto('/')
     await page.evaluate(async () => {

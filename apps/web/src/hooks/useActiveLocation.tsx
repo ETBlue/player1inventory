@@ -9,10 +9,18 @@ import {
   useRef,
   useState,
 } from 'react'
+import { toast } from 'sonner'
 import { bootstrapCarts, getLocations } from '@/db/operations'
-import { useBootstrapCartsMutation } from '@/generated/graphql'
+import {
+  type LocationRole,
+  useBootstrapCartsMutation,
+  useMarkLocationVisitedMutation,
+} from '@/generated/graphql'
 import { useLocations } from '@/hooks/useLocations'
+import i18n from '@/i18n'
 import type { DataMode } from '@/lib/dataMode'
+import { locationRoleAtLeast } from '@/lib/locationRole'
+import { registerSeenLocations } from '@/lib/seenLocations'
 import { DEFAULT_LOCATION_ID, type Location } from '@/types'
 import { useDataMode } from './useDataMode'
 
@@ -90,7 +98,7 @@ export async function resolveLocalActiveLocationId(): Promise<string> {
   const locations = await getLocations()
   if (locations.some((loc) => loc.id === stored)) return stored
   return (
-    locations.find((loc) => loc.isDefault)?.id ??
+    locations.find((loc) => loc.isDefault === true)?.id ??
     locations[0]?.id ??
     DEFAULT_LOCATION_ID
   )
@@ -107,12 +115,13 @@ const ActiveLocationContext = createContext<ActiveLocationContextValue | null>(
 )
 
 export function ActiveLocationProvider({ children }: { children: ReactNode }) {
-  const { data: locations } = useLocations()
+  const { data: locations, isFromServer } = useLocations()
   const { mode } = useDataMode()
   const queryClient = useQueryClient()
   // Always called (Rules of Hooks). Safe in local mode: main.tsx wraps every
   // render with a no-op ApolloProvider, and the cloud effect below never fires.
   const [cloudBootstrapCarts] = useBootstrapCartsMutation()
+  const [cloudMarkVisited] = useMarkLocationVisitedMutation()
   const [activeLocationId, setActiveLocationIdState] = useState<string>(() =>
     readStoredLocationId(mode),
   )
@@ -144,9 +153,71 @@ export function ActiveLocationProvider({ children }: { children: ReactNode }) {
     [mode],
   )
 
+  // ── THE LOST-ACCESS NOTICE (households H5c task H.7, owner decision O27-A,
+  // decision T45) ──
+  //
+  // When the active location leaves the list, the person lost it: someone
+  // removed their role, they left it, or it was deleted. The effect below
+  // moves the tab. It also shows one toast, `common.lostLocationAccess`, with
+  // the location's name as stored.
+  //
+  // The toast shows only for a location THIS tab has seen in a list the server
+  // sent during this page visit. `seenLocationsRef` (id → name) holds those.
+  // So:
+  // - a stored id from an earlier visit is not in it: no toast on a cold load;
+  // - a list the server has not confirmed in this mount is not recorded
+  //   (`isFromServer`): the restored cache, also when the first read failed
+  //   offline, can still name a location lost since the last visit;
+  // - the `'local'` sentinel is never in a cloud list;
+  // - a household switch reloads the page (`HouseholdChangeGuard`), so the
+  //   map starts empty. It is a ref, not module state, on purpose.
+  // Cloud only: local mode has no roles to lose.
+  //
+  // No toast for the person's OWN act (review of H.7): deleting a location
+  // and a `clear` import call `expectLocationLoss` (`lib/seenLocations.ts`)
+  // first, which puts the ids in `expectedLossRef`. Sign-out (`clearCache`)
+  // calls `forgetSeenLocations`, so the next person never reads this
+  // person's location name. A caller whose write fails takes its mark back.
+  // A mark that stays costs nothing: its location is gone for good (deleted,
+  // or replaced by a clear import), so its id never comes back.
+  //
+  // One loss shows one toast. The toast is in the same effect run that moves
+  // the tab off the lost id, so the next run no longer finds the loss. A
+  // second read of the same list, or React StrictMode running the effect
+  // again, finds the tab already moved. The id is also taken out of the map
+  // at the toast. No test can easily show why: `useLocations()` gives a new
+  // array on every render, so this effect runs on every render, and a render
+  // of higher priority could commit before the fallback update lands.
+  const seenLocationsRef = useRef<Map<string, string>>(new Map())
+  const expectedLossRef = useRef<Set<string>>(new Set())
+
+  useEffect(
+    () =>
+      registerSeenLocations({
+        expectLoss: (ids) => {
+          const marked = ids ? [...ids] : [...seenLocationsRef.current.keys()]
+          for (const id of marked) expectedLossRef.current.add(id)
+          return () => {
+            for (const id of marked) expectedLossRef.current.delete(id)
+          }
+        },
+        forget: () => {
+          // Every location seen so far is marked as expected, then the map is
+          // emptied. Marking, not only emptying: until the cache reset
+          // reaches this component, a render can record the old list again.
+          for (const id of seenLocationsRef.current.keys()) {
+            expectedLossRef.current.add(id)
+          }
+          seenLocationsRef.current.clear()
+        },
+      }),
+    [],
+  )
+
   // Once the location list has loaded, an active id matching none of its
   // entries is stale — a deleted location, or an id belonging to the other data
-  // mode — and falls back to the user's default location.
+  // mode — and falls back to the first location in cloud, the default in
+  // local.
   //
   // NO id is special-cased as always-valid. This effect used to return early
   // when the active id equalled `DEFAULT_LOCATION_ID`, which made the local
@@ -154,21 +225,68 @@ export function ActiveLocationProvider({ children }: { children: ReactNode }) {
   // it was never corrected and every location-scoped query came back empty —
   // a silently empty pantry rather than a cosmetic fallback.
   //
-  // The fallback target is the `isDefault` location, not the `'local'` literal:
-  // a cloud default's id is a server-generated cuid (see `Location.isDefault`).
+  // The fallback target, by mode:
+  //   - local: the `isDefault` row ("My Home"), then any row;
+  //   - cloud: the FIRST location. A household has no default location
+  //     (task 3.12) and cloud rows carry no `isDefault`. The server returns
+  //     the list by `order`, so "first" is the top row of the locations page.
+  // Never the `'local'` literal: in cloud it names nothing.
   //
-  // A list that has loaded but is EMPTY leaves the active id untouched: there
-  // is nothing to point at, and blanking it would discard the user's choice for
-  // the moment the list does arrive. An empty list is far more often transient
-  // (a refetch in flight, a failed cloud read) than a genuine "no locations" —
-  // local seeds a default on populate and the server creates one lazily.
+  // A CLOUD list that has loaded but is EMPTY clears the active id: the
+  // stored id is removed and the state goes back to the `'local'` sentinel,
+  // which names no cloud location. Since households H5 task F.7 an empty
+  // household is real (its last location was deleted, or a member was added
+  // with no location role), so the old id names a location that is gone or
+  // was never visible. `NoLocationsGate` shows the empty screen; when a
+  // location is created, the fallback below picks it.
+  //
+  // Until F.7 an empty list left the id untouched, with the reason "an empty
+  // list is usually transient". That is not true here: a refetch in flight
+  // and a failed read both keep `locations` as it was (or `undefined`), they
+  // do not give `[]`. `[]` is the server saying "no location".
+  //
+  // LOCAL mode keeps the old rule: local seeds a default location on
+  // populate and refuses to delete it, so an empty local list is not a real
+  // state, and nothing changes there.
   useEffect(() => {
     if (!locations) return
+    if (mode === 'cloud') {
+      const seen = seenLocationsRef.current
+      const expected = expectedLossRef.current
+      const stillThere = locations.some((loc) => loc.id === activeLocationId)
+      const lostName = stillThere ? undefined : seen.get(activeLocationId)
+      if (lostName !== undefined) {
+        seen.delete(activeLocationId)
+        if (!expected.has(activeLocationId)) {
+          toast.info(
+            i18n.t('common.lostLocationAccess', { location: lostName }),
+          )
+        }
+      }
+      if (isFromServer) {
+        for (const loc of locations) seen.set(loc.id, loc.name)
+      }
+    }
+    if (locations.length === 0) {
+      if (mode !== 'cloud') return
+      try {
+        localStorage.removeItem(activeLocationStorageKey(mode))
+      } catch {
+        // ignore write failures (e.g. private mode)
+      }
+      if (activeLocationId !== DEFAULT_LOCATION_ID) {
+        setActiveLocationIdState(DEFAULT_LOCATION_ID)
+      }
+      return
+    }
     if (locations.some((loc) => loc.id === activeLocationId)) return
     const fallbackId =
-      locations.find((loc) => loc.isDefault)?.id ?? locations[0]?.id
+      mode === 'cloud'
+        ? locations[0]?.id
+        : (locations.find((loc) => loc.isDefault === true)?.id ??
+          locations[0]?.id)
     if (fallbackId) setActiveLocationId(fallbackId)
-  }, [locations, activeLocationId, setActiveLocationId])
+  }, [mode, locations, isFromServer, activeLocationId, setActiveLocationId])
 
   // `getCart` is a pure read (see db/operations.ts) — it no longer creates a
   // missing cart on demand. Bootstrap the no-vendor + per-vendor carts for
@@ -206,7 +324,7 @@ export function ActiveLocationProvider({ children }: { children: ReactNode }) {
   //
   // Gated on the active id being in the LOADED location list. On a fresh cloud
   // session `activeLocationId` is still the `'local'` sentinel, which names no
-  // cloud `Location`, and `bootstrapCarts` asks for the `member` role on it —
+  // cloud `Location`, and `bootstrapCarts` asks for the `participant` location role on it —
   // so an ungated call is refused with FORBIDDEN and the carts are never
   // created. The validation effect above then corrects the id, this effect
   // re-runs with a real one, and the bootstrap lands. The list itself is the
@@ -236,16 +354,43 @@ export function ActiveLocationProvider({ children }: { children: ReactNode }) {
   const activeLocationIsKnown = !!locations?.some(
     (loc) => loc.id === activeLocationId,
   )
+  // `bootstrapCarts` creates rows, so the server asks `participant` for it. A
+  // location `viewer` would be refused with FORBIDDEN on every switch, so the
+  // call is made only where the caller may write (households H5 task F.6,
+  // decision T7). A viewer still READS the carts: `vendorCart` answers a
+  // viewer with an unsaved empty cart, and `allCarts` lists what exists.
+  // Read from the same list as `activeLocationIsKnown`, which carries
+  // `myRole`; a boolean again, for the same reason (see below).
+  const activeLocationIsWritable = locationRoleAtLeast(
+    (
+      locations?.find((loc) => loc.id === activeLocationId) as
+        | { myRole?: LocationRole | null }
+        | undefined
+    )?.myRole,
+    'participant',
+  )
   const bootstrappedRef = useRef<string | null>(null)
   useEffect(() => {
     if (mode !== 'cloud') return
     // A fresh cloud session still holds the `'local'` sentinel, which names no
-    // cloud `Location`; `bootstrapCarts` asks for the `member` role on it, so
+    // cloud `Location`; `bootstrapCarts` asks for the `participant` location role on it, so
     // an ungated call is refused with FORBIDDEN and the carts are never made.
     // The validation effect above corrects the id, and this effect then runs
     // again with a real one.
     if (!activeLocationIsKnown) return
     const key = `${mode}:${activeLocationId}`
+    // Not for a viewer. The ref still MOVES, to a viewer marker that is not
+    // `key`, with no call. So:
+    // - a switch back to the location before (participant, then viewer,
+    //   then the first again) bootstraps again, like any other switch. Until
+    //   the review of H5 task F.6 the ref stayed at the first location and
+    //   the second bootstrap never came;
+    // - if the role here rises to participant later, `key` is not the marker,
+    //   so the effect bootstraps then.
+    if (!activeLocationIsWritable) {
+      bootstrappedRef.current = `viewer:${key}`
+      return
+    }
     if (bootstrappedRef.current === key) return
     bootstrappedRef.current = key
     cloudBootstrapCarts({
@@ -254,7 +399,64 @@ export function ActiveLocationProvider({ children }: { children: ReactNode }) {
     }).catch((err) => {
       console.error('cloud bootstrapCarts failed', err)
     })
-  }, [mode, activeLocationId, activeLocationIsKnown, cloudBootstrapCarts])
+  }, [
+    mode,
+    activeLocationId,
+    activeLocationIsKnown,
+    activeLocationIsWritable,
+    cloudBootstrapCarts,
+  ])
+
+  // ── THE VISIT (households H7b, decision T80, owner decision O55-A) ──
+  //
+  // A location counts as visited when it BECOMES the active location: picked
+  // in the switcher, opened from a link, or picked by the app because the
+  // old one is gone. The first active location after a page load counts
+  // too. O55-A names "picked by the app", and opening the app on a location
+  // is a visit in the plain sense. The server writes at most once a minute
+  // per person and location (it answers `false` and writes nothing when the
+  // last visit is under 60 seconds old), so a reload or a burst of switches
+  // costs no extra rows.
+  //
+  // Cloud only: local mode has no visits (owner decision O54-B). Gated on
+  // the id being in the loaded list, like the cart bootstrap above: the
+  // `'local'` sentinel of a fresh session names no cloud location and would
+  // be refused with FORBIDDEN. A location in the list has a role, and the
+  // server asks only `viewer`, so a viewer's visit counts too.
+  //
+  // `visitedRef` holds the last id sent. The effect's deps are already
+  // stable (a boolean, not the `locations` array, which is new on every
+  // render; see the cart bootstrap), so the ref only covers the list going
+  // unknown and known again with the same active id, for example during the
+  // `resetStore()` at the end of an import. Without it that would send one
+  // more visit, which the server's 60-second rule then mostly skips. No test
+  // pins the ref: removing it leaves every test green. When the server wrote
+  // the visit, the cached
+  // `Location.lastVisitedAt` is set to now, so a list sorted by "Last
+  // visited" moves at once. A failed call changes nothing and is not
+  // retried; the next change of location sends again.
+  const visitedRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (mode !== 'cloud') return
+    if (!activeLocationIsKnown) return
+    if (visitedRef.current === activeLocationId) return
+    visitedRef.current = activeLocationId
+    const locationId = activeLocationId
+    cloudMarkVisited({
+      variables: { locationId },
+      update: (cache, { data }) => {
+        if (!data?.markLocationVisited) return
+        const id = cache.identify({ __typename: 'Location', id: locationId })
+        if (!id) return
+        cache.modify({
+          id,
+          fields: { lastVisitedAt: () => new Date().toISOString() },
+        })
+      },
+    }).catch(() => {
+      // A lost visit only moves a sort; nothing to tell the person.
+    })
+  }, [mode, activeLocationId, activeLocationIsKnown, cloudMarkVisited])
 
   const activeLocation = useMemo(
     () => locations?.find((loc) => loc.id === activeLocationId),

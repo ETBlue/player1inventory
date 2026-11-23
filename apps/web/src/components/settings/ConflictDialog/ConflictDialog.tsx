@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { DeleteButton } from '@/components/shared/DeleteButton'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -18,6 +19,22 @@ interface ConflictDialogProps {
   onReplace: () => void
   onClear: () => void
   onClose: () => void
+  /**
+   * Show "Clear & import". `false` for a household `manager`: `clear` is for
+   * the owner only (households design, *Import: owner and manager only*,
+   * Decision 27; H4 decision O7). Defaults to `true` (local mode, and the
+   * owner).
+   */
+  allowClear?: boolean
+  /**
+   * The household name, in cloud mode. When set, "Clear & import" does not
+   * run at once: it opens `DeleteButton`'s typed-name confirm, which works
+   * only when this name is typed EXACTLY (owner decision O40, households H6
+   * task K.0). `clear` deletes the same catalog as Clear household, so it
+   * asks the same way. Local mode has no household and passes nothing, so
+   * the button runs `onClear` with one press, as before.
+   */
+  clearConfirmName?: string
 }
 
 type EntityKey = keyof ConflictSummary
@@ -62,6 +79,8 @@ export function ConflictDialog({
   onReplace,
   onClear,
   onClose,
+  allowClear = true,
+  clearConfirmName,
 }: ConflictDialogProps) {
   const { t } = useTranslation()
 
@@ -107,9 +126,29 @@ export function ConflictDialog({
           <Button onClick={onReplace}>
             {t('settings.import.conflictDialog.replace')}
           </Button>
-          <Button variant="destructive" onClick={onClear}>
-            {t('settings.import.conflictDialog.clear')}
-          </Button>
+          {allowClear &&
+            (clearConfirmName === undefined ? (
+              <Button variant="destructive" onClick={onClear}>
+                {t('settings.import.conflictDialog.clear')}
+              </Button>
+            ) : (
+              <DeleteButton
+                trigger={t('settings.import.conflictDialog.clear')}
+                buttonVariant="destructive"
+                dialogTitle={t('settings.import.conflictDialog.clear')}
+                dialogDescription={t(
+                  'settings.import.conflictDialog.clearConfirmDescription',
+                )}
+                confirmLabel={t('settings.import.conflictDialog.clear')}
+                confirmName={clearConfirmName}
+                confirmNameLabel={t('settings.household.danger.typeName', {
+                  name: clearConfirmName,
+                })}
+                // `onClear` only starts the import. The card shows its
+                // progress and its errors, so this confirm closes at once.
+                onDelete={onClear}
+              />
+            ))}
         </DialogFooter>
       </DialogContent>
     </Dialog>

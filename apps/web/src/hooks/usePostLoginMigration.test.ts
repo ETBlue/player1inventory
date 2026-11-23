@@ -3,6 +3,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { createElement, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  resetHouseholdGuardForTests,
+  setLastHouseholdId,
+} from '@/apollo/householdGuard'
 import { bootstrapCarts, getAllItems, getLocations } from '@/db/operations'
 import { fetchLocalPayload } from '@/lib/exportData'
 import { importCloudData } from '@/lib/importData'
@@ -12,8 +16,14 @@ import {
   activeLocationStorageKey,
 } from './useActiveLocation'
 import {
+  COPY_INTO_HOUSEHOLD_KEY,
+  canCopyInto,
+  isCopyPromptPausedPath,
   MIGRATION_PROMPTED_KEY,
+  MIGRATION_SKIP_HOUSEHOLDS_KEY,
   MIGRATION_STRATEGY_KEY,
+  type MigrationHousehold,
+  skipCopyPromptIn,
   usePostLoginMigration,
 } from './usePostLoginMigration'
 
@@ -46,6 +56,67 @@ vi.mock('@/db/operations', () => ({
   bootstrapCarts: vi.fn().mockResolvedValue(undefined),
 }))
 
+// The household choice (households H7 task L.5). `householdServer` answers
+// `MyHouseholds`, `SetActiveHousehold` and `CreateHousehold` through the
+// factory below. The move itself (clear the cache, reload) is a spy, so the
+// test sees WHEN it is called and nothing reloads; it is tested in
+// `apollo/householdGuard.test.ts`.
+type ChoiceRow = {
+  __typename: 'HouseholdChoice'
+  id: string
+  name: string
+  role: 'owner' | 'manager' | 'member'
+  isActive: boolean
+}
+const { householdServer, switchMock } = vi.hoisted(() => ({
+  householdServer: {
+    myHouseholds: undefined as ChoiceRow[] | undefined,
+    setActive: vi.fn(),
+    create: vi.fn(),
+  },
+  switchMock: vi.fn(async (_id: string, _options?: { to?: string }) => {}),
+}))
+vi.mock('@/apollo/householdGuard', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@/apollo/householdGuard')>()
+  return { ...actual, switchToHousehold: switchMock }
+})
+
+function resetHouseholdServer() {
+  householdServer.myHouseholds = undefined
+  householdServer.setActive.mockReset()
+  householdServer.setActive.mockImplementation(
+    async ({ variables }: { variables: { householdId: string } }) => ({
+      data: {
+        setActiveHousehold: {
+          __typename: 'Household',
+          id: variables.householdId,
+          name: 'unused',
+          role: 'owner',
+        },
+      },
+    }),
+  )
+  householdServer.create.mockReset()
+  householdServer.create.mockResolvedValue({
+    data: {
+      createHousehold: {
+        __typename: 'Household',
+        id: 'hh-new',
+        name: 'Camp',
+        role: 'owner',
+      },
+    },
+  })
+  switchMock.mockReset()
+  switchMock.mockResolvedValue(undefined)
+}
+beforeEach(() => {
+  resetHouseholdServer()
+  sessionStorage.clear()
+  resetHouseholdGuardForTests()
+})
+
 // Provide a stable apolloClient object to prevent useEffect from re-firing on
 // every render. The global setup.ts mock returns a new object on each call,
 // which would cause the effect to re-run when React re-renders due to setState.
@@ -74,7 +145,7 @@ const mockGetLocationsQuery = vi.fn(() => ({
 }))
 
 function mockCloudLocations(
-  rows: { id: string; name: string; order: number; isDefault: boolean }[],
+  rows: { id: string; name: string; order: number }[],
 ) {
   mockGetLocationsQuery.mockReturnValue({
     data: {
@@ -105,13 +176,62 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     useReorderLocationsMutation: mutationStub,
     // `ActiveLocationProvider` calls this on every render (Rules of Hooks).
     useBootstrapCartsMutation: mutationStub,
+    // Households H7b task M.4: the switcher's sort and the visit.
+    useMyLocationSortQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useSetLocationSortMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useMarkLocationVisitedMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    // The household choice (task L.5). `householdServer` in this file
+    // answers them; see there.
+    useMyHouseholdsQuery: () => ({
+      data: householdServer.myHouseholds
+        ? { myHouseholds: householdServer.myHouseholds }
+        : undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useSetActiveHouseholdMutation: () => [householdServer.setActive, {}],
+    useCreateHouseholdMutation: () => [householdServer.create, {}],
   }
 })
 
 // The hook takes auth as an argument now — it no longer calls Clerk's
 // `useAuth()` itself. `PostLoginMigrationDialog` is where the Clerk/E2E split
 // lives, so every test here passes a signed-in session directly.
-const SIGNED_IN = { isLoaded: true, isSignedIn: true }
+//
+// Since owner decision O22-A it also takes the household the stored copy would
+// go into. Most tests below are not about that confirm, so they act as the
+// OWNER of their household and press Copy here with `pressCopyHere`.
+const OWNER_HOUSEHOLD = {
+  id: 'household-own',
+  name: 'Our Home',
+  role: 'owner' as const,
+}
+const SIGNED_IN = {
+  isLoaded: true,
+  isSignedIn: true,
+  household: OWNER_HOUSEHOLD,
+}
+
+type HookResult = { current: ReturnType<typeof usePostLoginMigration> }
+
+// A stored strategy waits on "Copy your offline data into …?" (owner decision
+// O22-A). This waits for that dialog and presses Copy here.
+async function pressCopyHere(result: HookResult) {
+  await waitFor(() => expect(result.current.state).toBe('confirming'))
+  await act(async () => {
+    result.current.confirmCopy()
+  })
+}
 
 const mockFetchLocalPayload = vi.mocked(fetchLocalPayload)
 const mockImportCloudData = vi.mocked(importCloudData)
@@ -126,9 +246,19 @@ function forbiddenError() {
   })
 }
 
+// What a cloud import that skipped nothing resolves to.
+const NOTHING_SKIPPED = { skipped: { locationNames: [], rowCount: 0 } }
+
+// A payload that needs NO "Import into which location?" answer: it has a
+// `locations` and an `itemStocks` key, and no `'local'` row. Most tests below
+// are about the error states and the one-shot, not the dialog, so they use it.
+// Real local data always has `'local'`; `localPayload` below is that shape,
+// and the dialog tests use it (households H4 task E.4).
 const emptyPayload = {
   version: 1 as const,
   exportedAt: new Date().toISOString(),
+  locations: [],
+  itemStocks: [],
   items: [],
   tags: [],
   tagTypes: [],
@@ -188,10 +318,11 @@ describe('usePostLoginMigration — auto-import path', () => {
       Promise.reject(forbiddenError()),
     )
 
-    // When the hook mounts and runs the auto-import
+    // When the hook mounts, and the user presses Copy here
     const { result } = renderHook(() => usePostLoginMigration(SIGNED_IN), {
       wrapper,
     })
+    await pressCopyHere(result)
 
     // Then the state is 'error', not 'done', so the dialog can say so
     await waitFor(() => {
@@ -217,10 +348,11 @@ describe('usePostLoginMigration — auto-import path', () => {
       Promise.reject(new Error('resetStore failed: GraphQL error')),
     )
 
-    // When the hook mounts and runs the auto-import
+    // When the hook mounts, and the user presses Copy here
     const { result } = renderHook(() => usePostLoginMigration(SIGNED_IN), {
       wrapper,
     })
+    await pressCopyHere(result)
 
     // Then the state is 'error' and the message is carried through for the
     // generic sentence, with `forbidden` false — a plain Error saying anything
@@ -230,6 +362,7 @@ describe('usePostLoginMigration — auto-import path', () => {
     })
     expect(result.current.error).toEqual({
       forbidden: false,
+      role: false,
       message: 'resetStore failed: GraphQL error',
     })
   })
@@ -240,12 +373,13 @@ describe('usePostLoginMigration — auto-import path', () => {
 
     // And: both fetchLocalPayload and importCloudData resolve successfully
     mockFetchLocalPayload.mockResolvedValue(emptyPayload)
-    mockImportCloudData.mockResolvedValue(undefined)
+    mockImportCloudData.mockResolvedValue(NOTHING_SKIPPED)
 
-    // When: the hook mounts
+    // When: the hook mounts, and the user presses Copy here
     const { result } = renderHook(() => usePostLoginMigration(SIGNED_IN), {
       wrapper,
     })
+    await pressCopyHere(result)
 
     // Then: state transitions to 'done'
     await waitFor(() => {
@@ -323,11 +457,16 @@ describe('usePostLoginMigration — the auth argument gates everything', () => {
     vi.mocked(getAllItems).mockResolvedValue([])
     localStorage.setItem(MIGRATION_STRATEGY_KEY, 'clear')
     mockFetchLocalPayload.mockResolvedValue(emptyPayload)
-    mockImportCloudData.mockResolvedValue(undefined)
+    mockImportCloudData.mockResolvedValue(NOTHING_SKIPPED)
 
     // When the hook mounts with that session
     const { result } = renderHook(
-      () => usePostLoginMigration({ isLoaded: true, isSignedIn: false }),
+      () =>
+        usePostLoginMigration({
+          isLoaded: true,
+          isSignedIn: false,
+          household: OWNER_HOUSEHOLD,
+        }),
       { wrapper },
     )
 
@@ -343,11 +482,16 @@ describe('usePostLoginMigration — the auth argument gates everything', () => {
     vi.mocked(getAllItems).mockResolvedValue([])
     localStorage.setItem(MIGRATION_STRATEGY_KEY, 'clear')
     mockFetchLocalPayload.mockResolvedValue(emptyPayload)
-    mockImportCloudData.mockResolvedValue(undefined)
+    mockImportCloudData.mockResolvedValue(NOTHING_SKIPPED)
 
     // When the hook mounts
     const { result } = renderHook(
-      () => usePostLoginMigration({ isLoaded: false, isSignedIn: false }),
+      () =>
+        usePostLoginMigration({
+          isLoaded: false,
+          isSignedIn: false,
+          household: OWNER_HOUSEHOLD,
+        }),
       { wrapper },
     )
 
@@ -364,8 +508,8 @@ describe('usePostLoginMigration — the copy names no location', () => {
     // tests run in cloud mode, so the list comes from GetLocations.
     vi.mocked(getAllItems).mockResolvedValue([])
     mockCloudLocations([
-      { id: CLOUD_HOME_ID, name: 'My Home', order: 0, isDefault: true },
-      { id: CLOUD_OFFICE_ID, name: 'Office', order: 1, isDefault: false },
+      { id: CLOUD_HOME_ID, name: 'My Home', order: 0 },
+      { id: CLOUD_OFFICE_ID, name: 'Office', order: 1 },
     ])
   }
 
@@ -378,12 +522,13 @@ describe('usePostLoginMigration — the copy names no location', () => {
     localStorage.setItem(activeLocationStorageKey('local'), 'office')
     localStorage.setItem(MIGRATION_STRATEGY_KEY, 'skip')
     mockFetchLocalPayload.mockResolvedValue(emptyPayload)
-    mockImportCloudData.mockResolvedValue(undefined)
+    mockImportCloudData.mockResolvedValue(NOTHING_SKIPPED)
 
-    // When the hook mounts and runs the auto-import
+    // When the hook mounts, and the user presses Copy here
     const { result } = renderHook(() => usePostLoginMigration(SIGNED_IN), {
       wrapper,
     })
+    await pressCopyHere(result)
     await waitFor(() => expect(result.current.state).toBe('done'))
 
     // Then no location is named: neither the local slot nor the cloud cuid is
@@ -401,7 +546,7 @@ describe('usePostLoginMigration — the copy names no location', () => {
     localStorage.setItem(activeLocationStorageKey('cloud'), CLOUD_OFFICE_ID)
     localStorage.setItem(activeLocationStorageKey('local'), 'office')
     mockFetchLocalPayload.mockResolvedValue(emptyPayload)
-    mockImportCloudData.mockResolvedValue(undefined)
+    mockImportCloudData.mockResolvedValue(NOTHING_SKIPPED)
 
     const { result } = renderHook(() => usePostLoginMigration(SIGNED_IN), {
       wrapper,
@@ -434,7 +579,7 @@ describe('usePostLoginMigration — the auto-import waits for the location list'
     localStorage.setItem('data-mode', 'cloud')
     localStorage.setItem(MIGRATION_STRATEGY_KEY, 'clear')
     mockFetchLocalPayload.mockResolvedValue(emptyPayload)
-    mockImportCloudData.mockResolvedValue(undefined)
+    mockImportCloudData.mockResolvedValue(NOTHING_SKIPPED)
 
     // When the hook mounts
     const { result } = renderHook(() => usePostLoginMigration(SIGNED_IN), {
@@ -459,7 +604,7 @@ describe('usePostLoginMigration — the auto-import waits for the location list'
     localStorage.setItem('data-mode', 'cloud')
     localStorage.setItem(MIGRATION_STRATEGY_KEY, 'clear')
     mockFetchLocalPayload.mockResolvedValue(emptyPayload)
-    mockImportCloudData.mockResolvedValue(undefined)
+    mockImportCloudData.mockResolvedValue(NOTHING_SKIPPED)
     const { result, rerender } = renderHook(
       () => usePostLoginMigration(SIGNED_IN),
       {
@@ -469,12 +614,11 @@ describe('usePostLoginMigration — the auto-import waits for the location list'
     expect(mockImportCloudData).not.toHaveBeenCalled()
 
     // When GetLocations answers
-    mockCloudLocations([
-      { id: CLOUD_HOME_ID, name: 'My Home', order: 0, isDefault: true },
-    ])
+    mockCloudLocations([{ id: CLOUD_HOME_ID, name: 'My Home', order: 0 }])
     rerender()
 
-    // Then the copy runs
+    // Then the copy runs, once the user presses Copy here
+    await pressCopyHere(result)
     await waitFor(() => expect(result.current.state).toBe('done'))
     expect(mockImportCloudData).toHaveBeenCalledTimes(1)
   })
@@ -498,17 +642,17 @@ describe('usePostLoginMigration — the auto-import runs once', () => {
     // Given cloud mode with a resolved location list, the `clear` strategy
     // stored, and a copy that is still in flight
     vi.mocked(getAllItems).mockResolvedValue([])
-    mockCloudLocations([
-      { id: CLOUD_HOME_ID, name: 'My Home', order: 0, isDefault: true },
-    ])
+    mockCloudLocations([{ id: CLOUD_HOME_ID, name: 'My Home', order: 0 }])
     localStorage.setItem('data-mode', 'cloud')
     localStorage.setItem(activeLocationStorageKey('cloud'), CLOUD_HOME_ID)
     localStorage.setItem(MIGRATION_STRATEGY_KEY, 'clear')
     mockFetchLocalPayload.mockResolvedValue(emptyPayload)
     mockImportCloudData.mockReturnValue(new Promise(() => {}))
-    const { rerender } = renderHook(() => usePostLoginMigration(SIGNED_IN), {
-      wrapper,
-    })
+    const { result, rerender } = renderHook(
+      () => usePostLoginMigration(SIGNED_IN),
+      { wrapper },
+    )
+    await pressCopyHere(result)
     await waitFor(() => expect(mockImportCloudData).toHaveBeenCalledTimes(1))
 
     // When the cache is reset mid-flight — GetLocations has no data, then has
@@ -519,9 +663,7 @@ describe('usePostLoginMigration — the auto-import runs once', () => {
       error: undefined,
     })
     rerender()
-    mockCloudLocations([
-      { id: CLOUD_HOME_ID, name: 'My Home', order: 0, isDefault: true },
-    ])
+    mockCloudLocations([{ id: CLOUD_HOME_ID, name: 'My Home', order: 0 }])
     rerender()
     // A second copy would be dispatched from a microtask — `fetchLocalPayload`
     // resolves before `importCloudData` is reached — so let the queue drain.
@@ -547,9 +689,7 @@ describe('usePostLoginMigration — the auto-import runs once', () => {
   it('a stale cloud location reset does not start a second copy', async () => {
     // Given a stored CLOUD active location that no longer exists
     vi.mocked(getAllItems).mockResolvedValue([])
-    mockCloudLocations([
-      { id: CLOUD_HOME_ID, name: 'My Home', order: 0, isDefault: true },
-    ])
+    mockCloudLocations([{ id: CLOUD_HOME_ID, name: 'My Home', order: 0 }])
     localStorage.setItem('data-mode', 'cloud')
     localStorage.setItem(activeLocationStorageKey('cloud'), 'ghost')
     localStorage.setItem(MIGRATION_STRATEGY_KEY, 'skip')
@@ -558,7 +698,10 @@ describe('usePostLoginMigration — the auto-import runs once', () => {
     mockImportCloudData.mockReturnValue(new Promise(() => {}))
 
     // When the hook mounts and the provider resets the stale location
-    renderHook(() => usePostLoginMigration(SIGNED_IN), { wrapper })
+    const { result } = renderHook(() => usePostLoginMigration(SIGNED_IN), {
+      wrapper,
+    })
+    await pressCopyHere(result)
     await waitFor(() =>
       expect(localStorage.getItem(activeLocationStorageKey('cloud'))).toBe(
         CLOUD_HOME_ID,
@@ -583,9 +726,7 @@ describe('usePostLoginMigration — a failed copy stays failed', () => {
     vi.mocked(getAllItems).mockResolvedValue([
       { id: 'item-1', name: 'Milk' },
     ] as unknown as Awaited<ReturnType<typeof getAllItems>>)
-    mockCloudLocations([
-      { id: CLOUD_HOME_ID, name: 'My Home', order: 0, isDefault: true },
-    ])
+    mockCloudLocations([{ id: CLOUD_HOME_ID, name: 'My Home', order: 0 }])
     localStorage.setItem('data-mode', 'cloud')
     localStorage.setItem(activeLocationStorageKey('cloud'), CLOUD_HOME_ID)
     mockFetchLocalPayload.mockResolvedValue(emptyPayload)
@@ -599,9 +740,7 @@ describe('usePostLoginMigration — a failed copy stays failed', () => {
       error: undefined,
     })
     rerender()
-    mockCloudLocations([
-      { id: CLOUD_HOME_ID, name: 'My Home', order: 0, isDefault: true },
-    ])
+    mockCloudLocations([{ id: CLOUD_HOME_ID, name: 'My Home', order: 0 }])
     rerender()
     // The prompting branch sets its state after `getAllItems()` resolves, so
     // let the queue drain before asserting.
@@ -621,6 +760,7 @@ describe('usePostLoginMigration — a failed copy stays failed', () => {
       () => usePostLoginMigration(SIGNED_IN),
       { wrapper },
     )
+    await pressCopyHere(result)
     await waitFor(() => expect(result.current.state).toBe('error'))
 
     // When the location list reloads after the failure
@@ -655,5 +795,920 @@ describe('usePostLoginMigration — a failed copy stays failed', () => {
     // Then the state is still 'error', with its message
     expect(result.current.state).toBe('error')
     expect(result.current.error?.message).toBe('The operation was aborted.')
+  })
+})
+
+// ─── A failed local read (docs/global/bugs/2026-11-18-bug-post-login-migration-unhandled-read.md)
+//
+// The prompting branch reads the local items with `getAllItems()`. In cloud
+// mode that read can fail (a blocked or closed IndexedDB, a private window).
+// It had no `.catch`, so the browser got an unhandled rejection. Like the
+// other failures in this hook, MIGRATION_PROMPTED_KEY stays unset so a later
+// run can try again.
+describe('usePostLoginMigration — a failed local read', () => {
+  const readFailure = new Error('IndexedDB is blocked')
+  let unhandled: unknown[] = []
+  const onUnhandled = (reason: unknown) => {
+    unhandled.push(reason)
+  }
+
+  beforeEach(() => {
+    unhandled = []
+    process.on('unhandledRejection', onUnhandled)
+    mockCloudLocations([{ id: CLOUD_HOME_ID, name: 'My Home', order: 0 }])
+    localStorage.setItem('data-mode', 'cloud')
+    localStorage.setItem(activeLocationStorageKey('cloud'), CLOUD_HOME_ID)
+  })
+
+  afterEach(() => {
+    process.off('unhandledRejection', onUnhandled)
+  })
+
+  /** Let the read, its handlers and Node's unhandled-rejection check run. */
+  async function drain() {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+  }
+
+  it('a failed local read is logged, asks nothing and leaves the prompt unset', async () => {
+    // Given a local database that cannot be read
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.mocked(getAllItems).mockRejectedValue(readFailure)
+
+    // When the hook runs after sign-in
+    const { result } = renderHook(() => usePostLoginMigration(SIGNED_IN), {
+      wrapper,
+    })
+    await drain()
+
+    // Then it stays idle, nothing is marked as asked, and the failure is
+    // logged instead of left unhandled
+    expect(getAllItems).toHaveBeenCalled()
+    expect(result.current.state).toBe('idle')
+    expect(localStorage.getItem(MIGRATION_PROMPTED_KEY)).toBeNull()
+    expect(unhandled).toEqual([])
+    expect(log).toHaveBeenCalledWith(
+      expect.stringContaining('local items'),
+      readFailure,
+    )
+    log.mockRestore()
+  })
+
+  it('user is asked to copy once a later local read works', async () => {
+    // Given a first read that fails, and local data that can be read later
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.mocked(getAllItems)
+      .mockRejectedValueOnce(readFailure)
+      .mockResolvedValue([{ id: 'item-1', name: 'Milk' }] as unknown as Awaited<
+        ReturnType<typeof getAllItems>
+      >)
+    const { result, rerender } = renderHook(
+      () => usePostLoginMigration(SIGNED_IN),
+      { wrapper },
+    )
+    await drain()
+    expect(result.current.state).toBe('idle')
+
+    // When the effect runs again (the location list goes unknown and back)
+    mockGetLocationsQuery.mockReturnValue({
+      data: undefined,
+      loading: true,
+      error: undefined,
+    })
+    rerender()
+    mockCloudLocations([{ id: CLOUD_HOME_ID, name: 'My Home', order: 0 }])
+    rerender()
+
+    // Then the user is asked whether to copy
+    await waitFor(() => expect(result.current.state).toBe('prompting'))
+    log.mockRestore()
+  })
+})
+
+// ─── "Import into which location?" before the copy (households H4 task E.4) ──
+//
+// Local data always has its default location `'local'`. Decision O3: the copy
+// always asks where it goes, even with one cloud location. Decision O2: not
+// for `clear`.
+describe('usePostLoginMigration — the copy asks where the local default goes', () => {
+  const localPayload = {
+    ...emptyPayload,
+    locations: [
+      {
+        id: 'local',
+        name: 'My Home',
+        order: 0,
+        isDefault: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ],
+  }
+
+  function seed() {
+    vi.mocked(getAllItems).mockResolvedValue([
+      { id: 'item-1', name: 'Milk' },
+    ] as unknown as Awaited<ReturnType<typeof getAllItems>>)
+    mockCloudLocations([{ id: CLOUD_HOME_ID, name: 'Home', order: 0 }])
+    localStorage.setItem('data-mode', 'cloud')
+    mockFetchLocalPayload.mockResolvedValue(localPayload)
+    mockImportCloudData.mockResolvedValue({
+      skipped: { locationNames: [], rowCount: 0 },
+    })
+  }
+
+  it('user pressing Import is asked where before anything is copied, and the answer is used', async () => {
+    // Given a prompted user with local data
+    seed()
+    const { result } = renderHook(() => usePostLoginMigration(SIGNED_IN), {
+      wrapper,
+    })
+    await waitFor(() => expect(result.current.state).toBe('prompting'))
+
+    // When the user presses Import
+    await act(async () => {
+      await result.current.importData('append')
+    })
+
+    // Then the dialog is open, with the local data waiting, and nothing copied
+    expect(result.current.state).toBe('choosing-location')
+    expect(result.current.pendingPayload).toBe(localPayload)
+    expect(mockImportCloudData).not.toHaveBeenCalled()
+
+    // When the user picks Home
+    await act(async () => {
+      await result.current.chooseLocation({ locationId: CLOUD_HOME_ID })
+    })
+
+    // Then the copy ran into Home, and is done
+    expect(result.current.state).toBe('done')
+    const call = elementAt(mockImportCloudData.mock.calls)
+    expect(call[1]).toBe('skip')
+    expect(call[3]).toEqual({ target: { locationId: CLOUD_HOME_ID } })
+    expect(localStorage.getItem(MIGRATION_PROMPTED_KEY)).toBe('1')
+  })
+
+  it('user switching to cloud with a stored strategy is asked where too', async () => {
+    // Given a stored `replace` strategy
+    seed()
+    localStorage.setItem(MIGRATION_STRATEGY_KEY, 'replace')
+
+    // When the hook mounts, and the user presses Copy here
+    const { result } = renderHook(() => usePostLoginMigration(SIGNED_IN), {
+      wrapper,
+    })
+    await pressCopyHere(result)
+
+    // Then it waits for the answer, and has copied nothing
+    await waitFor(() => expect(result.current.state).toBe('choosing-location'))
+    expect(mockImportCloudData).not.toHaveBeenCalled()
+
+    // When the user picks a new location
+    await act(async () => {
+      await result.current.chooseLocation({ newLocationName: 'My Home' })
+    })
+
+    // Then the copy ran with the stored strategy and that answer
+    const call = elementAt(mockImportCloudData.mock.calls)
+    expect(call[1]).toBe('replace')
+    expect(call[3]).toEqual({ target: { newLocationName: 'My Home' } })
+    expect(localStorage.getItem(MIGRATION_STRATEGY_KEY)).toBeNull()
+  })
+
+  it('user switching to cloud with clear is not asked (decision O2)', async () => {
+    // Given a stored `clear` strategy
+    seed()
+    localStorage.setItem(MIGRATION_STRATEGY_KEY, 'clear')
+
+    // When the hook mounts, and the user presses Copy here
+    const { result } = renderHook(() => usePostLoginMigration(SIGNED_IN), {
+      wrapper,
+    })
+    await pressCopyHere(result)
+
+    // Then the copy runs at once, with no target
+    await waitFor(() => expect(result.current.state).toBe('done'))
+    const call = elementAt(mockImportCloudData.mock.calls)
+    expect(call[1]).toBe('clear')
+    expect(call[3]).toBeUndefined()
+  })
+
+  it('user cancelling the question is asked again whether to copy, and nothing is copied', async () => {
+    // Given a stored strategy and the question open
+    seed()
+    localStorage.setItem(MIGRATION_STRATEGY_KEY, 'skip')
+    const { result } = renderHook(() => usePostLoginMigration(SIGNED_IN), {
+      wrapper,
+    })
+    await pressCopyHere(result)
+    await waitFor(() => expect(result.current.state).toBe('choosing-location'))
+
+    // When the user cancels
+    act(() => result.current.cancelLocation())
+
+    // Then the prompt is back, nothing was copied, and the stored strategy is
+    // gone so a reload does not start the copy by itself
+    expect(result.current.state).toBe('prompting')
+    expect(mockImportCloudData).not.toHaveBeenCalled()
+    expect(localStorage.getItem(MIGRATION_STRATEGY_KEY)).toBeNull()
+  })
+
+  it('user who is not an owner or manager is told so', async () => {
+    // Given the copy is refused for the household role
+    seed()
+    const { ImportRefusedError } = await import('@/lib/importData')
+    mockImportCloudData.mockRejectedValue(new ImportRefusedError('role'))
+    const { result } = renderHook(() => usePostLoginMigration(SIGNED_IN), {
+      wrapper,
+    })
+    await waitFor(() => expect(result.current.state).toBe('prompting'))
+
+    // When the user presses Import and picks Home
+    await act(async () => {
+      await result.current.importData('append')
+    })
+    await act(async () => {
+      await result.current.chooseLocation({ locationId: CLOUD_HOME_ID })
+    })
+
+    // Then the error is the role one
+    expect(result.current.state).toBe('error')
+    expect(result.current.error).toMatchObject({ role: true, forbidden: false })
+  })
+})
+
+// ─── Owner decision O22-A: a stored copy asks first ──────────────────────────
+//
+// A person can choose "Copy local data" while switching to cloud. The copy
+// then runs by itself once the household's locations load. Before O22-A it
+// ran into WHATEVER household came next: a person in no household waited,
+// with the key stored, and the copy ran into the shared household they joined
+// later. Now it waits for "Copy your offline data into {household}?".
+describe('usePostLoginMigration — a stored copy asks first (O22-A)', () => {
+  function seed() {
+    vi.mocked(getAllItems).mockResolvedValue([
+      { id: 'item-1', name: 'Milk' },
+    ] as unknown as Awaited<ReturnType<typeof getAllItems>>)
+    mockCloudLocations([{ id: CLOUD_HOME_ID, name: 'Home', order: 0 }])
+    localStorage.setItem('data-mode', 'cloud')
+    mockFetchLocalPayload.mockResolvedValue(emptyPayload)
+    mockImportCloudData.mockResolvedValue(NOTHING_SKIPPED)
+  }
+
+  function renderWith(household: MigrationHousehold | undefined) {
+    return renderHook(
+      ({ h }: { h: MigrationHousehold | undefined }) =>
+        usePostLoginMigration({
+          isLoaded: true,
+          isSignedIn: true,
+          household: h,
+        }),
+      { wrapper, initialProps: { h: household } },
+    )
+  }
+
+  // Lets a copy that WOULD start reach `importCloudData` before asserting it
+  // did not. Without it, an absence check passes only because the microtask
+  // that sends the copy has not run yet.
+  async function drain() {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+  }
+
+  it('user with a stored copy is asked before anything is copied', async () => {
+    // Given a stored `clear` copy and a household that has loaded
+    seed()
+    localStorage.setItem(MIGRATION_STRATEGY_KEY, 'clear')
+
+    // When the hook mounts
+    const { result } = renderWith(OWNER_HOUSEHOLD)
+
+    // Then it asks, with the stored strategy waiting, and has sent nothing
+    await waitFor(() => expect(result.current.state).toBe('confirming'))
+    expect(result.current.waitingStrategy).toBe('clear')
+    await drain()
+    expect(result.current.state).toBe('confirming')
+    expect(mockFetchLocalPayload).not.toHaveBeenCalled()
+    expect(mockImportCloudData).not.toHaveBeenCalled()
+  })
+
+  it('user pressing Copy here has the stored copy run', async () => {
+    // Given the question is open for a stored `clear` copy
+    seed()
+    localStorage.setItem(MIGRATION_STRATEGY_KEY, 'clear')
+    const { result } = renderWith(OWNER_HOUSEHOLD)
+
+    // When the user presses Copy here
+    await pressCopyHere(result)
+
+    // Then the copy ran with the stored strategy, and the keys are consumed
+    await waitFor(() => expect(result.current.state).toBe('done'))
+    expect(mockImportCloudData).toHaveBeenCalledTimes(1)
+    expect(elementAt(mockImportCloudData.mock.calls)[1]).toBe('clear')
+    expect(localStorage.getItem(MIGRATION_STRATEGY_KEY)).toBeNull()
+    expect(localStorage.getItem(MIGRATION_PROMPTED_KEY)).toBe('1')
+  })
+
+  it("user pressing Don't copy has nothing copied, and is not asked again", async () => {
+    // Given the question is open, and the device has local data
+    seed()
+    localStorage.setItem(MIGRATION_STRATEGY_KEY, 'skip')
+    const { result, unmount } = renderWith(OWNER_HOUSEHOLD)
+    await waitFor(() => expect(result.current.state).toBe('confirming'))
+
+    // When the user presses Don't copy
+    act(() => result.current.declineCopy())
+
+    // Then nothing is copied, the stored copy is gone, and the prompt is
+    // marked as answered
+    expect(result.current.state).toBe('done')
+    expect(localStorage.getItem(MIGRATION_STRATEGY_KEY)).toBeNull()
+    expect(localStorage.getItem(MIGRATION_PROMPTED_KEY)).toBe('1')
+    await drain()
+    expect(mockImportCloudData).not.toHaveBeenCalled()
+
+    // And after a reload neither the question nor the one with no stored
+    // strategy comes back
+    unmount()
+    const next = renderWith(OWNER_HOUSEHOLD)
+    await drain()
+    expect(next.result.current.state).toBe('idle')
+    expect(mockImportCloudData).not.toHaveBeenCalled()
+  })
+
+  it('nothing is asked or copied while the household is loading', async () => {
+    // Given a stored copy, locations loaded, and the household not known yet
+    seed()
+    localStorage.setItem(MIGRATION_STRATEGY_KEY, 'clear')
+    const { result, rerender } = renderWith(undefined)
+
+    // Then nothing is asked and nothing is sent
+    await drain()
+    expect(result.current.state).toBe('idle')
+    expect(mockImportCloudData).not.toHaveBeenCalled()
+    expect(localStorage.getItem(MIGRATION_STRATEGY_KEY)).toBe('clear')
+
+    // When the household arrives, the question opens
+    rerender({ h: OWNER_HOUSEHOLD })
+    await waitFor(() => expect(result.current.state).toBe('confirming'))
+  })
+
+  // The state the whole-branch review found: the person chose "Copy local
+  // data" and is in NO household. GetLocations fails with NO_HOUSEHOLD, and
+  // there is no household to name. The copy waits, with the key stored.
+  it('a stored copy waits, unsent, while the person is in no household', async () => {
+    // Given a stored copy, a GetLocations that failed with NO_HOUSEHOLD, and
+    // no household
+    seed()
+    mockGetLocationsQuery.mockReturnValue({
+      data: undefined,
+      loading: false,
+      error: new CombinedGraphQLErrors({
+        errors: [
+          {
+            message: 'You are not in any household',
+            extensions: { code: 'NO_HOUSEHOLD' },
+          },
+        ],
+      }) as unknown as undefined,
+    })
+    localStorage.setItem(MIGRATION_STRATEGY_KEY, 'replace')
+
+    // When the hook mounts
+    const { result } = renderWith(undefined)
+    await drain()
+
+    // Then no copy is sent, nothing is asked, and the key is still stored
+    expect(result.current.state).toBe('idle')
+    expect(mockFetchLocalPayload).not.toHaveBeenCalled()
+    expect(mockImportCloudData).not.toHaveBeenCalled()
+    expect(localStorage.getItem(MIGRATION_STRATEGY_KEY)).toBe('replace')
+    expect(localStorage.getItem(MIGRATION_PROMPTED_KEY)).toBeNull()
+  })
+})
+
+describe('usePostLoginMigration — a joined household is skipped, not every household', () => {
+  // Bug 2026-11-19 (docs/global/bugs/2026-11-19-bug-join-turns-off-copy-prompt.md).
+  // "Sign in to join" used to set `migration-prompted`, which turns the
+  // question off on this device for good. Now Join names the joined
+  // household in `migration-skip-households`, and the question still comes
+  // in any other household.
+  const JOINED = {
+    id: 'household-joined',
+    name: 'the Lin home',
+    role: 'manager' as const,
+  }
+
+  function seed() {
+    vi.mocked(getAllItems).mockResolvedValue([
+      { id: 'item-1', name: 'Milk' },
+    ] as unknown as Awaited<ReturnType<typeof getAllItems>>)
+    mockCloudLocations([{ id: CLOUD_HOME_ID, name: 'Home', order: 0 }])
+    localStorage.setItem('data-mode', 'cloud')
+  }
+
+  function renderWith(
+    household: MigrationHousehold | undefined,
+    paused = false,
+  ) {
+    return renderHook(
+      ({ h, p }: { h: MigrationHousehold | undefined; p: boolean }) =>
+        usePostLoginMigration({
+          isLoaded: true,
+          isSignedIn: true,
+          household: h,
+          paused: p,
+        }),
+      { wrapper, initialProps: { h: household, p: paused } },
+    )
+  }
+
+  async function drain() {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+  }
+
+  it('user in the household they joined is not asked to copy, even as a manager', async () => {
+    // Given local items, and a device that joined this household. A manager
+    // could copy, so only the skip stops the question (owner decision O12-A)
+    seed()
+    skipCopyPromptIn(JOINED.id)
+
+    // When the hook mounts in that household
+    const { result } = renderWith(JOINED)
+    await drain()
+
+    // Then nothing is asked, and the question is not turned off for good
+    expect(result.current.state).toBe('idle')
+    expect(localStorage.getItem(MIGRATION_PROMPTED_KEY)).toBeNull()
+  })
+
+  it('user who joined a household is asked again in their own household', async () => {
+    // Given local items, and a device that joined ANOTHER household
+    seed()
+    skipCopyPromptIn(JOINED.id)
+
+    // When the hook mounts in the person's own household
+    const { result } = renderWith(OWNER_HOUSEHOLD)
+
+    // Then the question comes
+    await waitFor(() => expect(result.current.state).toBe('prompting'))
+  })
+
+  it('a stored copy does not ask in the household joined', async () => {
+    // Given a stored copy and a device that joined this household
+    seed()
+    skipCopyPromptIn(JOINED.id)
+    localStorage.setItem(MIGRATION_STRATEGY_KEY, 'skip')
+
+    // When the hook mounts there
+    const { result } = renderWith(JOINED)
+    await drain()
+
+    // Then it does not ask, and the stored copy stays for a later household
+    expect(result.current.state).toBe('idle')
+    expect(localStorage.getItem(MIGRATION_STRATEGY_KEY)).toBe('skip')
+  })
+
+  it('with a household skipped, nothing is asked until the household is known', async () => {
+    // Given a device that joined a household, and a household still loading
+    seed()
+    skipCopyPromptIn(JOINED.id)
+    const { result, rerender } = renderWith(undefined)
+    await drain()
+
+    // Then nothing is asked yet: it may be the household joined
+    expect(result.current.state).toBe('idle')
+
+    // When the household loads and it is another one
+    rerender({ h: OWNER_HOUSEHOLD, p: false })
+
+    // Then the question comes
+    await waitFor(() => expect(result.current.state).toBe('prompting'))
+  })
+
+  it('nothing is asked on the join and sign-in pages', async () => {
+    // Given local items and no skip at all (a person on their way to join)
+    seed()
+
+    // When the hook mounts while paused
+    const { result, rerender } = renderWith(OWNER_HOUSEHOLD, true)
+    await drain()
+
+    // Then nothing is asked and nothing is stored
+    expect(result.current.state).toBe('idle')
+    expect(localStorage.getItem(MIGRATION_PROMPTED_KEY)).toBeNull()
+
+    // When the person leaves those pages without joining
+    rerender({ h: OWNER_HOUSEHOLD, p: false })
+
+    // Then the question comes in their own household
+    await waitFor(() => expect(result.current.state).toBe('prompting'))
+  })
+
+  // docs/global/bugs/2026-11-19-bug-manual-import-names-no-household.md: the
+  // question with no stored strategy names the household and reads the role,
+  // so it waits for the household like the stored copy does.
+  it('with no skip at all, the question waits until the household is known', async () => {
+    // Given local items, no skip list, and a household still loading
+    seed()
+    const { result, rerender } = renderWith(undefined)
+    await drain()
+
+    // Then nothing is asked yet, and nothing is stored
+    expect(result.current.state).toBe('idle')
+    expect(localStorage.getItem(MIGRATION_PROMPTED_KEY)).toBeNull()
+
+    // When the household loads
+    rerender({ h: OWNER_HOUSEHOLD, p: false })
+
+    // Then the question comes
+    await waitFor(() => expect(result.current.state).toBe('prompting'))
+  })
+
+  it('a broken skip list is read as empty', async () => {
+    // Given a value that is not a JSON list
+    seed()
+    localStorage.setItem(MIGRATION_SKIP_HOUSEHOLDS_KEY, '{not json')
+
+    // When the hook mounts
+    const { result } = renderWith(OWNER_HOUSEHOLD)
+
+    // Then it asks as usual
+    await waitFor(() => expect(result.current.state).toBe('prompting'))
+  })
+})
+
+// Households H7 task L.5 (decision T73, owner decision O22-A). The person is
+// in TWO households: A (`household-own`, the one the page shows) and B
+// (`hh-b`). Every test checks that the household they did NOT choose gets
+// nothing: no copy while the page still shows A, and no copy after a reload
+// into a household the stored id does not name.
+describe('usePostLoginMigration — a copy into a chosen household (L.5)', () => {
+  const HOUSEHOLD_B: MigrationHousehold = {
+    id: 'hh-b',
+    name: 'Chen flat',
+    role: 'owner',
+  }
+
+  function seed() {
+    vi.mocked(getAllItems).mockResolvedValue([
+      { id: 'item-1', name: 'Milk' },
+    ] as unknown as Awaited<ReturnType<typeof getAllItems>>)
+    mockCloudLocations([{ id: CLOUD_HOME_ID, name: 'Home', order: 0 }])
+    localStorage.setItem('data-mode', 'cloud')
+    mockFetchLocalPayload.mockResolvedValue(emptyPayload)
+    mockImportCloudData.mockResolvedValue(NOTHING_SKIPPED)
+  }
+
+  // Every state the hook passed through, so a test can say a question was
+  // never asked.
+  function renderWith(household: MigrationHousehold) {
+    const states: string[] = []
+    const rendered = renderHook(
+      () => {
+        const r = usePostLoginMigration({
+          isLoaded: true,
+          isSignedIn: true,
+          household,
+        })
+        states.push(r.state)
+        return r
+      },
+      { wrapper },
+    )
+    return { ...rendered, states }
+  }
+
+  async function drain() {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+  }
+
+  function storedChoice() {
+    return sessionStorage.getItem(COPY_INTO_HOUSEHOLD_KEY)
+  }
+
+  it('user choosing another household moves there first, and nothing is copied before the reload', async () => {
+    // Given a stored skip copy, asked in household A
+    seed()
+    localStorage.setItem(MIGRATION_STRATEGY_KEY, 'skip')
+    setLastHouseholdId(OWNER_HOUSEHOLD.id)
+    let choiceAtMove: string | null = 'not called'
+    switchMock.mockImplementation(async () => {
+      choiceAtMove = storedChoice()
+    })
+    const { result } = renderWith(OWNER_HOUSEHOLD)
+    await waitFor(() => expect(result.current.state).toBe('confirming'))
+
+    // When the user picks household B
+    await act(() => result.current.copyElsewhere({ householdId: 'hh-b' }))
+    await drain()
+
+    // Then the server is told, B is stored before the page moves, and the
+    // page moves to B
+    expect(householdServer.setActive).toHaveBeenCalledWith({
+      variables: { householdId: 'hh-b' },
+    })
+    expect(choiceAtMove).toBe('hh-b')
+    expect(switchMock).toHaveBeenCalledWith('hh-b', { to: '/' })
+    // And nothing was copied into A: the copy waits for the reload
+    expect(mockFetchLocalPayload).not.toHaveBeenCalled()
+    expect(mockImportCloudData).not.toHaveBeenCalled()
+    expect(localStorage.getItem(MIGRATION_STRATEGY_KEY)).toBe('skip')
+    expect(result.current.moving).toBe(true)
+  })
+
+  it('user choosing another household from the question with no stored strategy stores skip for the reload', async () => {
+    // Given local data and no stored strategy: the plain question
+    seed()
+    const { result } = renderWith(OWNER_HOUSEHOLD)
+    await waitFor(() => expect(result.current.state).toBe('prompting'))
+
+    // When the user picks household B
+    await act(() => result.current.copyElsewhere({ householdId: 'hh-b' }))
+
+    // Then skip (what Copy here runs) and B wait for the reload, uncopied
+    expect(localStorage.getItem(MIGRATION_STRATEGY_KEY)).toBe('skip')
+    expect(storedChoice()).toBe('hh-b')
+    expect(switchMock).toHaveBeenCalledWith('hh-b', { to: '/' })
+    expect(mockImportCloudData).not.toHaveBeenCalled()
+  })
+
+  it('user choosing a new household has it created with alsoWhenMember, then the same path', async () => {
+    // Given a stored skip copy, asked in household A
+    seed()
+    localStorage.setItem(MIGRATION_STRATEGY_KEY, 'skip')
+    const { result } = renderWith(OWNER_HOUSEHOLD)
+    await waitFor(() => expect(result.current.state).toBe('confirming'))
+
+    // When the user picks "A new household" named Camp
+    await act(() =>
+      result.current.copyElsewhere({ newHouseholdName: '  Camp ' }),
+    )
+
+    // Then the household is created for a person already in one, and the
+    // page moves to it with its id stored
+    expect(householdServer.create).toHaveBeenCalledWith({
+      variables: { name: 'Camp', alsoWhenMember: true },
+    })
+    expect(storedChoice()).toBe('hh-new')
+    expect(switchMock).toHaveBeenCalledWith('hh-new', { to: '/' })
+    expect(mockImportCloudData).not.toHaveBeenCalled()
+  })
+
+  // Since 2026-11-23 Switch to… keeps a settings page (`pageAfterSwitch`).
+  // The copy passes `to: '/'` itself, so it still lands on the pantry. The
+  // page is a settings page here, or the test could not tell the two apart.
+  it.each([
+    ['another household', { householdId: 'hh-b' }, 'hh-b'],
+    ['a new household', { newHouseholdName: 'Camp' }, 'hh-new'],
+  ] as const)('a copy into %s started on a settings page still lands on /', async (_label, target, movedTo) => {
+    window.history.pushState({}, '', '/settings/household/tags')
+    try {
+      // Given a stored skip copy, asked on a settings page
+      seed()
+      localStorage.setItem(MIGRATION_STRATEGY_KEY, 'skip')
+      const { result } = renderWith(OWNER_HOUSEHOLD)
+      await waitFor(() => expect(result.current.state).toBe('confirming'))
+
+      // When the user picks the household
+      await act(() => result.current.copyElsewhere(target))
+
+      // Then the page moves to the pantry, not to the settings page
+      expect(switchMock).toHaveBeenCalledWith(movedTo, { to: '/' })
+    } finally {
+      window.history.pushState({}, '', '/')
+    }
+  })
+
+  it('a refused move stores nothing, copies nothing, and says so', async () => {
+    // Given the plain question, and a server that refuses the switch
+    seed()
+    householdServer.setActive.mockRejectedValue(forbiddenError())
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { result } = renderWith(OWNER_HOUSEHOLD)
+    await waitFor(() => expect(result.current.state).toBe('prompting'))
+
+    // When the user picks household B
+    await act(() => result.current.copyElsewhere({ householdId: 'hh-b' }))
+
+    // Then the page stays, nothing is stored or copied, and the dialog can
+    // say the move failed
+    expect(switchMock).not.toHaveBeenCalled()
+    expect(storedChoice()).toBeNull()
+    expect(localStorage.getItem(MIGRATION_STRATEGY_KEY)).toBeNull()
+    expect(result.current.moving).toBe(false)
+    expect(result.current.moveFailed).toBe(true)
+    expect(result.current.state).toBe('prompting')
+    expect(mockImportCloudData).not.toHaveBeenCalled()
+  })
+
+  it('a move that fails after the answer removes what it stored', async () => {
+    // Given the plain question, and a cache that cannot be cleared
+    seed()
+    switchMock.mockRejectedValue(new Error('cache locked'))
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { result } = renderWith(OWNER_HOUSEHOLD)
+    await waitFor(() => expect(result.current.state).toBe('prompting'))
+
+    // When the user picks household B
+    await act(() => result.current.copyElsewhere({ householdId: 'hh-b' }))
+
+    // Then neither the choice nor the strategy it stored survives
+    expect(switchMock).toHaveBeenCalledTimes(1)
+    expect(storedChoice()).toBeNull()
+    expect(localStorage.getItem(MIGRATION_STRATEGY_KEY)).toBeNull()
+    expect(result.current.moveFailed).toBe(true)
+  })
+
+  it('after the reload into the chosen household the copy runs with no question, and the key is removed before it starts', async () => {
+    // Given the page now shows B, B is stored as the choice, and a stored
+    // clear copy (clear asks no location question)
+    seed()
+    localStorage.setItem(MIGRATION_STRATEGY_KEY, 'clear')
+    sessionStorage.setItem(COPY_INTO_HOUSEHOLD_KEY, 'hh-b')
+    setLastHouseholdId('hh-b')
+    let choiceDuringCopy: string | null = 'not called'
+    mockImportCloudData.mockImplementation(async () => {
+      choiceDuringCopy = storedChoice()
+      return NOTHING_SKIPPED
+    })
+
+    // When the hook mounts in B
+    const { result, states } = renderWith(HOUSEHOLD_B)
+
+    // Then the copy ran once, into the household shown, without asking
+    await waitFor(() => expect(result.current.state).toBe('done'))
+    expect(mockImportCloudData).toHaveBeenCalledTimes(1)
+    expect(elementAt(mockImportCloudData.mock.calls)[1]).toBe('clear')
+    expect(states).not.toContain('confirming')
+    // And the key was already gone while the copy ran
+    expect(choiceDuringCopy).toBeNull()
+    expect(storedChoice()).toBeNull()
+  })
+
+  it('after the reload a skip copy asks only where, not whether', async () => {
+    // Given the page shows B and B is stored, with a stored skip copy
+    seed()
+    mockFetchLocalPayload.mockResolvedValue({
+      ...emptyPayload,
+      locations: [
+        {
+          id: 'local',
+          name: 'My Home',
+          order: 0,
+          isDefault: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ],
+    })
+    localStorage.setItem(MIGRATION_STRATEGY_KEY, 'skip')
+    sessionStorage.setItem(COPY_INTO_HOUSEHOLD_KEY, 'hh-b')
+    setLastHouseholdId('hh-b')
+
+    // When the hook mounts in B
+    const { result, states } = renderWith(HOUSEHOLD_B)
+
+    // Then it goes straight to "Import into which location?"
+    await waitFor(() => expect(result.current.state).toBe('choosing-location'))
+    expect(states).not.toContain('confirming')
+  })
+
+  it('the key is removed when the copy after the reload fails', async () => {
+    // Given the page shows B, B is stored, and the copy will be refused
+    seed()
+    localStorage.setItem(MIGRATION_STRATEGY_KEY, 'clear')
+    sessionStorage.setItem(COPY_INTO_HOUSEHOLD_KEY, 'hh-b')
+    setLastHouseholdId('hh-b')
+    mockImportCloudData.mockRejectedValue(forbiddenError())
+
+    // When the hook mounts in B
+    const { result } = renderWith(HOUSEHOLD_B)
+
+    // Then the error shows, and the key is gone, so a reload cannot copy again
+    await waitFor(() => expect(result.current.state).toBe('error'))
+    expect(storedChoice()).toBeNull()
+    expect(mockImportCloudData).toHaveBeenCalledTimes(1)
+  })
+
+  it('a key naming another household is removed, and the question shows again', async () => {
+    // Given the page shows A, but the stored choice names B
+    seed()
+    localStorage.setItem(MIGRATION_STRATEGY_KEY, 'clear')
+    sessionStorage.setItem(COPY_INTO_HOUSEHOLD_KEY, 'hh-b')
+    setLastHouseholdId(OWNER_HOUSEHOLD.id)
+
+    // When the hook mounts in A
+    const { result } = renderWith(OWNER_HOUSEHOLD)
+
+    // Then A is asked, nothing is copied into it, and the key is gone
+    await waitFor(() => expect(result.current.state).toBe('confirming'))
+    await drain()
+    expect(mockImportCloudData).not.toHaveBeenCalled()
+    expect(storedChoice()).toBeNull()
+  })
+
+  it('a key naming the answered household asks again when the page shows another one', async () => {
+    // Given the server answers B and the key names B, but this page still
+    // shows A (its header id)
+    seed()
+    localStorage.setItem(MIGRATION_STRATEGY_KEY, 'clear')
+    sessionStorage.setItem(COPY_INTO_HOUSEHOLD_KEY, 'hh-b')
+    setLastHouseholdId(OWNER_HOUSEHOLD.id)
+
+    // When the hook mounts with B as the household
+    const { result } = renderWith(HOUSEHOLD_B)
+
+    // Then it asks and copies nothing
+    await waitFor(() => expect(result.current.state).toBe('confirming'))
+    await drain()
+    expect(mockImportCloudData).not.toHaveBeenCalled()
+  })
+
+  it('a key naming the page household asks again when the server answers another one', async () => {
+    // Given this page shows B (its header id) and the key names B, but the
+    // server answers A (the person moved back on another device)
+    seed()
+    localStorage.setItem(MIGRATION_STRATEGY_KEY, 'clear')
+    sessionStorage.setItem(COPY_INTO_HOUSEHOLD_KEY, 'hh-b')
+    setLastHouseholdId('hh-b')
+
+    // When the hook mounts with A as the household
+    const { result } = renderWith(OWNER_HOUSEHOLD)
+
+    // Then it asks about A and copies nothing
+    await waitFor(() => expect(result.current.state).toBe('confirming'))
+    await drain()
+    expect(mockImportCloudData).not.toHaveBeenCalled()
+    expect(storedChoice()).toBeNull()
+  })
+
+  it('a key in a household where the role no longer allows the copy asks again', async () => {
+    // Given the page shows B, the key names B, but the person is only a
+    // manager there now and the stored copy is clear
+    seed()
+    localStorage.setItem(MIGRATION_STRATEGY_KEY, 'clear')
+    sessionStorage.setItem(COPY_INTO_HOUSEHOLD_KEY, 'hh-b')
+    setLastHouseholdId('hh-b')
+
+    // When the hook mounts in B as a manager
+    const { result } = renderWith({ ...HOUSEHOLD_B, role: 'manager' })
+
+    // Then it asks (and the dialog will say only the owner can)
+    await waitFor(() => expect(result.current.state).toBe('confirming'))
+    await drain()
+    expect(mockImportCloudData).not.toHaveBeenCalled()
+  })
+})
+
+describe('skipCopyPromptIn', () => {
+  afterEach(() => localStorage.clear())
+
+  it('adds each household once', () => {
+    skipCopyPromptIn('a')
+    skipCopyPromptIn('b')
+    skipCopyPromptIn('a')
+    expect(
+      JSON.parse(localStorage.getItem(MIGRATION_SKIP_HOUSEHOLDS_KEY) ?? ''),
+    ).toEqual(['a', 'b'])
+  })
+})
+
+describe('isCopyPromptPausedPath', () => {
+  it('pauses on the join page, the sign-in page and the sign-up page only', () => {
+    expect(isCopyPromptPausedPath('/join/abc')).toBe(true)
+    expect(isCopyPromptPausedPath('/sign-in')).toBe(true)
+    expect(isCopyPromptPausedPath('/sign-up')).toBe(true)
+    expect(isCopyPromptPausedPath('/sign-upx')).toBe(false)
+    expect(isCopyPromptPausedPath('/')).toBe(false)
+    expect(isCopyPromptPausedPath('/joined')).toBe(false)
+    expect(isCopyPromptPausedPath('/settings/household/members')).toBe(false)
+  })
+})
+
+describe('canCopyInto', () => {
+  it('an owner can copy with every strategy', () => {
+    expect(canCopyInto('owner', 'skip')).toBe(true)
+    expect(canCopyInto('owner', 'replace')).toBe(true)
+    expect(canCopyInto('owner', 'clear')).toBe(true)
+  })
+
+  it('a manager can copy, but not with clear', () => {
+    expect(canCopyInto('manager', 'skip')).toBe(true)
+    expect(canCopyInto('manager', 'replace')).toBe(true)
+    expect(canCopyInto('manager', 'clear')).toBe(false)
+  })
+
+  it('a member cannot copy at all', () => {
+    expect(canCopyInto('member', 'skip')).toBe(false)
+    expect(canCopyInto('member', 'replace')).toBe(false)
+    expect(canCopyInto('member', 'clear')).toBe(false)
   })
 })

@@ -13,6 +13,7 @@ import { userEvent } from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   ApplyUnitSwitchDocument,
+  GetHouseholdDocument,
   GetItemDocument,
   GetItemsDocument,
   GetRecipesDocument,
@@ -29,6 +30,7 @@ import {
   getLocationsMock,
   LOC_A,
   LOC_B,
+  markLocationVisitedMock,
 } from '@/test/cloudFixtures'
 
 // The Info tab's unit switch, in CLOUD mode, through the REAL generated hooks.
@@ -41,6 +43,9 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
   const REAL = new Set([
     'useGetLocationsQuery',
+    // The household role: since H5 task F.5 the Info tab is read only for
+    // a household member, and while the role is unknown.
+    'useGetHouseholdQuery',
     'useGetItemQuery',
     'useGetRecipesQuery',
     'useItemStocksForItemQuery',
@@ -196,8 +201,29 @@ const applyUnitSwitchMock = {
   },
 }
 
+// The caller is a household manager, who may edit the catalog. Without it
+// the Info tab is read only (households H5 task F.5) and has no Save.
+const householdManagerMock = {
+  request: { query: GetHouseholdDocument },
+  maxUsageCount: Number.POSITIVE_INFINITY,
+  result: {
+    data: {
+      household: {
+        __typename: 'Household',
+        id: 'household-1',
+        name: 'Home',
+        role: 'manager',
+        hasOwner: true,
+        pendingTransfer: null,
+      },
+    },
+  },
+}
+
 const MOCKS = [
+  householdManagerMock,
   bootstrapCartsMock,
+  markLocationVisitedMock,
   getLocationsMock,
   getItemMock,
   getItemsMock,

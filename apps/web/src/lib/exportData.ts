@@ -129,25 +129,18 @@ export function sanitiseCloudPayload(payload: ExportPayload): ExportPayload {
           ),
         }
       : {}),
-    // `isDefault` is kept, deliberately, even though `toLocationInput` drops
-    // it. The flag is not a `LocationInput` field and is never uploaded — see
-    // that mapper's comment for why the server refuses it — but the BACKUP
-    // FILE must record it, because the import side finds the payload's default
-    // location by this flag and nothing else (`findPayloadDefaultLocationId`
-    // in lib/importData.ts, the remap rule of PR 4 design §1). Without it a
-    // cloud backup restored into another account keeps its old default as an
-    // ordinary location and leaves the destination's own default empty.
+    // A cloud backup carries NO `isDefault`. Until households task 3.12 this
+    // kept the flag in the file, because the import side used it to find the
+    // payload's default location. A household has no default location, and
+    // cloud no longer selects the field. So the import side now treats the
+    // location with the lowest `order` as the payload's default
+    // (`findPayloadDefaultLocationId` in lib/importData.ts). Older cloud
+    // backups still carry the flag, and that reader still honours it.
     ...(payload.locations != null
       ? {
-          locations: payload.locations.map((l) => {
-            const row = l as Record<string, unknown>
-            return {
-              ...toLocationInput(row),
-              ...(typeof row.isDefault === 'boolean'
-                ? { isDefault: row.isDefault }
-                : {}),
-            }
-          }),
+          locations: payload.locations.map((l) =>
+            toLocationInput(l as Record<string, unknown>),
+          ),
         }
       : {}),
   }
@@ -259,10 +252,7 @@ export async function fetchCloudPayload(
     }),
     client.query<GetShelvesQuery>({ query: GetShelvesDocument, fetchPolicy }),
     // Reuses the pantry's own `GetLocations` — there is no second operation for
-    // export. It already selects every column `LocationInput` needs plus
-    // `isDefault`, which `sanitiseCloudPayload` keeps in the exported file on
-    // purpose while `toLocationInput` drops it on the way back up (see both
-    // comments: the server refuses the field, the importer needs it).
+    // export. It selects every column `LocationInput` needs, by `order`.
     client.query<GetLocationsQuery>({
       query: GetLocationsDocument,
       fetchPolicy,

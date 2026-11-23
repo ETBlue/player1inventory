@@ -37,10 +37,17 @@ export interface ItemSearchTailProps {
    */
   groupNote?: (item: PantryItem) => ReactNode
   /**
-   * Bucket 3's action. OMIT to suppress the section — the one case left is a
-   * still-unresolved active location, whose name is in the label.
+   * Bucket 3's action. OMIT it, and leave out `notStockedHereReadOnly`, to
+   * suppress the section: an active location that has not resolved yet
+   * (its name is in the label), or a role that is not known yet.
    */
   addToLocationAction?: ItemSearchTailAction
+  /**
+   * List bucket 3 with NO action. For a location viewer, who may see the
+   * household's items but may not stock one here (households H5, owner
+   * decision 2026-11-17). Ignored when `addToLocationAction` is set.
+   */
+  notStockedHereReadOnly?: boolean
 }
 
 // Whether either tail section has anything to show — computed once so the
@@ -51,7 +58,8 @@ export function hasVisibleTail(props: ItemSearchTailProps): boolean {
     (!!props.groupAction || !!props.groupNote) &&
     props.inLocationItems.length > 0
   const showNotStockedHere =
-    !!props.addToLocationAction && props.notStockedHereItems.length > 0
+    (!!props.addToLocationAction || !!props.notStockedHereReadOnly) &&
+    props.notStockedHereItems.length > 0
   return showInLocation || showNotStockedHere
 }
 
@@ -71,6 +79,7 @@ export function ItemSearchTail(props: ItemSearchTailProps) {
     groupAction,
     groupNote,
     addToLocationAction,
+    notStockedHereReadOnly,
   } = props
   const { t } = useTranslation()
 
@@ -84,6 +93,13 @@ export function ItemSearchTail(props: ItemSearchTailProps) {
     addToLocationAction && notStockedHereItems.length > 0
       ? addToLocationAction
       : null
+  // A location viewer: the same rows, with no action at all (not a disabled
+  // button). Nothing on the row says why. The LocationSwitcher "View only"
+  // badge is the only reason shown on every page; see the H5 plan, Known gaps.
+  const showNotStockedHereReadOnly =
+    !notStockedHereAction &&
+    !!notStockedHereReadOnly &&
+    notStockedHereItems.length > 0
   const showInLocation =
     (!!groupAction || !!groupNote) && inLocationItems.length > 0
 
@@ -138,13 +154,18 @@ export function ItemSearchTail(props: ItemSearchTailProps) {
           )}
         </>
       )}
-      {notStockedHereAction && (
+      {(notStockedHereAction || showNotStockedHereReadOnly) && (
         <>
           <ListSectionDivider>
             {t('common.notStockedHere', { count: notStockedHereItems.length })}
           </ListSectionDivider>
           {notStockedHereItems.map((item) =>
-            renderRow(item, actionButton(item, notStockedHereAction)),
+            renderRow(
+              item,
+              notStockedHereAction
+                ? actionButton(item, notStockedHereAction)
+                : null,
+            ),
           )}
         </>
       )}

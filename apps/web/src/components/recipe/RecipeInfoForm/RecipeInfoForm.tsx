@@ -10,9 +10,21 @@ interface RecipeInfoFormProps {
   /** Optional override for the initial displayed value (e.g. prefill from ?name= URL param).
    *  When provided, the form starts dirty if initialValue !== recipe.name. */
   initialValue?: string
-  onSave: (data: { name: string }) => void
+  /**
+   * May return a promise. When it rejects, the save failed: the form puts
+   * its "saved" baseline back, so the edit counts as unsaved again and Save
+   * is enabled. The form swallows the rejection; the caller shows the
+   * message (see docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md).
+   */
+  onSave: (data: { name: string }) => void | Promise<void>
   isPending?: boolean
   onDirtyChange?: (isDirty: boolean) => void
+  /**
+   * For a household member (households H5 task F.5): the inputs are
+   * `readOnly` (the text can still be selected), selects are disabled, and
+   * there is no Save button.
+   */
+  readOnly?: boolean
 }
 
 export function RecipeInfoForm({
@@ -21,6 +33,7 @@ export function RecipeInfoForm({
   onSave,
   isPending,
   onDirtyChange,
+  readOnly = false,
 }: RecipeInfoFormProps) {
   const { t } = useTranslation()
 
@@ -39,12 +52,15 @@ export function RecipeInfoForm({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (nameError || !isDirty || isPending) return
+    if (readOnly || nameError || !isDirty || isPending) return
     const trimmedName = name.trim()
-    onSave({ name: trimmedName })
+    const previousName = committedName
+    const result = onSave({ name: trimmedName })
     // Advance the committed baseline so isDirty → false → onDirtyChange(false)
     setName(trimmedName)
     setCommittedName(trimmedName)
+    // A failed save: put the baseline back, so the edit is unsaved again
+    result?.catch(() => setCommittedName(previousName))
   }
 
   return (
@@ -54,20 +70,23 @@ export function RecipeInfoForm({
         <Input
           id="recipe-name"
           value={name}
-          autoFocus
+          autoFocus={!readOnly}
+          readOnly={readOnly}
           onChange={(e) => setName(e.target.value)}
           className="capitalize"
           error={nameError}
         />
       </div>
-      <Button
-        type="submit"
-        disabled={!!nameError || !isDirty || !!isPending}
-        isLoading={!!isPending}
-        className="w-full"
-      >
-        {t('common.save')}
-      </Button>
+      {!readOnly && (
+        <Button
+          type="submit"
+          disabled={!!nameError || !isDirty || !!isPending}
+          isLoading={!!isPending}
+          className="w-full"
+        >
+          {t('common.save')}
+        </Button>
+      )}
     </form>
   )
 }

@@ -1,23 +1,27 @@
 import 'dotenv/config'
+import { createServer } from 'node:http'
 import express from 'express'
 import cors from 'cors'
-import { clerkClient, clerkMiddleware, getAuth } from '@clerk/express'
+import { clerkClient, clerkMiddleware, getAuth, verifyToken } from '@clerk/express'
 import { ApolloServer } from '@apollo/server'
 import { expressMiddleware } from '@as-integrations/express5'
 import { DEFAULT_CLIENT_ORIGIN, DEFAULT_PORT, GRAPHQL_PATH } from './constants.js'
 import { clerkWebhookHandler } from './lib/clerkWebhook.js'
-import { e2eCleanupHandler } from './lib/e2eCleanup.js'
+import { e2eCleanupHandler, errorCodeOf, installE2eCleanupFunction } from './lib/e2eCleanup.js'
+import { e2eDatabaseHandler } from './lib/e2eDatabase.js'
+import { e2eAddHouseholdMemberHandler } from './lib/e2eHouseholds.js'
 import {
   e2eCreateUserHandler,
   e2eReadUserHandler,
   e2eUserDeletedHandler,
 } from './lib/e2eUsers.js'
 import { isAllowedOrigin } from './lib/cors.js'
+import { createGraphQLContext } from './lib/graphqlContext.js'
 import { prisma } from './lib/prisma.js'
 import type { UserSource } from './lib/userRow.js'
 import { ensureUserOrLog } from './lib/userRow.js'
-import { typeDefs } from './schema/index.js'
-import { resolvers } from './resolvers/index.js'
+import { attachWsServer } from './lib/wsServer.js'
+import { createExecutableSchema } from './schema/executableSchema.js'
 import type { Context } from './context.js'
 
 const E2E_TEST_MODE = process.env.E2E_TEST_MODE === 'true'
@@ -53,6 +57,17 @@ if (E2E_TEST_MODE) {
   // test starts clean (lib/e2eCleanup.ts).
   app.delete('/e2e/cleanup', e2eCleanupHandler)
 
+  // The route calls one SQL function, `e2e_cleanup` (lib/e2eCleanupSql.ts).
+  // Create it now, before the server listens, so the first cleanup finds it.
+  // Only here: a production server never creates it. On failure, log the
+  // error's codes only (its message can hold the database host) and stop.
+  try {
+    await installE2eCleanupFunction()
+  } catch (err) {
+    console.error(`E2E: could not create the e2e_cleanup SQL function: ${errorCodeOf(err)}`)
+    process.exit(1)
+  }
+
   // Create a User row, fake Clerk's user.deleted event, and read a row back
   // (lib/e2eUsers.ts). No signature is checked, and no test signing secret
   // exists. That is safe only because these lines are inside this block:
@@ -60,6 +75,18 @@ if (E2E_TEST_MODE) {
   app.post('/e2e/users', e2eCreateUserHandler)
   app.post('/e2e/users/:id/deleted', e2eUserDeletedHandler)
   app.get('/e2e/users/:id', e2eReadUserHandler)
+
+  // Put a second person into a household, with a household role and location
+  // roles (lib/e2eHouseholds.ts, households H3a task 3.11). It adds anybody to
+  // anybody's household with no check of who asks, so it must stay in here.
+  app.post('/e2e/household-members', e2eAddHouseholdMemberHandler)
+
+  // Which E2E database this server uses (`local` or `neon`, from
+  // E2E_DATABASE) and how many migrations it has (lib/e2eDatabase.ts, E2E
+  // speed plan task S.6). It never answers a URL or a host. The E2E run's
+  // globalSetup reads it, so a run on the wrong or a stale database stops at
+  // the start.
+  app.get('/e2e/database', e2eDatabaseHandler)
 }
 
 // Where ensureUser takes a new User row's name and email. E2E mode never
@@ -68,33 +95,30 @@ const USER_SOURCE: UserSource = E2E_TEST_MODE
   ? { kind: 'e2e' }
   : { kind: 'clerk', lookup: async (id) => (await clerkClient.users.getUser(id)).raw }
 
-const server = new ApolloServer<Context>({ typeDefs, resolvers })
+// One schema for HTTP and for the WebSocket (households H3c-1, decision P2).
+// See schema/executableSchema.ts for why it is built with makeExecutableSchema.
+const schema = createExecutableSchema()
+
+const server = new ApolloServer<Context>({ schema })
 await server.start()
 
 app.use(
   GRAPHQL_PATH,
   expressMiddleware(server, {
-    context: async ({ req }) => {
-      // E2E test bypass: accept a static user ID header instead of a Clerk JWT.
-      // Only active when the server is started with E2E_TEST_MODE=true.
-      //
-      // Both branches call ensureUserOrLog (lib/userRow.ts): it creates a
-      // missing User row and records lastSeenAt once per UTC day. It never
-      // throws, so a failure there never fails the request (plan P11). The
-      // E2E branch returns early, so it needs its own call.
-      // contextEnsureUser.test.ts guards both calls.
-      if (E2E_TEST_MODE) {
-        const testUserId = req.headers['x-e2e-user-id'] as string | undefined
-        if (testUserId) {
-          await ensureUserOrLog(testUserId, USER_SOURCE)
-          return { userId: testUserId }
-        }
-      }
-      const auth = getAuth(req)
-      const userId = auth.userId ?? null
-      if (userId) await ensureUserOrLog(userId, USER_SOURCE)
-      return { userId }
-    },
+    // The two branches (E2E test header, Clerk session) live in
+    // lib/graphqlContext.ts, where graphqlContext.test.ts tests them.
+    //
+    // ensureUserOrLog (lib/userRow.ts) creates a missing User row and records
+    // lastSeenAt once per UTC day. It never throws, so a failure there never
+    // fails the request (plan P11). contextEnsureUser.test.ts checks that this
+    // file passes it, and not ensureUser, which can throw.
+    context: createGraphQLContext({
+      e2eTestMode: E2E_TEST_MODE,
+      // getAuth needs Express's full Request; the context function is only
+      // ever called with one.
+      clerkUserId: (req) => getAuth(req as express.Request).userId ?? null,
+      ensureUser: (userId) => ensureUserOrLog(userId, USER_SOURCE),
+    }),
   }),
 )
 
@@ -104,6 +128,35 @@ process.on('beforeExit', async () => {
   await prisma.$disconnect()
 })
 
-app.listen(PORT, () => {
-  console.log(`Server ready at http://localhost:${PORT}${GRAPHQL_PATH}`)
+// One HTTP server for Express and for the WebSocket endpoint, so both use
+// the same port and the path GRAPHQL_PATH (lib/wsServer.ts).
+const httpServer = createServer(app)
+
+attachWsServer(httpServer, schema, {
+  e2eTestMode: E2E_TEST_MODE,
+  // The socket has no Express request, so it cannot use clerkMiddleware and
+  // getAuth. verifyToken (from @clerk/backend, re-exported by @clerk/express)
+  // checks the session token directly. It reads the same CLERK_SECRET_KEY
+  // as clerkMiddleware, and CLERK_JWT_KEY when it is set. No
+  // authorizedParties, the same as clerkMiddleware here. It throws on a bad
+  // token AND when it cannot fetch Clerk's JWKS (no CLERK_JWT_KEY). Both reach
+  // lib/wsServer.ts: a bad token closes the socket with 4401 (not retried),
+  // any other error with 1013 (retried). lib/tokenCheckError.ts tells them
+  // apart by Clerk's `reason`.
+  verifyClerkToken: async (token) =>
+    (
+      await verifyToken(token, {
+        secretKey: process.env.CLERK_SECRET_KEY,
+        jwtKey: process.env.CLERK_JWT_KEY || undefined,
+      })
+    ).sub,
+  ensureUser: (userId) => ensureUserOrLog(userId, USER_SOURCE),
+})
+
+httpServer.listen(PORT, () => {
+  // The port the server really listens on. With PORT=0 (scripts/check-start.mjs)
+  // the system picks one, and the start check reads it from this line.
+  const address = httpServer.address()
+  const port = typeof address === 'object' && address ? address.port : PORT
+  console.log(`Server ready at http://localhost:${port}${GRAPHQL_PATH}`)
 })

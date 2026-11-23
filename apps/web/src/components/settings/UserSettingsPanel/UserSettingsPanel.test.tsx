@@ -1,6 +1,7 @@
 import { useUser } from '@clerk/react'
 import { render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { E2E_USER_ID_STORAGE_KEY } from '@/lib/e2eUser'
 import { UserLabel, UserSettingsPanel } from '.'
 
 // A Clerk user with every field the panel reads. The two dates differ, so a
@@ -131,6 +132,23 @@ describe('UserSettingsPanel', () => {
 
     // And the preference cards are there too
     expect(screen.getByText('Theme')).toBeInTheDocument()
+  })
+
+  it("user in E2E cloud mode acting as another person sees that person's id", () => {
+    // Given the E2E build, and a two-browser spec that made this context a
+    // different person through the localStorage override (households H5
+    // task F.8). The card must show the id this context really sends.
+    localStorage.setItem('data-mode', 'cloud')
+    localStorage.setItem(E2E_USER_ID_STORAGE_KEY, 'e2e-user-2')
+    vi.stubEnv('VITE_E2E_TEST_USER_ID', 'e2e-user-1')
+    vi.mocked(useUser).mockImplementation(() => {
+      throw new Error('useUser called with no ClerkProvider')
+    })
+
+    render(<UserSettingsPanel />)
+
+    expect(accountRows()).toEqual([['Test user ID', 'e2e-user-2']])
+    localStorage.removeItem(E2E_USER_ID_STORAGE_KEY)
   })
 })
 

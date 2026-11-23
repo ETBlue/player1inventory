@@ -3,16 +3,19 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DeleteButton } from '@/components/shared/DeleteButton'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
+import { ReadOnlyNote } from '@/components/shared/ReadOnlyNote'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
+import { usePermissions } from '@/hooks/usePermissions'
 import { useShelfLayout } from '@/hooks/useShelfLayout'
 import {
   useDeleteShelfMutation,
   useShelfQuery,
   useUpdateShelfMutation,
 } from '@/hooks/useShelves'
+import { showSaveError } from '@/lib/saveError'
 
 export const Route = createFileRoute('/settings/household/shelves/$shelfId/')({
   component: ShelfInfoTab,
@@ -27,6 +30,8 @@ function ShelfInfoTab() {
   const { goBack } = useAppNavigation('/settings/household/shelves')
   const navigate = useNavigate()
   const { registerDirtyState } = useShelfLayout()
+  // A household member sees this page read only (households H5 task F.5)
+  const { canEditCatalog, roleKnown } = usePermissions()
 
   // Flat state for editable fields
   const [name, setName] = useState('')
@@ -58,7 +63,7 @@ function ShelfInfoTab() {
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!shelf) return
+    if (!shelf || !canEditCatalog) return
     if (shelf.type === 'filter') {
       const base = shelf.filterConfig ?? {}
       updateShelf.mutate(
@@ -79,7 +84,9 @@ function ShelfInfoTab() {
             },
           },
         },
-        { onSuccess: () => goBack() },
+        // Before, a failed save showed nothing. The page stays, so the user
+        // can try again.
+        { onSuccess: () => goBack(), onError: (err) => showSaveError(err) },
       )
     } else {
       updateShelf.mutate(
@@ -89,7 +96,9 @@ function ShelfInfoTab() {
             name: name.trim(),
           },
         },
-        { onSuccess: () => goBack() },
+        // Before, a failed save showed nothing. The page stays, so the user
+        // can try again.
+        { onSuccess: () => goBack(), onError: (err) => showSaveError(err) },
       )
     }
   }
@@ -99,41 +108,52 @@ function ShelfInfoTab() {
 
   return (
     <form className="p-4 space-y-6 max-w-2xl mx-auto" onSubmit={handleSave}>
+      {roleKnown && !canEditCatalog && (
+        <ReadOnlyNote
+          className="px-0"
+          text={t('settings.catalogReadOnlyItem')}
+        />
+      )}
       {/* Name */}
       <div className="space-y-2">
         <Label>Name</Label>
         <Input
           value={name}
           onChange={(e) => setName(e.target.value)}
+          readOnly={!canEditCatalog}
           className="capitalize"
           aria-label="Shelf name"
           error={nameError}
         />
       </div>
 
-      {/* Save button */}
-      <Button
-        type="submit"
-        className="mt-2 w-full"
-        variant="primary"
-        disabled={!!nameError || !isDirty || updateShelf.isPending}
-        isLoading={updateShelf.isPending}
-      >
-        Save
-      </Button>
+      {/* Save and Delete: not for a household member */}
+      {canEditCatalog && (
+        <>
+          <Button
+            type="submit"
+            className="mt-2 w-full"
+            variant="primary"
+            disabled={!!nameError || !isDirty || updateShelf.isPending}
+            isLoading={updateShelf.isPending}
+          >
+            Save
+          </Button>
 
-      {/* Delete */}
-      <DeleteButton
-        trigger="Delete shelf"
-        buttonClassName="mt-2 w-full"
-        dialogTitle={`Delete "${shelf.name}"?`}
-        dialogDescription="Items will move to Unsorted."
-        onDelete={() => {
-          deleteShelf.mutate(shelf.id, {
-            onSuccess: () => navigate({ to: '/settings/household/shelves' }),
-          })
-        }}
-      />
+          {/* Delete */}
+          <DeleteButton
+            trigger="Delete shelf"
+            buttonClassName="mt-2 w-full"
+            dialogTitle={`Delete "${shelf.name}"?`}
+            dialogDescription="Items will move to Unsorted."
+            // Awaited, so `DeleteButton` sees a failure and says so
+            onDelete={async () => {
+              await deleteShelf.mutateAsync(shelf.id)
+              navigate({ to: '/settings/household/shelves' })
+            }}
+          />
+        </>
+      )}
     </form>
   )
 }

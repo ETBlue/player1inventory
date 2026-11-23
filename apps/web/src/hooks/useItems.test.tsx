@@ -64,6 +64,17 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
   return {
     ...original,
+    // `useItems` reads the catalog from `GetItems` in a household with no
+    // location (households H5, review of task F.7). This factory replaces
+    // setup.ts's, so it must stub that hook too: the real one needs an
+    // ApolloProvider even when skipped.
+    useGetItemsQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+      networkStatus: 7,
+      refetch: () => Promise.resolve(),
+    }),
     useGetItemQuery: () => mockUseGetItemQuery(),
     // The cloud location gate (`useCloudLocationKnown`) reads the location list
     // to check the active id is real before sending `PantryData` or
@@ -79,7 +90,6 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
             id: DEFAULT_LOCATION_ID,
             name: 'My Home',
             order: 0,
-            isDefault: true,
             createdAt: '2026-01-01T00:00:00.000Z',
             updatedAt: '2026-01-01T00:00:00.000Z',
           },
@@ -807,10 +817,9 @@ describe('location mutations go to the cloud in cloud mode', () => {
 
     // Then the request went to the server with that location, and the untouched
     // local row proves Dexie was not the target
-    // `objectContaining`: the call also carries the per-call
-    // `refetchQueries` / `awaitRefetchQueries` that target the written
-    // location (see `stockListRefetches`). The VARIABLES are what this
-    // assertion is about.
+    // The VARIABLES are what this assertion is about. Since 2026-11-18 the
+    // call carries nothing else: the lists are read again afterwards by
+    // `refetchAfterWrite` (see `stockListRefetches`), not by the mutation.
     expect(mockCloudRemoveFromLocation).toHaveBeenCalledWith(
       expect.objectContaining({
         variables: { itemId: item.id, locationId: CLOUD_LOCATION },

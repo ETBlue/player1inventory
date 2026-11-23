@@ -93,11 +93,27 @@ const DEFAULT_VALUES: ItemFormValues = {
 interface ItemFormProps {
   initialValues?: Partial<ItemFormValues>
   sections?: ('stock' | 'info')[]
+  /**
+   * Called on submit and NOT awaited. It must not reject: the caller catches
+   * a failed save and shows the message (`showSaveError`), because this form
+   * has no place for one. Both callers, `routes/items/$id/index.tsx` and
+   * `routes/items/$id/stock.tsx`, do. When the save fails the caller does not
+   * bump `savedAt`, so the form keeps its values and stays dirty.
+   */
   onSubmit: (values: ItemFormValues) => void
   onDirtyChange?: (isDirty: boolean) => void
   savedAt?: number
   submitLabel?: string
   isPending?: boolean
+  /**
+   * For a household member on the Info tab (households H5 task F.5). Every
+   * info field is `readOnly` (the text can still be selected), the switch
+   * and the select are disabled, and there is no submit button. Only the
+   * Info tab passes it for a member. Since task F.6 the Stock tab passes it
+   * for a location `viewer`: every stock number is `readOnly`, and the
+   * steppers, Pack, Unpack, Clear and Fill to Full are disabled.
+   */
+  readOnly?: boolean
 }
 
 export function ItemForm({
@@ -108,6 +124,7 @@ export function ItemForm({
   savedAt,
   submitLabel,
   isPending = false,
+  readOnly = false,
 }: ItemFormProps) {
   const { t } = useTranslation()
   const merged = { ...DEFAULT_VALUES, ...initialValues }
@@ -434,7 +451,7 @@ export function ItemForm({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (isSubmitDisabled) return
+    if (readOnly || isSubmitDisabled) return
     onSubmit(currentValuesRef.current)
   }
 
@@ -450,6 +467,7 @@ export function ItemForm({
             <Label htmlFor="name">{t('common.nameLabel')}</Label>
             <Input
               id="name"
+              readOnly={readOnly}
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
@@ -465,6 +483,7 @@ export function ItemForm({
             </Label>
             <Input
               id="wikidataUrl"
+              readOnly={readOnly}
               type="url"
               inputMode="url"
               value={wikidataUrl}
@@ -478,6 +497,7 @@ export function ItemForm({
             <Label htmlFor="note">{t('items.info.note.label')}</Label>
             <textarea
               id="note"
+              readOnly={readOnly}
               value={note}
               placeholder={t('items.info.note.placeholder')}
               onChange={(e) => setNote(e.target.value)}
@@ -508,6 +528,7 @@ export function ItemForm({
             </Label>
             <Input
               id="packageUnit"
+              readOnly={readOnly}
               value={packageUnit}
               placeholder={t('items.form.packageUnit.placeholder')}
               onChange={(e) => setPackageUnit(e.target.value)}
@@ -527,6 +548,7 @@ export function ItemForm({
             </Label>
             <Input
               id="consumeAmount"
+              readOnly={readOnly}
               type="number"
               step="0.01"
               min={0.01}
@@ -557,6 +579,7 @@ export function ItemForm({
                 id="targetUnit"
                 checked={targetUnit === 'measurement'}
                 onCheckedChange={handleTargetUnitChange}
+                disabled={readOnly}
               />
               <Label htmlFor="targetUnit" className="cursor-pointer">
                 {t('items.form.trackInMeasurement.label')}{' '}
@@ -578,6 +601,7 @@ export function ItemForm({
               </Label>
               <Input
                 id="measurementUnit"
+                readOnly={readOnly}
                 value={measurementUnit}
                 onChange={(e) => setMeasurementUnit(e.target.value)}
                 disabled={targetUnit !== 'measurement'}
@@ -604,6 +628,7 @@ export function ItemForm({
               </Label>
               <Input
                 id="amountPerPackage"
+                readOnly={readOnly}
                 type="number"
                 step="1"
                 min={1}
@@ -633,6 +658,7 @@ export function ItemForm({
               onValueChange={(value: ExpirationMode) =>
                 setExpirationMode(value)
               }
+              disabled={readOnly}
             >
               <SelectTrigger id="expirationMode">
                 <SelectValue />
@@ -681,6 +707,7 @@ export function ItemForm({
                   </Label>
                   <Input
                     id="expirationDueDays"
+                    readOnly={readOnly}
                     type="number"
                     min={1}
                     value={estimatedDueDays}
@@ -697,6 +724,7 @@ export function ItemForm({
                 </Label>
                 <Input
                   id="expirationThreshold"
+                  readOnly={readOnly}
                   type="number"
                   min={0}
                   value={expirationThreshold}
@@ -737,6 +765,7 @@ export function ItemForm({
                 decreaseLabel={t('items.form.packedQuantity.decrease')}
                 increaseLabel={t('items.form.packedQuantity.increase')}
                 disabled={isPending}
+                readOnly={readOnly}
                 size="default"
                 inputProps={{
                   id: 'packedQuantity',
@@ -751,7 +780,7 @@ export function ItemForm({
               <Button
                 type="button"
                 variant="neutral-outline"
-                disabled={packedQuantity < 1}
+                disabled={readOnly || packedQuantity < 1}
                 onClick={() => {
                   const next = computeUnpack(
                     {
@@ -796,6 +825,7 @@ export function ItemForm({
                 decreaseLabel={t('items.form.unpackedQuantity.decrease')}
                 increaseLabel={t('items.form.unpackedQuantity.increase')}
                 disabled={isPending}
+                readOnly={readOnly}
                 size="default"
                 inputProps={{
                   id: 'unpackedQuantity',
@@ -814,12 +844,13 @@ export function ItemForm({
                 type="button"
                 variant="neutral-outline"
                 disabled={
-                  targetUnit === 'package'
+                  readOnly ||
+                  (targetUnit === 'package'
                     ? unpackedQuantity < 1
                     : targetUnit === 'measurement'
                       ? !amountPerPackage ||
                         unpackedQuantity < Number(amountPerPackage)
-                      : true
+                      : true)
                 }
                 onClick={() => {
                   const next = computePack(
@@ -855,6 +886,7 @@ export function ItemForm({
                 id="expirationDueDate"
                 type="date"
                 value={dueDate}
+                readOnly={readOnly}
                 onChange={(e) => setDueDate(e.target.value)}
               />
               <p className="text-xs text-foreground-muted">
@@ -890,8 +922,8 @@ export function ItemForm({
               setPackedQuantity(fillToFullState.packedQuantity)
               setUnpackedQuantity(fillToFullState.unpackedQuantity)
             }}
-            clearDisabled={isPending || isStockAtZero}
-            fillDisabled={isPending || isStockAtFull}
+            clearDisabled={readOnly || isPending || isStockAtZero}
+            fillDisabled={readOnly || isPending || isStockAtFull}
             clearLabel={t('common.clear')}
             fillLabel={t('common.fillToFull')}
           />
@@ -915,6 +947,7 @@ export function ItemForm({
               decreaseLabel={t('items.form.targetQuantity.decrease')}
               increaseLabel={t('items.form.targetQuantity.increase')}
               disabled={isPending}
+              readOnly={readOnly}
               size="default"
               inputProps={{
                 id: 'targetQuantity',
@@ -950,6 +983,7 @@ export function ItemForm({
               decreaseLabel={t('items.form.refillThreshold.decrease')}
               increaseLabel={t('items.form.refillThreshold.increase')}
               disabled={isPending}
+              readOnly={readOnly}
               size="default"
               inputProps={{
                 id: 'refillThreshold',
@@ -968,16 +1002,18 @@ export function ItemForm({
         </div>
       )}
 
-      <div className="space-y-2">
-        <Button
-          type="submit"
-          disabled={isSubmitDisabled}
-          isLoading={!!isPending}
-          className="w-full"
-        >
-          {submitLabel ?? t('common.save')}
-        </Button>
-      </div>
+      {!readOnly && (
+        <div className="space-y-2">
+          <Button
+            type="submit"
+            disabled={isSubmitDisabled}
+            isLoading={!!isPending}
+            className="w-full"
+          >
+            {submitLabel ?? t('common.save')}
+          </Button>
+        </div>
+      )}
     </form>
   )
 }

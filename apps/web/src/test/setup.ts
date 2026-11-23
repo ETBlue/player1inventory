@@ -37,6 +37,14 @@ vi.mock('@apollo/client/react', async (importOriginal) => {
       },
       query: vi.fn().mockResolvedValue({ data: {} }),
       mutate: vi.fn().mockResolvedValue({ data: {} }),
+      // `refetchAfterWrite` (`apollo/refetchAfterWrite.ts`) calls it after a
+      // cloud write in tests that stub the mutation hooks. Apollo's answer is
+      // a promise that ALSO carries `queries` and `results` (one promise per
+      // read), and the helper waits for each of `results` (since the review
+      // of households H5c task H.4), so the stub carries both, empty.
+      refetchQueries: vi.fn(() =>
+        Object.assign(Promise.resolve([]), { queries: [], results: [] }),
+      ),
       resetStore: vi.fn().mockResolvedValue(null),
     })),
   }
@@ -71,6 +79,33 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
   return {
     ...original,
+    // The ownership offer banner (households H6b, task K.6) is mounted in
+    // `__root.tsx` in cloud mode, so every cloud test that renders the root
+    // route reaches `useMyOwnershipOffersQuery` (the real one needs an
+    // ApolloProvider). It returns no offers, so the banner renders no row, and
+    // the three mutation stubs below are reached by NO test today: an offer
+    // row calls them. Measured in the K.6 review by making each one throw.
+    // They are here for a future test that returns an offer. A test file with
+    // its OWN `@/generated/graphql` factory replaces this one and must stub
+    // them too.
+    useMyOwnershipOffersQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+      refetch: () => Promise.resolve(),
+    }),
+    useAcceptOwnershipOfferMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useDeclineOwnershipOfferMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useDismissOwnershipOfferMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
     useGetItemQuery: () => ({
       data: undefined,
       loading: false,
@@ -345,6 +380,11 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       loading: false,
       error: undefined,
     }),
+    useGetHouseholdLocationsQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
     useCreateLocationMutation: () => [
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
@@ -358,6 +398,49 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       {},
     ],
     useReorderLocationsMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    // Households H7b task M.4. `useLocationSort` (the switcher and Settings ›
+    // Locations) calls the first two on every render, and
+    // `ActiveLocationProvider` calls the third on every render, in both data
+    // modes (Rules of Hooks).
+    useMyLocationSortQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useSetLocationSortMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useMarkLocationVisitedMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useGetHouseholdQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useRenameHouseholdMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    // **Switch to…** (households H7 task L.4) is in the household sidebar and
+    // the mobile /settings accordion in cloud mode, so a cloud test that
+    // renders either reaches these. No households, and writes that answer
+    // nothing. The switcher's own tests use real Apollo.
+    useMyHouseholdsQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useSetActiveHouseholdMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useCreateHouseholdMutation: () => [
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
     ],

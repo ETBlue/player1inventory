@@ -21,25 +21,29 @@ import { typeDefs } from '../schema/index.js'
 // without rewriting its seven existing tests. This file carries its own mock
 // built from two stateful fakes:
 //
-//   - `src/test/stockFake.ts` for `location`, so `ensureDefaultLocation` and
-//     `requireLocationRole` run against real rows. Its `location.findFirst`
-//     applies `where` key by key (`where.x === undefined || row.x === where.x`),
-//     so dropping `userId` from the ownership query returns MORE rows and the
-//     fixture sees it.
+//   - `src/test/householdWorld.ts` for `location` (its `stockFake`) and the
+//     household and role rows. Every role is a row `beforeEach` seeds: each
+//     person owns one household and organizes its own locations
+//     (`soloHouseholds`). So `requireLocationRole` and
+//     `requireLocationInHousehold` run against real rows, and a stranger's location
+//     is refused because the caller has no role on it. (Households H3a task
+//     3.9 removed `derivedRoles`, which invented those rows from each
+//     location's `userId`.)
 //   - `src/test/shoppingFake.ts` for `cart`, so a written row can be read back
 //     and its `locationId` column inspected. Its `upsert` keeps `create` and
 //     `update` apart and applies `update` key by key, which is what makes a
 //     wrongly MOVED cart visible.
 vi.mock('../lib/prisma.js', async () => {
-  const { createStockFake } = await import('../test/stockFake.js')
+  const { createHouseholdWorld } = await import('../test/householdWorld.js')
   const { createShoppingFake } = await import('../test/shoppingFake.js')
-  const stock = createStockFake()
+  const world = createHouseholdWorld()
+  const stock = world.stock
   const shopping = createShoppingFake()
   return {
     prisma: {
-      ...stock.client,
+      ...world.client,
       location: {
-        ...stock.client.location,
+        ...world.client.location,
         // Wrapped so a test can count HOW MANY ownership checks ran, on top of
         // the fake's real row matching.
         findFirst: vi.fn(stock.client.location.findFirst),
@@ -53,7 +57,8 @@ vi.mock('../lib/prisma.js', async () => {
         // "delegateFor(...).findFirst is not a function". `shoppingFake`
         // already had the method; only this mock did not expose it. Its
         // `matchesCart` applies `where` key by key, so the guard's
-        // `{ id, userId }` really is scoped here.
+        // `{ id, locationId: { in } }` (households H3b task B.3; it was
+        // `{ id, userId }` before) really is scoped here.
         findFirst: vi.fn(shopping.client.cart.findFirst),
         findMany: vi.fn(shopping.client.cart.findMany),
         create: vi.fn(shopping.client.cart.create),
@@ -62,6 +67,14 @@ vi.mock('../lib/prisma.js', async () => {
       // Handles onto the fakes, hung off the mocked client because a `vi.mock`
       // factory is hoisted above every import and cannot close over a
       // module-scope binding.
+      // Wrapped so a test can count HOW MANY location role checks ran.
+      // Since households H3a task 3.5, `requireLocationRole` reads
+      // `locationMember`, not `location`.
+      locationMember: {
+        ...world.client.locationMember,
+        findFirst: vi.fn(world.client.locationMember.findFirst),
+      },
+      $world: world,
       $stockFake: stock,
       $shoppingFake: shopping,
     },
@@ -69,10 +82,13 @@ vi.mock('../lib/prisma.js', async () => {
 })
 
 import { prisma } from '../lib/prisma.js'
+import type { HouseholdWorld } from '../test/householdWorld.js'
+import { soloHouseholds } from '../test/householdRows.js'
 import type { ShoppingFake } from '../test/shoppingFake.js'
 import type { StockFake } from '../test/stockFake.js'
 
 const mockPrisma = prisma as unknown as {
+  $world: HouseholdWorld
   $stockFake: StockFake
   $shoppingFake: ShoppingFake
 }
@@ -103,23 +119,32 @@ const STRANGER = 'user_stranger'
 const LOC_DEFAULT = 'loc_kitchen' // USER's default
 const LOC_OTHER = 'loc_garage' // USER's, NOT default — the target
 const LOC_STRANGER = 'loc_theirs' // STRANGER's — must be refused
-// No `Location` row holds this id, in any account. It is what a cloud → cloud
-// restore leaves behind: the cart ids name the SOURCE account's locations, and
-// `clearAllData` has already deleted those rows. Must fall back to the
-// caller's default, NOT be refused — task 8.
+// No `Location` row holds this id, in any account. Until households H4 task
+// E.1 such a cart fell back to the caller's first location (task 8). Since E.1
+// the cart-id guard refuses it.
 const LOC_GONE = 'loc_deleted_by_clearAllData'
 
 const VENDOR = 'vendor_costco'
 
 const TS = new Date('2026-01-01T00:00:00.000Z')
 
+// Each person owns one household and organizes their own locations.
+const HH_USER = 'hh_user'
+const HH_STRANGER = 'hh_stranger'
+
 beforeEach(() => {
   vi.clearAllMocks()
   mockPrisma.$stockFake.reset([
-    { id: LOC_OTHER, userId: USER, isDefault: false, name: 'Garage', order: 1, createdAt: TS, updatedAt: TS },
-    { id: LOC_DEFAULT, userId: USER, isDefault: true, name: 'Kitchen', order: 0, createdAt: TS, updatedAt: TS },
-    { id: LOC_STRANGER, userId: STRANGER, isDefault: true, name: 'Theirs', order: 0, createdAt: TS, updatedAt: TS },
+    { id: LOC_OTHER, householdId: HH_USER, name: 'Garage', order: 1, createdAt: TS, updatedAt: TS },
+    { id: LOC_DEFAULT, householdId: HH_USER, name: 'Kitchen', order: 0, createdAt: TS, updatedAt: TS },
+    { id: LOC_STRANGER, householdId: HH_STRANGER, name: 'Theirs', order: 0, createdAt: TS, updatedAt: TS },
   ])
+  mockPrisma.$world.seedHouseholds(
+    soloHouseholds([
+      { userId: USER, householdId: HH_USER, locationIds: [LOC_OTHER, LOC_DEFAULT] },
+      { userId: STRANGER, householdId: HH_STRANGER, locationIds: [LOC_STRANGER] },
+    ]),
+  )
   mockPrisma.$shoppingFake.reset([], [])
 })
 
@@ -164,8 +189,8 @@ function storedLocationOf(id: string): string | undefined {
 }
 
 const locationFindFirst = (
-  prisma as unknown as { location: { findFirst: ReturnType<typeof vi.fn> } }
-).location.findFirst
+  prisma as unknown as { locationMember: { findFirst: ReturnType<typeof vi.fn> } }
+).locationMember.findFirst
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
@@ -210,17 +235,21 @@ describe('bulkCreateShoppingCarts — the location comes from the cart id', () =
     expect(storedLocationOf(id)).toBe(LOC_OTHER)
   })
 
-  it('user importing a pre-3b backup gets its bare cart ids stored in their default location', async () => {
-    // Given a cart id with no colon at all — the pre-PR-3b shape, keyed by
-    // vendor id alone
-    const id = VENDOR
+  it('user importing a pre-3b backup with bare cart ids is refused and nothing is written', async () => {
+    // Given a cart id with no colon at all (the pre-PR-3b shape, keyed by
+    // vendor id alone), behind an allowed cart. Until households H4 task E.1
+    // the bare id fell back to the caller's first location. Since then
+    // `requireOwnRowOrUnclaimed` refuses an id with no location part
+    // (decision T6). The web upgrades a legacy file before it sends it
+    // (`upgradeLegacyPayload`), so only a hand-edited file gets here.
+    const good = `${LOC_OTHER}:${VENDOR}`
 
     // When the import runs
-    const result = await exec(BULK_CREATE_CARTS, [{ id }])
+    const result = await exec(BULK_CREATE_CARTS, [{ id: good }, { id: VENDOR }])
 
-    // Then it falls back to the caller's default location
-    expect(result.errors).toBeUndefined()
-    expect(storedLocationOf(id)).toBe(LOC_DEFAULT)
+    // Then it is refused as bad input, and the allowed cart is not written
+    expect(result.errors?.[0]?.extensions?.code).toBe('BAD_USER_INPUT')
+    expect(mockPrisma.$shoppingFake.state.carts).toHaveLength(0)
   })
 
   it('user importing a cart that names someone else is refused and nothing is written', async () => {
@@ -238,56 +267,31 @@ describe('bulkCreateShoppingCarts — the location comes from the cart id', () =
     expect(mockPrisma.$shoppingFake.state.carts).toHaveLength(0)
   })
 
-  it('user importing a cloud backup gets carts whose locations were deleted stored in their default location', async () => {
-    // Given a cart id naming a location NO row holds. This is the cloud →
-    // cloud restore case the E2E gate caught: a cloud export carries no
-    // `itemStocks`, so the cart ids keep their composite form naming the
-    // source account's locations, and the import's own `clearAllData` has
-    // already deleted those rows. Refusing here killed the whole restore with
-    // "Import failed during Forbidden."
-    const id = `${LOC_GONE}:${VENDOR}`
-
-    // When the import runs
-    const result = await exec(BULK_CREATE_CARTS, [{ id }])
-
-    // Then it falls back to the caller's default and nothing throws
-    expect(result.errors).toBeUndefined()
-    expect(storedLocationOf(id)).toBe(LOC_DEFAULT)
-  })
-
-  it('user importing a cart id with an empty location part gets it stored in their default location', async () => {
-    // Given `":vendor"`, reachable from a hand-edited backup. No `Location`
-    // row holds the id `''`, so it is unclaimed like any other unheld id and
-    // takes the same fallback. Task 4 refused this shape; task 8 unified it,
-    // because a backup CAN create a location whose id is `''` —
-    // `LocationInput.id` is stored verbatim — and then the role check decides.
-    const id = `:${VENDOR}`
-
-    // When the import runs
-    const result = await exec(BULK_CREATE_CARTS, [{ id }])
-
-    // Then it falls back to the caller's default
-    expect(result.errors).toBeUndefined()
-    expect(storedLocationOf(id)).toBe(LOC_DEFAULT)
-  })
-
-  it('user importing a mix of live, deleted and bare cart ids gets each one placed correctly', async () => {
-    // Given all three shapes in one payload. The fixture has MORE THAN ONE
-    // location and the live one is NOT the default, so "the location in the
-    // id" and "the caller's default" are different answers — a resolver that
-    // ignored the id would fail the first assertion.
-    const live = `${LOC_OTHER}:${VENDOR}`
+  it('user importing a cart whose location no longer exists is refused and nothing is written', async () => {
+    // Given a cart id naming a location NO row holds, behind an allowed cart.
+    // Until households H4 task E.1 this fell back to the caller's first
+    // location (a cloud -> cloud restore once needed it, when a cloud export
+    // carried no locations). Locations are now imported before carts, so a
+    // missing location means a hand-edited file. The cart-id guard refuses a
+    // prefix that is not a location the caller may write to (decision T6).
+    const good = `${LOC_OTHER}:${VENDOR}`
     const gone = `${LOC_GONE}:${VENDOR}`
-    const bare = VENDOR
 
     // When the import runs
-    const result = await exec(BULK_CREATE_CARTS, [{ id: live }, { id: gone }, { id: bare }])
+    const result = await exec(BULK_CREATE_CARTS, [{ id: good }, { id: gone }])
 
-    // Then only the live id keeps its own location
-    expect(result.errors).toBeUndefined()
-    expect(storedLocationOf(live)).toBe(LOC_OTHER)
-    expect(storedLocationOf(gone)).toBe(LOC_DEFAULT)
-    expect(storedLocationOf(bare)).toBe(LOC_DEFAULT)
+    // Then it is refused, and nothing is written
+    expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
+    expect(mockPrisma.$shoppingFake.state.carts).toHaveLength(0)
+  })
+
+  it('user importing a cart id with an empty location part is refused', async () => {
+    // Given `":vendor"`, reachable from a hand-edited backup. No location
+    // the caller may write to has the id `''`.
+    const result = await exec(BULK_CREATE_CARTS, [{ id: `:${VENDOR}` }])
+
+    expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
+    expect(mockPrisma.$shoppingFake.state.carts).toHaveLength(0)
   })
 
   it('refuses a stranger\'s live location even when other ids in the payload are unclaimed', async () => {
@@ -339,8 +343,7 @@ describe('bulkCreateShoppingCarts — the location comes from the cart id', () =
     expect(storedLocationOf(`${LOC_OTHER}:v1`)).toBe(LOC_OTHER)
     expect(storedLocationOf(`${LOC_DEFAULT}:v2`)).toBe(LOC_DEFAULT)
     // And the ownership check ran twice — once per DISTINCT location, not five
-    // times. `ensureDefaultLocation` is not called at all, because no id was
-    // bare.
+    // times.
     expect(locationFindFirst).toHaveBeenCalledTimes(2)
   })
 })
@@ -360,44 +363,19 @@ describe('bulkUpsertShoppingCarts — the location comes from the cart id', () =
     expect(storedLocationOf(id)).not.toBe(LOC_DEFAULT)
   })
 
-  it('user re-importing a pre-3b backup gets its bare cart ids stored in their default location', async () => {
-    // Given a bare, pre-PR-3b cart id
-    const id = VENDOR
+  it('user re-importing bare or deleted-location cart ids is refused and nothing is written', async () => {
+    // Given the two shapes the old fallback accepted (see the create tests
+    // above), each behind an allowed cart, through the upsert path
+    const good = `${LOC_OTHER}:${VENDOR}`
 
-    // When the upsert import runs
-    const result = await exec(BULK_UPSERT_CARTS, [{ id }])
+    // When the upsert import runs with each
+    const bare = await exec(BULK_UPSERT_CARTS, [{ id: good }, { id: VENDOR }])
+    const gone = await exec(BULK_UPSERT_CARTS, [{ id: good }, { id: `${LOC_GONE}:${VENDOR}` }])
 
-    // Then it falls back to the caller's default location
-    expect(result.errors).toBeUndefined()
-    expect(storedLocationOf(id)).toBe(LOC_DEFAULT)
-  })
-
-  it('user re-importing a cloud backup gets carts whose locations were deleted stored in their default location', async () => {
-    // Given the same deleted-location id, through the upsert path. A cloud →
-    // cloud restore uses "replace conflicts", so this is the mutation the
-    // failing E2E test actually ran.
-    const id = `${LOC_GONE}:${VENDOR}`
-
-    // When the upsert import runs
-    const result = await exec(BULK_UPSERT_CARTS, [{ id }])
-
-    // Then it falls back to the caller's default and nothing throws
-    expect(result.errors).toBeUndefined()
-    expect(storedLocationOf(id)).toBe(LOC_DEFAULT)
-  })
-
-  it('user re-importing a mix of live and deleted cart ids gets each one placed correctly', async () => {
-    // Given one live non-default location and one deleted one
-    const live = `${LOC_OTHER}:${VENDOR}`
-    const gone = `${LOC_GONE}:${VENDOR}`
-
-    // When the upsert import runs
-    const result = await exec(BULK_UPSERT_CARTS, [{ id: live }, { id: gone }])
-
-    // Then the live id keeps its own location and only the deleted one falls back
-    expect(result.errors).toBeUndefined()
-    expect(storedLocationOf(live)).toBe(LOC_OTHER)
-    expect(storedLocationOf(gone)).toBe(LOC_DEFAULT)
+    // Then both are refused and nothing is written
+    expect(bare.errors?.[0]?.extensions?.code).toBe('BAD_USER_INPUT')
+    expect(gone.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
+    expect(mockPrisma.$shoppingFake.state.carts).toHaveLength(0)
   })
 
   it('refuses a stranger\'s live location on re-import even when other ids are unclaimed', async () => {
@@ -439,34 +417,31 @@ describe('bulkUpsertShoppingCarts — the location comes from the cart id', () =
     expect(mockPrisma.$shoppingFake.state.carts).toHaveLength(0)
   })
 
-  it('does not move an existing cart when a re-import names a different location', async () => {
-    // Given a cart already stored at LOC_DEFAULT. A cart id carries its own
-    // location, so the only way to re-import the SAME primary key under a
-    // different location is for the stored row's column to disagree with its
-    // id — which is exactly the state a pre-3b bare id leaves behind, and the
-    // state a `locationId` in the upsert's `update` payload would rewrite.
-    const id = VENDOR
-    await exec(BULK_UPSERT_CARTS, [{ id, lastPurchasedAt: '2026-02-01T00:00:00.000Z' }])
-    expect(storedLocationOf(id)).toBe(LOC_DEFAULT)
+  it('refuses to re-import a stored cart whose location is not the one its id names', async () => {
+    // Given a cart stored at LOC_DEFAULT under an id that names LOC_OTHER.
+    // The old import fallback could leave such a row (it kept the id and
+    // changed the location). The caller organizes both locations, so only
+    // the prefix rule can refuse it (households H4 task E.1, decision T6).
+    //
+    // Until E.1 this test re-imported such a row and checked that the upsert
+    // did not MOVE it. The guard now refuses the row first, so that path is
+    // reached only when the guard misses.
+    // `import-ownership-cart.resolver.test.ts` keeps that case ("does not move
+    // a stranger's cart even when the guard misses it").
+    const id = `${LOC_OTHER}:${VENDOR}`
+    const stored = new Date('2026-02-01T00:00:00.000Z')
+    mockPrisma.$shoppingFake.reset([], [{ id, locationId: LOC_DEFAULT, lastPurchasedAt: stored }])
 
-    // When the same id is re-imported while the caller's default has moved to
-    // LOC_OTHER — the account's default changed between the two imports
-    mockPrisma.$stockFake.reset([
-      { id: LOC_OTHER, userId: USER, isDefault: true, name: 'Garage', order: 1, createdAt: TS, updatedAt: TS },
-      { id: LOC_DEFAULT, userId: USER, isDefault: false, name: 'Kitchen', order: 0, createdAt: TS, updatedAt: TS },
-      { id: LOC_STRANGER, userId: STRANGER, isDefault: true, name: 'Theirs', order: 0, createdAt: TS, updatedAt: TS },
-    ])
+    // When the same id is re-imported with a new date
     const result = await exec(BULK_UPSERT_CARTS, [
       { id, lastPurchasedAt: '2026-03-01T00:00:00.000Z' },
     ])
 
-    // Then the row's other columns update but its location does NOT move.
-    // `locationId` belongs in the upsert's `create` only — carrying it into
-    // `update` would relocate every cart on each re-import.
-    expect(result.errors).toBeUndefined()
+    // Then it is refused, and the row is unchanged: not moved, same date
+    expect(result.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
     expect(storedLocationOf(id)).toBe(LOC_DEFAULT)
     expect(
       mockPrisma.$shoppingFake.state.carts.find((c) => c.id === id)?.lastPurchasedAt,
-    ).toEqual(new Date('2026-03-01T00:00:00.000Z'))
+    ).toEqual(stored)
   })
 })

@@ -3,12 +3,20 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const navigateMock = vi.fn()
 
+// The page the guard runs on. `useRouterState` gets a `select` function, so
+// the mock applies it to this location, the way the router does.
+const routerLocation = vi.hoisted(() => ({
+  value: { pathname: '/', searchStr: '' },
+}))
+
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>()
   return {
     ...actual,
     useNavigate: () => navigateMock,
-    useRouterState: () => '/',
+    useRouterState: (opts: {
+      select: (s: { location: typeof routerLocation.value }) => unknown
+    }) => opts.select({ location: routerLocation.value }),
   }
 })
 
@@ -23,6 +31,7 @@ function setOnLine(value: boolean) {
 }
 
 afterEach(() => {
+  routerLocation.value = { pathname: '/', searchStr: '' }
   navigateMock.mockClear()
   vi.restoreAllMocks()
 })
@@ -37,8 +46,61 @@ describe('CloudAuthGuard', () => {
 
     // Then the user is sent to the sign-in page
     await waitFor(() => {
-      expect(navigateMock).toHaveBeenCalledWith({ to: '/sign-in' })
+      expect(navigateMock).toHaveBeenCalledWith({ to: '/sign-in', search: {} })
     })
+  })
+
+  it('user who opens an invite link while signed out comes back to it after sign-in', async () => {
+    // Given a signed-out person on the join page of an invite link
+    setOnLine(true)
+    routerLocation.value = { pathname: '/join/abc', searchStr: '?x=1' }
+
+    // When the guard renders
+    render(<CloudAuthGuard />)
+
+    // Then the sign-in page is told where to send them back (decision T24)
+    await waitFor(() => {
+      expect(navigateMock).toHaveBeenCalledWith({
+        to: '/sign-in',
+        search: { redirect: '/join/abc?x=1' },
+      })
+    })
+  })
+
+  it('does not send the sign-in page to itself', async () => {
+    // Given a signed-out person already on the sign-in page, with a return
+    // path. Navigating again would replace that return path with the
+    // sign-in page's own URL
+    setOnLine(true)
+    routerLocation.value = {
+      pathname: '/sign-in',
+      searchStr: '?redirect=%2Fjoin%2Fabc',
+    }
+
+    // When the guard renders
+    render(<CloudAuthGuard />)
+
+    // Then it stays put
+    await new Promise((r) => setTimeout(r, 0))
+    expect(navigateMock).not.toHaveBeenCalled()
+  })
+
+  it('leaves a signed-out person on the sign-up page', async () => {
+    // Given a signed-out person who chose "Sign up" on the sign-in page of
+    // an invite link (docs/global/bugs/2026-11-23-bug-join-redirect-lost-on-sign-up.md)
+    setOnLine(true)
+    routerLocation.value = {
+      pathname: '/sign-up',
+      searchStr: '?redirect=%2Fjoin%2Fabc',
+    }
+
+    // When the guard renders
+    render(<CloudAuthGuard />)
+
+    // Then it stays put. Sending them to sign-in would take them away from
+    // the sign-up form they asked for
+    await new Promise((r) => setTimeout(r, 0))
+    expect(navigateMock).not.toHaveBeenCalled()
   })
 
   it('user stays on the page when signed out and offline', async () => {

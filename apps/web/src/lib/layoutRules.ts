@@ -8,11 +8,17 @@ const HOUSEHOLD_LIST_PAGE = /^\/settings\/household(?:\/[^/]+)?\/?$/
 // Anything below a section: `/settings/household/<section>/<id>…`.
 const HOUSEHOLD_DETAIL_PAGE = /^\/settings\/household\/[^/]+\/[^/]+/
 
-// The list pages that are full-screen on mobile, with their own Back button.
-// `/settings/household` and `/settings/household/locations` are not: on mobile
-// they keep the bottom bar.
-const MOBILE_FULLSCREEN_LIST_PAGE =
-  /^\/settings\/household\/(?:tags|vendors|recipes|shelves)\/?$/
+// `/settings` and every page below it. On mobile all of them are full-screen
+// (no bottom bar), and each has a Back button in its own top bar (owner
+// request, 2026-11-23). `/settingsx` is not one.
+const SETTINGS_PAGE = /^\/settings(?:\/.*)?$/
+
+/**
+ * True for `/settings` and every page below it.
+ */
+export function isSettingsPage(pathname: string): boolean {
+  return SETTINGS_PAGE.test(pathname)
+}
 
 /**
  * True for a household settings list page: `/settings/household` and
@@ -28,20 +34,26 @@ export function isHouseholdSettingsPage(pathname: string): boolean {
  * `desktop` is required, so no caller can forget the screen size. Components
  * pass `useIsDesktop()`.
  *
- * - Onboarding, item pages and household detail pages are full-screen on
- *   every screen.
+ * - Onboarding, the join page of an invite link (`/join/<token>`), item
+ *   pages and household detail pages are full-screen on every screen.
  * - On desktop, household list pages show the sidebar.
- * - On mobile, the tags, vendors, recipes and shelves lists stay full-screen.
+ * - On mobile, every settings page (`/settings` and below) is full-screen:
+ *   no bottom bar, and a Back button in the page's own top bar. Until
+ *   2026-11-23 only the tags, vendors, recipes and shelves lists were.
  */
 export function isFullscreenPage(
   pathname: string,
   options: { desktop: boolean },
 ): boolean {
   if (pathname === '/onboarding') return true
+  // The join page (households H5b, decision T25). A person who opens an
+  // invite link may have no household data yet, so the sidebar would only
+  // show empty places.
+  if (pathname.startsWith('/join/')) return true
   if (pathname.startsWith('/items/')) return true
   if (HOUSEHOLD_DETAIL_PAGE.test(pathname)) return true
   if (options.desktop) return false
-  return MOBILE_FULLSCREEN_LIST_PAGE.test(pathname)
+  return isSettingsPage(pathname)
 }
 
 // The pages "Back" in the household sidebar may return to: Pantry (`/`),

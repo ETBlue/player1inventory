@@ -11,6 +11,19 @@ role table is replaced, and its six open questions are answered (see the last se
 **Fixes when built:** issue #273 (unchecked tag / vendor ids). Issue #327 (import takes over
 another user's rows) was fixed separately on 2026-10-28 (#354); H4 moves that guard to the
 household scope.
+**H3 plan:** [2026-11-04-households-plan-h3a.md](2026-11-04-households-plan-h3a.md). H3 is
+split into two PRs, H3a and H3b. That plan's decisions H1–H16 were written back into this doc
+on 2026-11-04. Each change below names its decision, for example "H3a plan decision H1".
+**Do not confuse the decision numbers H1–H16 with the phases H1–H7.** A phase is always
+written "phase H1"; a decision is always written "decision H1".
+
+**Already done before H3a: `fix/catalog-write-scope` (PR #371, merged 2026-11-04).** Seven
+tag, tag type and vendor writes changed rows by `where: { id }` alone, without checking whose
+row it was. They now call `requireOwnRowOrUnclaimed` before they write: `updateVendor`,
+`deleteVendor`, `updateTagType`, `deleteTagType`, `createTag`, `updateTag` and `deleteTag`
+(for `createTag` and `updateTag`, the check is on `typeId` and `parentId`). See
+`docs/global/bugs/2026-11-04-bug-unscoped-catalog-writes.md`. H3a moves the `typeId` /
+`parentId` checks into its new `requireCatalogIds` helper (H3a plan task 3.7).
 
 ## Summary
 
@@ -37,14 +50,15 @@ User stories:
 | Work | Relation |
 |---|---|
 | Cloud-locations PR 5 (drop `Item`'s stock columns and the dual-write bridge) | ✅ Merged 2026-10-08 (#332). It deleted `lib/stockDualWrite.ts` and two of the `isDefault` reads. |
-| Issue #273 | Fixed here. Catalog ids are checked with `requireHouseholdRole`. |
+| Issue #273 | Fixed here, in H3a. Catalog ids are checked with `requireHouseholdRole` and a new helper, `requireCatalogIds` (H3a plan task 3.7). |
+| `fix/catalog-write-scope` (PR #371) | ✅ Merged 2026-11-04, before H3a. Seven tag, tag type and vendor writes now check ownership through `requireOwnRowOrUnclaimed`. Not part of #273. |
 | Issue #327, cart-id leak (`e2e/tests/cart-id-cross-user-leak.spec.ts`) | ✅ Fixed 2026-10-28 (#354), before this work. It added a second guard, `requireOwnRowOrUnclaimed`. H4 changes that guard's body to the new scopes (see *Authorization*). |
 | Issue #330 (`replace` skips rows) | ✅ Fixed 2026-10-12 (#350), before this work. The import rewrite here must keep the fix (see *Known gaps*). |
-| Issue #358 (nine `CartItem.userId` filters keep compiling and become wrong) | Answered here, in *Checkout with a shared cart*. Fixed in H3. |
-| Issue #359 (six `userId: String!` GraphQL fields) | Step one ✅ merged 2026-10-31 (#367): no web document selects them any more. Step two, removing the fields, is H3. See *Sequencing*. |
-| Issue #360 (`ensureDefaultLocation` loses its race guard) | Answered here, in *First sign-in*. Fixed in H3. |
+| Issue #358 (`CartItem.userId` filters keep compiling and become wrong) | Answered here, in *Checkout with a shared cart*. Fixed in **H3b**, not H3a. The issue says nine filters; the H3 research found **15**. H3b counted **12** at its branch point and removed all of them (see that section). |
+| Issue #359 (six `userId: String!` GraphQL fields) | Step one ✅ merged 2026-10-31 (#367): no web document selects them any more. Step two, removing the fields, is H3a task 3.14 (decision H11). See *Sequencing*. |
+| Issue #360 (`ensureDefaultLocation` loses its race guard) | Answered here, in *First sign-in*. Fixed in H3a, with a claim column on `User` (decision H1). |
 | Issue #361 (`Cart.id` is not a cuid) | Answered here, in *Authorization*. Fixed in H4. |
-| Issue #320 (purge and `clearAllData` filters) | Answered here, in *Purge*. Fixed in H3 (filters) and H6 (new purges). |
+| Issue #320 (purge and `clearAllData` filters) | Answered here, in *Purge*. Fixed in H3a (filters, and the two-household test, decision H10) and H6 (new purges). |
 | Local mode | Not changed, except for the Settings layout and route moves. |
 
 ### What the user gets (once merged AND deployed)
@@ -105,7 +119,15 @@ There are two levels. Each role includes every right of the roles below it.
 | Leave the location | ✅ | ✅ | ✅ |
 | Give or remove participant / viewer | ✅ | ❌ | ❌ |
 | Rename the location | ✅ | ❌ | ❌ |
+| Remove one item from the location (`removeItemFromLocation`) | ✅ | ❌ | ❌ |
 | Remove all items from the location (purge) | ✅ | ❌ | ❌ |
+
+**Removing one item from a location is organizer only** (owner decision, 2026-11-11). The
+removal deletes the item's stock row there, EVERY log of the item at that location (the logs
+other members wrote too), and its entries in that location's carts. Deleting co-members' logs
+needs a higher role than editing stock, so a participant cannot do it. The purge in the last
+row keeps the location's logs; this removal still deletes them. A participant can still edit
+the stock, add an item to the location, cook and shop. Local mode has no role check.
 
 ### Rules that cross the two levels
 
@@ -128,30 +150,91 @@ The member rules (read-only catalog) are a first version. They may change after 
 
 ### New models
 
-| Model | Fields | Notes |
-|---|---|---|
-| `User` | `id` (Clerk id), `displayName`, `email?`, `lastSeenAt?`, `deletedAt?` | See *Clerk integration*. `email` is optional: a Clerk account may have none, and `user.deleted` carries none (plan P10) |
-| `Household` | `id`, `name`, `ownerId?`, `ownerGoneAt?`, `createdAt`, `updatedAt` | `ownerId` is null after the owner's account is deleted, until someone accepts |
-| `HouseholdMember` | `householdId`, `userId`, `role` (`owner` / `manager` / `member`), `joinedAt` | Primary key `(householdId, userId)`. Exactly one `owner` row while `ownerId` is set |
-| `LocationMember` | `locationId`, `userId`, `role` (`organizer` / `participant` / `viewer`), `createdAt` | Primary key `(locationId, userId)`. The person must be a `HouseholdMember` of the location's household |
-| `HouseholdInvite` | `id`, `householdId`, `token` (unique), `householdRole`, `locationRoles` (JSON list of `{locationId, role}`), `createdBy`, `expiresAt`, `usedAt?`, `usedBy?`, `revokedAt?` | Single use, 7 days |
-| `OwnershipOffer` | `householdId`, `toUserId`, `fromUserId?`, `kind` (`transfer` / `handover`), `createdAt`, `dismissedAt?` | `transfer`: the owner offered it. `handover`: the owner's account was deleted. Drives the prompt banner |
-| `HouseholdActivity` | `id`, `householdId`, `actorId`, `action`, `targetUserId?`, `locationId?`, `details` (JSON), `createdAt` | See *Activity log* |
-| `LocationPreference` | `userId`, `locationId`, `customOrder?`, `lastVisitedAt?` | Per-person location order and last visit |
-| `UserPreference` | `userId`, `locationSort` (`name` / `lastUpdated` / `lastVisited` / `custom`) | Per-person sort mode. May be merged into `User` |
+The *Phase* column was added on 2026-11-04 from the H3a plan. "H3a" means the model is built
+in that PR.
+
+| Model | Fields | Notes | Phase |
+|---|---|---|---|
+| `User` | `id` (Clerk id), `displayName`, `email?`, `lastSeenAt?`, `deletedAt?`, **`householdSetupAt?`** | See *Clerk integration*. `email` is optional: a Clerk account may have none, and `user.deleted` carries none (plan P10). `householdSetupAt` is the first sign-in claim column (decision H1, see *First sign-in*) | phase H2; `householdSetupAt` in H3a |
+| `Household` | `id`, `name`, `ownerId?`, `ownerGoneAt?`, `createdAt`, `updatedAt` | `ownerId` is null after the owner's account is deleted, until someone accepts. `ownerId` **mirrors** the owner's `HouseholdMember` row and is written in the same transaction as that row (decision H15). `onDelete: SetNull` on the `ownerId` relation | H3a |
+| `HouseholdMember` | `householdId`, `userId`, `role` (`owner` / `manager` / `member`), `joinedAt` | Primary key `(householdId, userId)`. **This row is the source of truth for rights**, not `Household.ownerId` (decision H15). A partial unique index, `HouseholdMember_one_owner_key ON ("householdId") WHERE role = 'owner'`, allows at most one `owner` row per household, so two owners are impossible | H3a |
+| `LocationMember` | `locationId`, `userId`, `role` (`organizer` / `participant` / `viewer`), `createdAt` | Primary key `(locationId, userId)`. The person must be a `HouseholdMember` of the location's household | H3a |
+| `HouseholdInvite` | `id`, `householdId`, `token` (unique), `householdRole`, `locationRoles` (JSON list of `{locationId, role}`), `createdBy`, `expiresAt`, `usedAt?`, `usedBy?`, `revokedAt?` | Single use, 7 days | H5 |
+| `OwnershipOffer` | `householdId`, `toUserId`, `fromUserId?`, `kind` (`transfer` / `handover`), `createdAt`, `dismissedAt?` | `transfer`: the owner offered it. `handover`: the owner's account was deleted. Drives the prompt banner | H6 |
+| `HouseholdActivity` | `id`, `householdId`, `actorId`, `action`, `targetUserId?`, `locationId?`, `details` (JSON), `createdAt` | See *Activity log* | H6 |
+| `LocationPreference` | `userId`, `locationId`, `customOrder?`, `lastVisitedAt?`, `updatedAt` | Per-person location order and last visit. Primary key `(userId, locationId)`; both foreign keys `ON DELETE CASCADE`; an index on `locationId`. No row until the person reorders or visits | **H7** (decision H6; built in H7b, merged into `develop` (2026-11-22, #395, merge `41bbbe1a`), not deployed, H7 plan decision T75) |
+| ~~`UserPreference`~~ | merged into `User` as `User.locationSort` (`name` / `lastUpdated` / `lastVisited` / `custom`, a Prisma enum `LocationSort`), nullable: `null` means the default, Custom (owner decision O52-A) | Per-person sort mode. One value per person needs no table | **H7** (decision H6; built in H7b, merged into `develop` (2026-11-22, #395, merge `41bbbe1a`), not deployed, H7 plan decision T74) |
+
+**Role names are Prisma enums** (decision H14): `HouseholdRole` = `owner | manager | member`,
+`LocationRole` = `organizer | participant | viewer`. An enum makes a typo fail at `tsc`.
+
+**`LocationPreference` and `UserPreference` moved from H3 to H7** (decision H6). Nothing reads
+them before H7's sorts. A column nobody reads is a column nobody tests. H7b built the first as
+a table and the second as one column on `User` (H7 plan decisions T74 and T75), in the
+migration `20261122000000_add_location_preferences`.
+
+**The `user` side of both member tables has no `onDelete`.** So a `User` row that still has
+member rows cannot be deleted. Production never deletes a `User` row (phase H2 sets
+`deletedAt`), so such a delete is a bug and should fail loudly. `/e2e/cleanup` deletes the
+member rows first. (H3a plan task 3.3.)
 
 ### Changed models
 
 | Model | Change |
 |---|---|
-| `Location` | `userId` → `householdId`. **Drops** `order`, `isDefault` and the partial unique index on `isDefault`. **Adds** `dataUpdatedAt`, set by every write to its stock or cart (see *Writers of `dataUpdatedAt`*) |
-| `Item`, `Tag`, `TagType`, `Vendor`, `Recipe`, `Shelf` | `userId` → `householdId`. `Shelf.order` stays shared, because shelves are catalog |
+| `Location` | `userId` → `householdId`. **Drops** `isDefault` and the partial unique index on `isDefault` (H3a). **Keeps `order` until H7** (decision H5, see below). **Adds `dataUpdatedAt` in H7, not H3** (decision H6). H7b adds it nullable and fills it once from the newest `ItemStock.updatedAt` of the location (H7 plan decision T79) |
+| `Item`, `Tag`, `TagType`, `Vendor`, `Recipe`, `Shelf` | `userId` → `householdId` (H3a). `Shelf.order` stays shared, because shelves are catalog |
 | `InventoryLog` | `userId` stays, and now means **the author**. Its scope comes from `locationId` |
-| `Cart` | **Drops** `userId`. A cart belongs to its location and is shared by everyone there. The composite id `${locationId}:${vendorId \| 'no-vendor'}` stays |
-| `CartItem` | `userId` stays, and now means **added by**. It stops being a scope: today every cart query filters cart items by `{ cartId, userId }` (`resolvers/cart.resolver.ts`), so in a shared cart each person would see only the items they added. Scope comes from the cart's location. Showing "added by" on screen is for a later phase |
+| `Cart` | **Drops** `userId` — in **H3b**, not H3a. A cart belongs to its location and is shared by everyone there. The composite id `${locationId}:${vendorId \| 'no-vendor'}` stays |
+| `CartItem` | `userId` stays, and now means **added by**. It stops being a scope: today every cart query filters cart items by `{ cartId, userId }` (`resolvers/cart.resolver.ts`), so in a shared cart each person would see only the items they added. Scope comes from the cart's location. Showing "added by" on screen is for a later phase. **H3b** re-derives the filters and adds `@@unique([cartId, itemId])`, merging duplicate rows in its migration (decision H8) |
 | `ItemStock`, `ItemTag`, `ItemVendor`, `RecipeItem` | No change. Already scoped through a parent |
 
+**`Location.order` is kept until H7** (decision H5). This doc first said H3 drops it, because
+the order becomes personal (`LocationPreference.customOrder`). But personal order arrives only
+in H7. Dropping `order` in H3 would remove drag-to-reorder, a working feature, for four phases.
+Nobody shares a location before H5, so a shared order is harmless until then. Until H7,
+`reorderLocations` needs the household role `manager`.
+
+**Since H7b** (built in H7b, merged into `develop` (2026-11-22, #395, merge `41bbbe1a`), not deployed; H7 plan decisions T76–T78) the order is personal, and
+`Location.order` is NOT dropped. It stays as the fallback: a location the person has not
+placed sorts after the placed ones, by the shared `Location.order`, then by `id`. No row is
+copied from it into `customOrder`. `Location.order` in GraphQL now answers the caller's own
+position, 0 to n−1, so an old bundle's switcher shows the person's own order with no change.
+`reorderLocations` takes any household role and writes one `LocationPreference` row per id;
+it never writes `Location.order`. `createLocation` and imports still write it, and the
+old-bundle `isDefault` shim reads it. Dropping it is for the release after households.
+
+**The `userId` → `householdId` change uses two migrations in one PR** (decision H16). Dropping
+`userId` breaks the compile of every resolver at once, so no task in between could pass the
+gate. So:
+
+| Migration | H3a task | What it does |
+|---|---|---|
+| `add_households` | 3.3 | adds the new tables and a **nullable** `householdId`, and fills it in (see *Migration of existing data*). `userId`, `order` and `isDefault` stay |
+| `drop_user_scope` | 3.14 | a guard on null `householdId`, then `SET NOT NULL`, then drops `userId`, its indexes, `isDefault` and `Location_one_default_per_user_key` |
+
+Between the two, code writes both columns. Both migrations deploy together, so production
+never sees the middle state.
+
+**Carts change only their role names in H3a.** Until H5 every household has one person, so
+every `Cart.userId` and `CartItem.userId` filter still gives the right answer. H3b must merge
+before H5 starts (see *Sequencing*).
+
 ### Writers of `dataUpdatedAt`
+
+**Moved to H7** (decision H6). Only H7's "sort by last updated" reads `dataUpdatedAt`, so H3a
+does not add the column or touch its writers. The list below is still what H7 must cover.
+Re-check it when H7 is planned, because H3b changes `checkout` and `consumeRecipes`.
+
+**How H7b built it** (built in H7b, merged into `develop` (2026-11-22, #395, merge `41bbbe1a`), not deployed; H7 plan decision T79): neither a helper per writer
+nor a trigger. `publishChange` (`apps/server/src/lib/publishChange.ts`) sets
+`dataUpdatedAt = now` on every location it publishes `STOCK`, `CART` or `LOG` to, in one
+`location.updateMany`, after the commit, and never throws. Every writer below already
+publishes one of those kinds, and `live-publish.guard.test.ts` makes every mutation say what
+it publishes, so a new writer cannot be added without a decision. Household-level events
+(`LOCATION`, `CATALOG`) do not set it. A server crash between the commit and the update
+loses one timestamp. "Last updated" does not move while a page is open: the location lists
+refetch only on `LOCATION` (owner decision O58-A).
 
 PR 5 added `writeStock` in `apps/server/src/lib/itemStockWrite.ts`, but it is **not** the only
 place stock is written. Its own plan says so. Each of these must set `Location.dataUpdatedAt`,
@@ -170,32 +253,66 @@ test must list the writers, so that a new one cannot be added without it.
 
 ### Migration of existing data
 
-One migration, run once:
+**Replaced on 2026-11-04 by the H3a plan.** The first version of this section said "one
+migration" with six steps. What changed, and why:
 
-1. Create a `User` row for every distinct `userId` in the existing tables.
-2. For each user, create a household named `<name>'s Household` (see *Default names*), with the
-   user as owner.
-3. Move every row from `userId` to that `householdId`.
-4. Make the user organizer of every location they had.
-5. Copy each location's `order` into the owner's `LocationPreference.customOrder`, and set
-   their sort mode to `custom`, so their list looks exactly as before.
-6. Drop `isDefault` and its index.
+| First version | Now | Why |
+|---|---|---|
+| One migration | Two migrations in H3a, `add_households` and `drop_user_scope` | decision H16 (see *Changed models*) |
+| A `User` row for every `userId` in the data | **Every** `User` row gets a household. A `userId` found in data with no `User` row first gets one, with `displayName` `'User'` | decision H2. Since phase H2, a person can have a `User` row and no data. Without a household they would land on the empty "no household" screen |
+| Copy `order` into `LocationPreference.customOrder` (step 5) | Not done in H3a. `Location.order` stays. **H7b does not copy it either** (H7 plan decision T76): a person with no row sees the shared order, which is the same order a copy would give, with no row per person per location. H7b's migration has one other backfill: `Location.dataUpdatedAt` from the newest `ItemStock.updatedAt` | decisions H5 and H6. Both the column and the table belong to H7 |
+| Drop `isDefault` and its index (step 6) | Done in the second migration, `drop_user_scope` | decision H16 |
+| The household name is translated | The migration writes `<displayName>'s Household` **in English** | decision H3. SQL cannot translate. Only first sign-in knows the user's language. The owner can rename it (decision H4) |
 
-A user who never invites anyone sees the same pantry as before.
+The migration `add_households` (H3a plan task 3.3), in order:
+
+1. Create the two enums and three tables (`Household`, `HouseholdMember`, `LocationMember`). Add
+   `User.householdSetupAt`. Add the partial unique index `HouseholdMember_one_owner_key`
+   (decision H15).
+2. Insert a `User` row, `displayName` `'User'`, for every distinct `userId` in the ten tables
+   that have one and no `User` row yet (decision H2).
+3. Insert one `Household` per `User` row, named `<displayName>'s Household`, with
+   `ownerId` = the user. Then one `HouseholdMember` row with role `owner` per household.
+4. Insert a location `'Home'`, `order` 0, for every user with no location. (It also sets
+   `isDefault` true, because the column still exists until `drop_user_scope` and today's code
+   reads it.)
+5. Add `householdId` to `Location` and the six catalog models, **nullable**, and fill it from
+   the household whose `ownerId` is the row's `userId`.
+6. Insert a `LocationMember` row with role `organizer` for every location, for its owner.
+7. Set `householdSetupAt` = now for every user who got a household.
+8. A guard that raises an exception, naming the bad rows, if a row in the seven tables still
+   has a null `householdId`, a user has no owner membership, or a location has no organizer.
+9. Foreign keys and indexes last.
+
+The migration `drop_user_scope` (H3a plan task 3.14) makes `householdId` `NOT NULL` and drops
+`userId`, `isDefault` and their indexes. `order` stays.
+
+A user who never invites anyone sees the same pantry as before. The only visible changes are
+the household name in the 🏠 item, "Home" as the name of a new account's first location, and
+that any location except the last one can be deleted (see *First sign-in* and decision H13).
+Since H5a the last one can be deleted too (decision H13 lifted).
 
 ### Default names
 
 | Thing | Name |
 |---|---|
-| A new user's household | `<name>'s Household`, e.g. "ET's Household". `<name>` is the Clerk first name, or the part of the email before `@`. Translated. The owner can rename it |
-| A new household's first location | "Home". A normal location, with nothing special about it |
+| A new user's household | `<name>'s Household`, e.g. "ET's Household". `<name>` is `User.displayName`, which phase H2 fills from Clerk, falling back to the part of the email before `@`, then to `"User"` (plan P10). Translated at first sign-in, into the app language the web client sends in the `x-app-language` header (`en` or `tw`; anything else gives `en`). The data migration writes it in English (decision H3). The owner can rename it (decision H4) |
+| A new household's first location | "Home". A normal location, with nothing special about it. Translated the same way. In cloud this replaces "My Home"; local mode keeps "My Home" |
+
+**Renaming the household is built in H3a** (decision H4): a `renameHousehold(name)` mutation,
+owner only, and a name field on `/settings/household` in cloud. H3a starts to show the name, so
+it must be changeable at the same time. As built (task 3.13): the server trims the name and
+accepts 1 to 100 characters, refusing anything else with `BAD_USER_INPUT`; a manager or member
+gets `FORBIDDEN` whatever name they send, and on the page sees the name as text. The name is
+shown as stored, never capitalized, like vendor and location names.
 
 ## Authorization
 
 **Role names in code.** `LocationRole` in `apps/server/src/lib/authz.ts` is still
-`'viewer' | 'member' | 'owner'`, and resolvers pass `'member'` (for example `checkout`). H3
+`'viewer' | 'member' | 'owner'`, and resolvers pass `'member'` (for example `checkout`). H3a
 renames it to `'viewer' | 'participant' | 'organizer'`, so `member` means only the household
-role.
+role. The call sites change `'member'` → `'participant'` and `'owner'` → `'organizer'` (H3a
+plan task 3.5). Both role sets are Prisma enums (decision H14).
 
 The RBAC doc's rule stays: **never write `row.userId === ctx.userId` as an authorization check.**
 
@@ -203,10 +320,19 @@ The RBAC doc's rule stays: **never write `row.userId === ctx.userId` as an autho
 |---|---|
 | `requireLocationRole(ctx, locationId, role)` | Already exists, signature unchanged. The body reads `LocationMember`. `role` is `viewer`, `participant` or `organizer`, and a higher role passes a lower check |
 | `requireHouseholdRole(ctx, householdId, role)` | New. Reads `HouseholdMember`. Used for the catalog, members, invites, purges and activity |
-| `requireOwnRowOrUnclaimed(ctx, model, id)` | Already exists (added by #354 for the 22 bulk import mutations). Its call sites do not move. H4 changes its body, see below |
+| `requireHousehold(ctx)` | New in H3a (H3a plan task 3.5). Returns the caller's household id, read once per request and kept on the context. Runs first sign-in when the user has no household yet |
+| `requireCatalogIds(ctx, householdId, model, ids)` | New in H3a (task 3.7, #273). Refuses with `Forbidden` unless every id is a catalog row of that household |
+| `requireOwnRowOrUnclaimed(ctx, model, id)` | Already exists (added by #354 for the 22 bulk import mutations, and since PR #371 also used by seven tag, tag type and vendor writes). Its call sites do not move. H3a and H4 change its body, see below |
 
 **`requireOwnRowOrUnclaimed` after households.** Today its body checks `where: { id, userId }`
-for nine models. Under this design those nine split into two scopes:
+for nine models.
+
+**H3a changes the body once already** (H3a plan task 3.9). For the six catalog models, "own"
+means the row is in the caller's household (`requireHousehold`). `InventoryLog`, `Cart` and
+`CartItem` keep the `userId` check until H3b and H4. No call site moves. H4 then changes the
+body again, to the scopes below, which name the **target** household.
+
+Under this design those nine split into two scopes:
 
 | Models | New check in the body |
 |---|---|
@@ -216,7 +342,7 @@ for nine models. Under this design those nine split into two scopes:
 Three points matter for H4:
 
 - **`Cart` is checked through its location, and its id must match its location** (issue #361).
-  `Cart.id` is not a cuid. It is built as `${locationId}:${vendorId}` (`apps/server/src/lib/cartId.ts`),
+  `Cart.id` is not a cuid. It is built as `${locationId}:${vendorId}` (`cartIdFor` in `packages/types/src/index.ts`),
   so anyone who knows a location id can build its cart ids. After households, co-members and
   former members know location ids. With an account-scoped check, a former member could ask
   "is this cart id free?" and learn which vendors a household shops with. So H4 does two things:
@@ -247,30 +373,82 @@ Local mode has no role checks. Nothing in `apps/web/src/db/` changes for this.
 
 ### First sign-in
 
-1. The server creates the `User` row.
-2. It creates `<name>'s Household` and a location "Home". The user becomes owner, and organizer
-   of "Home".
+**Rewritten on 2026-11-04 (decision H1).** Phase H2 made the first version of this guard
+impossible. The first version is kept below the new one, because it explains the problem.
 
-**Steps 1 and 2 run in one transaction, and the `User` primary key is the race guard** (issue
-#360). Today `ensureDefaultLocation` (`apps/server/src/lib/defaultLocation.ts`) has no lock. Two
-concurrent first requests are kept from making two default locations only by the partial
-unique index `Location_one_default_per_user_key`. H3 drops that index with `isDefault`, so the
-guard must move:
+**Now (H3a).** The `User` row already exists: phase H2's `ensureUser` and the Clerk webhook
+create it before anything else. The household is created on the **first request that needs
+it** (`requireHousehold`, which the `locations` query also calls). One transaction:
 
-- The transaction starts with `user.create`. `User.id` is the Clerk id and the primary key, so a
-  second concurrent first request fails with `P2002`, rolls back its whole transaction, re-reads
-  and uses the winner's household. Only the transaction that created the `User` row creates a
-  household. This also covers the webhook `user.created` arriving at the same time as the first
-  request.
-- `ensureDefaultLocation` is deleted. The `locations` query no longer creates anything, and the
-  two import resolvers no longer fall back to a default (rule 3 of *The new id rule* asks the
-  user instead).
-- The other places that argue from the old index go in the same commit:
-  `src/schema/import.graphql`, `DefaultLocationConstraintError` in `src/test/stockFake.ts`, the
-  second-default assertion in `scripts/verify-migration.ts` (replaced by a check that two
-  concurrent `user.create` calls give one `P2002`), and the two migration comments.
-- The proof must run against real Postgres, in `verify-migration.ts`. A fake cannot prove a
-  database constraint.
+1. **Claim:** `updateMany({ where: { id, householdSetupAt: null }, data: { householdSetupAt: now } })`
+   on `User`.
+2. **A count of 1** means this request won. In the same transaction it creates
+   `<name>'s Household`, the owner's `HouseholdMember` row, a location "Home" with `order` 0,
+   and an `organizer` row for the user on "Home".
+3. **A count of 0** means the household was already set up, or another request won. It reads
+   the winner's household.
+
+| `householdSetupAt` | Has a `HouseholdMember` row | Result |
+|---|---|---|
+| null | — | first sign-in: claim and create, as above |
+| set | yes | use that household; create nothing |
+| set | no | throw `GraphQLError` with code `NO_HOUSEHOLD`; create nothing |
+
+**Why the claim works.** Postgres makes the second `UPDATE` wait for the first transaction.
+It then re-checks its `WHERE` and matches 0 rows. The proof runs against real Postgres in
+`verify-migration.ts`: two connections, from two separate `PrismaClient` instances, each run the
+claim for the same new user inside a transaction. Exactly one reports 1 row. A fake cannot
+prove this.
+
+**Why a column and not just "has a membership".** The column tells "never set up" from "left
+their household". A person who never had a household gets one. A person who left one does not:
+they see the **Create a household** screen (see *Create and delete a household*). Nobody can
+leave before H5, so `NO_HOUSEHOLD` cannot happen in production in H3a, but it is tested.
+
+**What else goes, as in the first version.** `ensureDefaultLocation`
+(`apps/server/src/lib/defaultLocation.ts`) and its test are deleted (H3a task 3.5). The other
+places that argue from the old index go in task 3.14: `src/schema/import.graphql`,
+`DefaultLocationConstraintError` in `src/test/stockFake.ts`, the second-default assertion in
+`scripts/verify-migration.ts` (replaced by the claim race proof above), and a line in each of
+the two migration comments saying the index is gone.
+
+**Import does not ask yet** (decision H12). The first version said the two import resolvers
+stop falling back to a default, and ask the user instead (rule 3 of *The new id rule*). That
+dialog is H4. Until H4, a log or cart row with no known location goes to the caller's **first
+location by `order`** on which they are participant or higher (`fallbackImportLocation`).
+**Closed in H4** (task E.3, decisions T10 and T11): `fallbackImportLocation` is deleted. A log
+with no location and a bare cart id are refused with `BAD_USER_INPUT`, and the web asks
+"Import into which location?" before it sends them.
+
+**The first version, replaced.** "Steps 1 and 2 run in one transaction, and the `User`
+primary key is the race guard (issue #360). The transaction starts with `user.create`. A second
+concurrent first request fails with `P2002`, rolls back, re-reads and uses the winner's
+household." This stopped working when phase H2 shipped: `ensureUser` and the webhook create the
+`User` row first, so `user.create` would **always** fail with `P2002`, and no request would
+ever create a household.
+
+Background (issue #360): today `ensureDefaultLocation` has no lock. Two concurrent first
+requests are kept from making two default locations only by the partial unique index
+`Location_one_default_per_user_key`. H3a drops that index with `isDefault`, so the guard must
+move. The claim column is where it moves to.
+
+**The last location cannot be deleted** (decision H13). `Location.isDefault` used to stop the
+default location from being deleted. With it gone, `deleteLocation` refuses the household's
+last location with a new error code, `LAST_LOCATION`, until H5. An empty household has no
+screen to land on before H5 builds the "no locations" screen. Any other location can now be
+deleted in cloud. Local mode does not change.
+
+**Lifted in H5a (task F.7, owner answer O8).** The server no longer refuses the last
+location, and `LAST_LOCATION` is gone. With no location, Pantry, Shopping, a cart, Cooking
+and the item page's Stock and log tabs show "You have no locations in this household yet"
+and **Create a location** (`NoLocationsGate`). `deleteLocation` still takes
+`lockHousehold` first (H5 decision T8).
+
+Two deletes at once could both count two locations and both delete. To stop that,
+`deleteLocation` first locks the household row (`lockHousehold` in
+`apps/server/src/lib/household.ts`), so the second delete waits and then counts again after
+the first one commits. `clearAllData` takes the same lock, also first, so the two cannot
+deadlock. Not yet proved on real Postgres (plan H3a, task 3.16).
 
 A person who signs up through an invite link gets their own household too, then joins the
 inviting one.
@@ -289,6 +467,22 @@ inviting one.
 | Already in this household | "You are already in this household." The link is not used up |
 | Expired, used or revoked link | "This invite is no longer valid. Ask for a new one." |
 
+**How H5b answered the open points** (plan
+[2026-11-18-households-plan-h5b.md](2026-11-18-households-plan-h5b.md), *Decisions* and
+*Owner answers*):
+
+| Question | Answer |
+|---|---|
+| Must an invite give a location role? | No (O14-A). The form lists every location on **No access**. A person who joins with none sees "You have no locations in this household yet" until H5c lets someone give them a role |
+| Who revokes an invite? | The owner revokes any. A manager revokes `member` invites only (O15-A), the same line as inviting |
+| What does a `member` see on the Members page? | Every person's name and household role, and their own **Leave**. No e-mail, no invites (O13-A) |
+| An invite made by a manager who is later removed or demoted | Removed or left: every open invite of that household the person made is revoked in the same transaction (O20, which replaced O18-A on 2026-11-18). Demoted: it stays open; a demoted manager is still a member. Invites made by OTHERS stay open; the remove confirm for a manager tells the owner to revoke one the person may have copied |
+| The joiner's own household | Deleted at the join when it holds no data (decision T21). Kept when it holds data, but not reachable from the screen until H7's switch (O2-A). Since H7a it is reachable through **Switch to…** |
+| A person in two households | Acts in `User.activeHouseholdId` while still a member there, else in the oldest membership (decision T14). The join sets it to the joined household |
+| The link | 32 random bytes, base64url (T12). Single use, 7 days. A wrong, used, revoked or expired link gets ONE answer, `INVITE_INVALID`, so a caller learns nothing about a token (T18) |
+| A signed-out person | `/sign-in?redirect=/join/<token>`; Clerk returns to the link after sign-in AND sign-up (T24). A device in local mode is told that joining uses cloud sync and offers **Sign in to join**; local data is not copied |
+| Removing or leaving | Also deletes the person's location roles in that household (T11). A re-invite gives only the new invite's roles (T20) |
+
 ### Location roles
 
 - Owner and manager give or remove any location role on any location.
@@ -296,6 +490,12 @@ inviting one.
   household's members.
 - A member who creates a location becomes its organizer.
 - Anyone leaves a location from its page.
+
+**Built in H5c** (2026-11-19, [plan](2026-11-19-households-plan-h5c.md), merged into `develop`
+as #391, not deployed). As written above, with these owner answers: an organizer may also change or remove
+a participant or viewer who is a household owner or manager (O30-A); the only organizer may
+leave, after a warning, and the location then shows **No organizer** (O25-A); role changes are
+not logged until H6 (O29-A).
 
 ### Household roles, removal and leaving
 
@@ -319,6 +519,23 @@ still shows their name.
 3. On accept, they become owner and the old owner becomes manager. Location roles do not change.
 4. The owner can cancel before it is accepted.
 
+**Built in H6b** (2026-11-20, [plan](2026-11-20-households-plan-h6.md), tasks K.1, K.3, K.5
+to K.7b; on `feature/households-h6b`, not merged, not deployed). How it differs from the
+steps above:
+
+- **One open transfer offer at a time** (decision T59). A second **Transfer** replaces the
+  first on the server. The Members page hides **Transfer** while an offer is open, so the
+  owner presses **Cancel** first (owner decision O46).
+- **The offer can be accepted from the person's other household.** The banner lists offers
+  from every household the person is in. Accepting does not switch households.
+- **On accept the old owner becomes manager FIRST**, then the person becomes owner. The
+  database allows only one owner row per household, so no other order works. Every other
+  offer of the household is deleted.
+- **The owner's own row says "The owner cannot leave. Transfer ownership first."** (O47).
+- **Each step writes an activity row**: offered, cancelled, declined, accepted.
+- **The Members page shows only Accept** (**Become the owner**) for an offer. Decline and
+  **Not now** are on the banner only. See the plan's *Known gaps*.
+
 ### Owner's account is deleted
 
 The Clerk `user.deleted` webhook arrives for a household owner.
@@ -330,7 +547,7 @@ The Clerk `user.deleted` webhook arrives for a household owner.
 | No managers, some members organize a location | Those members get the offer |
 | No managers, no member organizes a location | All remaining members get the offer |
 
-Each person sees: "The owner of *ET's Household* is gone. Do you want to become the owner?" —
+Each person sees: "The owner of *ET's Household* deleted their account. Do you want to become the owner?" —
 **Accept** / **Not now**. The **first** to accept becomes owner, and every other offer is
 deleted. "Not now" hides the banner for that person. They can still accept from the Members
 page.
@@ -342,6 +559,34 @@ removed. Their `User` row stays with `deletedAt` set, and logs show them as "Del
 
 Only account deletion starts a hand-over in this phase. See *Postponed*.
 
+**Built in H6b** (2026-11-20, [plan](2026-11-20-households-plan-h6.md), tasks K.2 to K.4b;
+on `feature/households-h6b`, not merged, not deployed). The `user.deleted` webhook runs the
+hand-over in one transaction with the `User` row (`handOverDeletedAccount` in
+`apps/server/src/lib/handover.ts`). How it differs from the text above:
+
+- **"Only person" means only LIVE person** (decision T60). A member whose own account is
+  already deleted does not count. The rule applies to every role, not only the owner: when
+  no other live person is left, the household and all its data are deleted.
+- **The owner's open invites are revoked** (owner decision O43), the same as for a removed
+  manager or member.
+- **A pending transfer offer is dropped**, and the table above decides who gets a hand-over
+  offer (decision T63).
+- **The first to accept wins.** A second accept at the same moment gets `OFFER_GONE`;
+  one sent later gets `FORBIDDEN`, the same as an unknown offer.
+- **When every hand-over offer goes** (each person declined, left, was removed or deleted
+  their account), the next people get offers by the same table (decision T62). A person who
+  declines is skipped; when nobody else is left, they get the offer back already dismissed
+  (owner decision O42).
+- **The last live person who leaves an ownerless household deletes it**, after a warning
+  (owner decision O37-A).
+- **A deleted account does not count** as an organizer, on the Members page, on a location's
+  people page or in Add person (decision T61). This also hides the rows of accounts deleted
+  before H6. Those accounts were never handed over: the release counts them first and, if
+  the count is not 0, runs the same hand-over for each (owner decisions O36-A and O44).
+- **The log shows the stored name with "(deleted account)"** (O35-A), not "Deleted user".
+- **The banner text** is the one above (owner decision O45). It said "The owner of … is
+  gone" until 2026-11-20, which can read as "has died".
+
 ### Create and delete a household
 
 - Anyone creates another household from the **Switch to…** dropdown. They become owner, and
@@ -349,50 +594,56 @@ Only account deletion starts a hand-over in this phase. See *Postponed*.
 - Only the owner deletes a household, by typing its name to confirm. Everyone loses access.
 - A person with no household sees a screen with a **Create a household** button. The app does
   not create one by itself.
+  - **Exception: first sign-in** (decision H1). A person whose `User.householdSetupAt` is null
+    has never had a household, so the server creates one for them. A person who has a
+    `householdSetupAt` but no membership has left or been removed; for them the server creates
+    nothing and answers `NO_HOUSEHOLD`. Nobody can leave before H5. **The "no household"
+    screen exists since H5b** (task G.8, merged into `develop` as #385, not deployed): it
+    ships in the same phase as leaving and removing. Until 2026-11-18 this line said "No
+    phase in *Sequencing* names the no household screen yet".
+  - **Until H7, `createHousehold` is only for a person in NO household** (owner decision
+    O16-A). Anyone else gets `ALREADY_IN_HOUSEHOLD`. The **Switch to…** entry above is H7.
+  - **Built in H7a** (merged into `develop` (2026-11-22, #394, merge `bf71f485`), not deployed; plan
+    [2026-11-21-households-plan-h7.md](2026-11-21-households-plan-h7.md), tasks L.1–L.7).
+    **Switch to… › Create new** sends `createHousehold(name, alsoWhenMember: true)` (decision
+    T70): the membership count is skipped, so a person who is already in a household can make
+    another one. Without the argument nothing changed: the no-household screen still sends
+    none, so two tabs on that screen still cannot make two households. The person becomes
+    owner and organizer of "Home", and the page moves into the new household.
+    `myHouseholds` lists every household the person is in, with their role there, and
+    `setActiveHousehold(householdId)` moves them (decisions T68, T69). The active household
+    is per person, not per device (owner decision O50-A).
 
 ### Checkout with a shared cart
 
-`checkout` (`resolvers/cart.resolver.ts`) was written for one person per account. Its own
-comment calls a cart row added during checkout "rare with one account per user". In a shared
-cart it is common, and there are two more problems:
+**Built in H3b. The design that was built is
+[2026-11-14-households-h3b-design.md](2026-11-14-households-h3b-design.md)**, and where the two
+differ, that doc wins. This section used to hold the rules and a per-line table of filters.
+Both were planned before H3b was designed, and several parts did not survive. What is left
+here is the reason for the work and what changed.
 
-| Case | Today | Rule in this design |
+**The reason.** `checkout` (`resolvers/cart.resolver.ts`) was written for one person per
+account. In a shared cart, three things go wrong: someone adds a row after you opened the
+cart; two people press checkout at the same time and the purchase counts twice; and the
+stock changes just before your checkout, so the client's log total is wrong. `consumeRecipes`
+had the same stale-total problem.
+
+**What H3b decided differently from this doc:**
+
+| This doc said | H3b built | Why |
 |---|---|---|
-| Someone adds a row after you opened the cart | The whole checkout fails with `BAD_USER_INPUT` | Checkout buys **only the cart rows the client sent**. Rows added later stay in the cart |
-| Two people press checkout at the same time | No transaction. Both add the stock, so the purchase counts **twice** | Checkout runs in **one transaction** that removes the rows it buys. If they are already gone, it fails with "This cart was just checked out. Refresh to see it." |
-| Someone changes the stock just before your checkout | The log stores the on-hand total the client computed, which is now wrong, with no error | The **server** computes the total from the saved `ItemStock` row, inside the transaction |
+| Checkout buys only the rows the client sent; rows added later stay in the cart | **Stricter.** The client sends the rows it showed (`{ cartItemId, quantity }`). Any difference (an amount changed, a row added or removed) refuses the whole checkout with `CART_CHANGED`, and nothing is written | owner's answer Q1 in the H3b brainstorming: with no live updates, a changed cart means the screen is out of date |
+| Two checkouts at once fail with "This cart was just checked out" | the second one gets `CART_CHANGED`: each row is claimed by a delete that names its amount and must delete exactly one row | one refusal path for every cause |
+| Move `buildCheckoutLogQuantities` to shared code and use it on the server | the shared rules moved to `packages/types/src/quantity.ts`; the server computes the log total with `getPackedTotal` of the saved row | the saved row already holds the result; `buildCheckoutLogQuantities` is now used by no production code |
+| Cooking sends a total | cooking sends only `delta` (minus the amount used); the server locks the stock row (`SELECT … FOR UPDATE`), applies `consumeItem` and writes the log in one transaction | without the lock, two cooks of one item lost a use in 4 of 5 runs on real Postgres |
+| **15** `CartItem.userId` filters | **12** at `0dfd536f`, the branch point of H3b. H3a had already re-derived the `clearAllData`, `purgeUserData` and `/e2e/cleanup` ones. All 12 are gone; `CartItem.userId` only means "added by" | counted again when H3b was planned |
+| (not covered) `deleteVendor` | deletes the vendor's carts at **every** location of the caller's household, even one where the caller holds no role | decision D8 |
+| (not covered) `Cart.userId` | dropped, with a unique `(cartId, itemId)` rule in Postgres and in Dexie | decisions D6 and D9 |
 
-**Why the total moved to the client, and how this keeps that fix.** Parity-followup PR A (issue
-#336) moved the log total to the client because the conversion needs `Item.amountPerPackage`,
-and the resolver had only the `ItemStock` row. The server can read the `Item` in the same
-transaction. The plan must move the conversion rule (`buildCheckoutLogQuantities`,
-`apps/web/src/lib/checkoutQuantities.ts`) to code both sides can use, and keep its 6 unit
-tests passing against the server version.
+The deploy steps are in
+[`../backend/2026-11-15-deploy-runbook-households-h3b.md`](../backend/2026-11-15-deploy-runbook-households-h3b.md).
 
-`consumeRecipes` sends a client-computed total for the same reason, so it has the same stale
-total problem and gets the same fix.
-
-**Every `CartItem.userId` filter is re-derived** (issue #358). The column stays and means "added
-by", so `tsc` reports none of them. Scope comes from the cart's location, checked by
-`requireCartLocation`.
-
-| Today (`cart.resolver.ts`) | After H3 |
-|---|---|
-| `cartItems`: `{ cartId, userId }` | `{ cartId }`. Everyone at the location sees every row |
-| `cartItemCountByItem`, both branches | count rows in carts at locations where the caller has a role |
-| `allCartItems`: `{ userId }` | rows in carts at locations the exporter can read (as *Export*) |
-| add to cart: find the row `{ cartId, itemId, userId }` | `{ cartId, itemId }`. One row per item per cart. A second person adding the same item changes that row. "Added by" stays the first person (Decision 27) |
-| update and remove a row: `{ id, userId }` | `{ id }`, then the row's cart location needs participant or higher |
-| `checkout` read: `{ cartId, userId }` | the rows the client sent, inside the transaction (see above) |
-| `checkout` delete: `{ cartId, userId, quantity > 0 }` | the rows it bought |
-| `abandonCart` lookup: `Cart` by `{ id, userId }` | by `{ id }`. `Cart.userId` is dropped, so this line stops compiling |
-| `abandonCart` delete: `{ cartId, userId }` | `{ cartId }`. The whole cart is cleared |
-| `vendorCart` create: `data: { id, userId, locationId }` | no `userId`. This line stops compiling |
-
-The same check applies to `InventoryLog.userId` ("the author"), flagged in
-`resolvers/inventoryLog.resolver.ts`. The test for each row needs **two members** adding rows to
-one cart. With one member, "rows I added" and "rows in this cart" are the same, so the test
-cannot fail.
+`InventoryLog.userId` ("the author") still means the author. H3b does not change it.
 
 ### Purge
 
@@ -420,16 +671,55 @@ So `purgeUserData` is removed. `clearAllData` (`resolvers/import.resolver.ts`) b
 *Clear household* filter. All 14 `deleteMany` filters in each become `householdId` or
 location filters.
 
+**What H3a does here** (H3a plan task 3.10):
+
+- `purgeUserData` is removed. It has no web caller.
+- `clearAllData` becomes the household clear, owner only. Its filters become `{ householdId }`
+  or go through the location or item. `Cart`, `CartItem` and `InventoryLog` go through their
+  location, not `userId`.
+- **`clearAllData` then re-creates a "Home" location**, with an `organizer` row for the
+  caller, in the same transaction. The plan gives decision H13 as the reason: the household
+  must never be left with no location before H5. (H5a lifted H13 but kept this: a cleared
+  household still starts with "Home", so the person can start again at once.) This differs from the *Clear household* row
+  in the table above, which deletes "all locations" and keeps nothing of them.
+- `/e2e/cleanup` deletes by the households the user **owns**, plus the user's own memberships
+  in other households, then the three new tables, then the `User` row. It never deletes a
+  household the user only belongs to. It covers 18 models (15 before).
+- The other two purges in the table (*Delete all locations*, *Remove all items from this
+  location*) and the danger zone stay in H6.
+
 **Tests owed before the filters change.** Today only 3 of the 14 filters in each path have a
 `where` assertion, and `purge-coverage.test.ts` checks only that each `deleteMany(` appears in
 the source. The plan must:
 
-1. Add the 11 missing `toHaveBeenCalledWith({ where: … })` assertions to both paths, before H3,
-   so the change shows up as failing tests.
-2. Make `purge-coverage.test.ts` check the filter form, not only the call.
+1. Add the 11 missing `toHaveBeenCalledWith({ where: … })` assertions to both paths, before
+   the filters change, so the change shows up as failing tests. (H3a task 3.2, before task
+   3.10 changes the filters.)
+2. Make `purge-coverage.test.ts` check the filter form, not only the call. (H3a task 3.2.)
 3. Add a real-SQL E2E test with **two households**, or two locations with different people:
    purge one and assert the other's rows survive. Mutation check: drop one filter's scope, and
-   the test must go red saying the other's rows are gone.
+   the test must go red saying the other's rows are gone. **This is in H3a** (decision H10,
+   spec `e2e/tests/purge-two-households.spec.ts`). The first version of this doc put it
+   before H3, and the phase plan put it in H6. H3a changes the filters, so the test must exist
+   when they change.
+
+**Built in H6a** (2026-11-20, [plan](2026-11-20-households-plan-h6.md), tasks J.4 and J.7;
+on `feature/households-h6a`; merged into `develop` as #392, not deployed). All three purges in the table, plus
+**Delete household** (owner decision O38-A), in a danger zone on the household page (owner)
+and on the location's page (organizer). With these answers and choices:
+
+- **Delete all locations** makes no new "Home" (O34-A). The household then shows the empty
+  locations screen. **Clear household** still re-creates "Home" (H17).
+- **Remove all items** deletes the location's stock rows and the rows in its carts. It keeps
+  the `Cart` rows, so "last purchased" stays (decision T55).
+- **The typed name is checked in the web only** (decision T56). The server checks the role.
+- Each purge, and **Delete household**, takes the household lock FIRST and reads the role
+  after it (decision T52). One ordered delete, `deleteHouseholdData`, is shared by **Clear
+  household** and **Delete household** (decision T64).
+- Each purge writes one activity row. **Delete household** writes none: the log goes with
+  the household.
+- Real SQL: `purge-two-households.spec.ts` has two more tests, one per new purge, each with
+  two households.
 
 ### Activity log
 
@@ -437,6 +727,23 @@ the source. The plan must:
 created or revoked, joined, left, removed, ownership offered, accepted or declined, every purge,
 and every import. Each row has who acted, what, on whom or which location, and when. Owner and
 managers read it, newest first. Stock changes are not in it — they are in `InventoryLog`.
+
+**Built in H6a** (2026-11-20, [plan](2026-11-20-households-plan-h6.md), tasks J.1 to J.3,
+J.5 and J.6; on `feature/households-h6a`; merged into `develop` as #392, not deployed). The table
+`HouseholdActivity` and the page **Settings › Household › Activity** (owner and manager,
+cloud only). How it differs from the text above:
+
+- **Ownership rows are written since H6b** (merged into `develop` (2026-11-21, #393, merge `9701ddff`), not deployed):
+  offered, cancelled, declined, accepted, hand-over started, and account deleted.
+- **An import is one row** (owner decision O33-A). The web calls `recordImport` with the
+  counts once the import ends.
+- **A deleted account shows its stored name with "(deleted account)" after it**, not
+  "Deleted user" (O35-A). The *Purge* table above still says "Deleted user".
+- **Not logged** (decision T51): the organizer role `createLocation` gives its creator, the
+  organizer role on the new "Home" after **Clear household**, `createHousehold`, and renames.
+- **No foreign key on the person or the location** a row names, so the row outlives both.
+  The location's name is stored in the row. Only the household is a foreign key, and the
+  log is deleted with the household. There is no retention limit (T48).
 
 ## Screens
 
@@ -450,9 +757,11 @@ The Settings area is rebuilt in **both** modes.
   show the household sidebar. On mobile they stay full-screen with their own Back button.
 - `/settings` decides by screen width (`useIsDesktop`, the Tailwind `lg` value): desktop goes to
   `/settings/household`, mobile shows the accordion.
-- Until H3 the 🏠 item says "My data" in both modes. Members, Activity, Switch to…, the danger
+- Until H3a the 🏠 item says "My data" in both modes. From H3a, in cloud, it shows the
+  household name (local keeps "My data"). While the name is loading it shows "My data", so the
+  label never flashes empty (H3a plan task 3.13). Members, Activity, Switch to…, the danger
   zone and `/settings/household/locations/$id` are not shown until the phase that builds them
-  (H5, H6, H7, H6 and H5).
+  (H5, H6, H7, H6 and H5). **Switch to… is built in H7a** (task L.4), cloud only.
 
 **Main sidebar.** The top half does not change: app name, location switcher, Pantry, Shopping,
 Cooking. At the bottom, **Settings** is replaced by:
@@ -478,6 +787,13 @@ render in the main area.
 - The sidebar shown is decided by the URL: any `/settings/household/*` route shows it.
 - **Back** goes to the last Pantry, Shopping or Cooking page visited.
 - The item-9 dropdown looks as much as possible like the location switcher's dropdown.
+- **Item 9 is built in H7a** (task L.4, merged into `develop` (2026-11-22, #394, merge `bf71f485`), not deployed), cloud only, in the
+  household sidebar and in the mobile accordion. `HouseholdSwitcher` lists each household
+  with its name as stored and the person's role, marks the current one (`menuitemradio`,
+  `aria-checked`), and ends with **Create new** (`CreateHouseholdDialog`). Choosing another
+  household calls `setActiveHousehold`, then `switchToHousehold`: the Apollo cache in memory
+  and in `Player1InventoryCloudCache` is cleared, the active location id is removed, and the
+  page reloads into the new household. Local mode does not show it.
 - Detail pages (one tag, vendor, recipe, shelf, or an item) stay full-screen with no sidebar, as
   today.
 - On desktop, `/settings` redirects to `/settings/household`. On mobile it shows the accordion
@@ -502,7 +818,13 @@ dates come from Clerk's `useUser()`.
 **List** (`/settings/household/locations`):
 
 - **Sort by** name, last updated, last visited or custom. Drag handles show only for custom.
-  The order is personal.
+  The order is personal. (Built in H7. Until then the list keeps today's shared
+  `Location.order` and drag-to-reorder, which needs the household role `manager` — decision
+  H5.) **Built in H7b (merged into `develop` (2026-11-22, #395, merge `41bbbe1a`), not deployed):** the **Sort by** control (`LocationSortSelect`)
+  starts on Custom (O52-A); every household role may drag its own order; in local mode only
+  **Name** and **Custom**, saved on the device (O54-B). "Last updated" uses
+  `Location.dataUpdatedAt`; "Last visited" uses the person's `lastVisitedAt`, written when a
+  location becomes the active one, at most once a minute (O55-A).
 - Each row shows the name and the person's role. Owner and manager also see locations where they
   have no role, marked **No access**, and a **No organizer** warning where it applies.
 - **Create location** for everyone. **Delete** for owner and manager.
@@ -511,9 +833,20 @@ dates come from Clerk's `useUser()`.
 roles with **Add person** (organizer, owner, manager), danger zone with **Remove all items**
 (organizer), and **Leave location**.
 
+**Built in H5c** (2026-11-19, merged into `develop` as #391, not deployed), except **Remove all items**, which is
+H6. The name links to this page from the list for anyone who may open it. Who may open it
+(owner decision O24-A): anyone with a role on the location, and every owner and manager, also
+on a **No access** location; they see names and roles, never the location's stock, carts or
+logs. **No organizer** shows to everyone who sees the location (O26-A); the sentence asking to
+give the role, and its controls, show to an owner or manager only. The page is cloud only. On
+the Members page an owner or manager sees **No location roles** next to a person with none,
+with a link to the locations (O28-A). When a tab loses its active location it moves by itself
+and shows "You no longer have access to {location}." once (O27-A).
+
 ### Location switcher
 
-- Lists only locations where the person has a role, in their own order.
+- Lists only locations where the person has a role, in their own order. Since H7b it uses the
+  same sort as Settings › Locations (owner decision O53-A).
 - Shows a **View only** badge for a viewer.
 - "Manage locations" links to `/settings/household/locations`.
 - With no locations: pantry, shopping and cooking show "You have no locations in this household
@@ -530,7 +863,7 @@ roles with **Add person** (organizer, owner, manager), danger zone with **Remove
 
 A banner at the top of the app shows each open `OwnershipOffer`:
 
-- `handover`: "The owner of *ET's Household* is gone. Do you want to become the owner?" —
+- `handover`: "The owner of *ET's Household* deleted their account. Do you want to become the owner?" —
   **Accept** / **Not now**
 - `transfer`: "*ET* wants to make you the owner of *ET's Household*." — **Accept** / **Decline**
 
@@ -607,7 +940,9 @@ Copying rows from one household into another is postponed (see *Postponed*).
 
 ### Server code this replaces
 
-These still read or write `isDefault` on `main` at `d63bd81f` and go in H3:
+These still read or write `isDefault` on `main` at `d63bd81f` and go in H3a. (One change since
+this table was written: the import fallback does not go away in H3a. It moves to
+`fallbackImportLocation` until H4, decision H12. See *First sign-in*. H4 task E.3 deleted it.)
 
 | Code | What it does today |
 |---|---|
@@ -625,6 +960,35 @@ These still read or write `isDefault` on `main` at `d63bd81f` and go in H3:
 | Cloud → local | What the user can read in the **active** household. The **active** location becomes local "My Home"; every other location keeps its id |
 
 Every import is written to the activity log.
+
+### Result (H4, built 2026-11-16 and 2026-11-17)
+
+Plan: [2026-11-16-households-plan-h4.md](2026-11-16-households-plan-h4.md). Deploy:
+[`../backend/2026-11-17-deploy-runbook-households-h4.md`](../backend/2026-11-17-deploy-runbook-households-h4.md).
+What was built, and where it differs from the text above:
+
+- **Rule 2's "Nothing is written" is now true.** Before H4 the server refused per batch of 50,
+  so earlier batches stayed written. A new read-only query, `importCheck`, runs before
+  `clearAllData` and before the first write. When the file holds another household's id the
+  web stops there. The per-mutation guards stay; `importCheck` is not trusted by the server.
+- **The guard scope is the TARGET household** (`requireOwnRowOrUnclaimed`'s fourth argument).
+  `InventoryLog` and `CartItem` are checked through their location, `Cart` through its id's
+  location prefix, BEFORE the cart table is read (#361). A location, a stored row and an item
+  must all be in the target household (#381).
+- **Owner and manager only, `clear` owner only**, as designed. A `member` sees a line instead
+  of the file button.
+- **Skipped locations** are named in the card after the import, not in a dialog (decision O5).
+- **Rule 3** is built as designed. "Home" is not special: the dialog selects the household's
+  FIRST location. `clear` never asks (decision O2): the local default goes to the new "Home".
+- **One addition:** a `clear` restore of a CLOUD backup keeps every location's id, so the new
+  "Home" would stay as an extra empty location. It is deleted after the import (owner
+  decision 6). A `skip` or `replace` restore keeps it, and moves the user to the backup's
+  first location when the active location holds no stock (decision O9).
+- **Export:** the five reads behind it give the active household only. Cloud → local puts the
+  active location into "My Home", as designed; when the file does not hold it, the file's
+  first location by `order` does (decision O10).
+- **Not built:** the activity log of imports (H6). One person in two households is tested
+  with fakes only, because no E2E route can make one before H5.
 
 ## Clerk integration
 
@@ -699,23 +1063,34 @@ Consequence: in this phase, story 2 works only after someone deletes the owner's
 Household work starts **after cloud-locations PR 5 merges**. It changes `userId` to
 `householdId` on seven models and removes `isDefault`, and PR 5 changes the same code.
 
-A suggested split. The plan will fix the final one.
+The first version of this table was "a suggested split". Phases H1 and H2 were built as
+listed. **H3 was split on 2026-11-04**: research on 2026-11-03 found it too large for one PR,
+and the owner agreed to the order below. Detail:
+[2026-11-04-households-plan-h3a.md](2026-11-04-households-plan-h3a.md), *Where H3a sits*.
 
 | PR | Contents | User-visible |
 |---|---|---|
-| H1 | Settings layout and route moves (both modes). No backend change. Can start before PR 5 | Yes: new Settings layout |
-| H2 | `User` model, Clerk webhook, `lastSeenAt`, E2E user creation | No |
-| H3 | `Household`, `HouseholdMember`, `LocationMember`, the data migration, real role checks in both helpers, read scoping, `isDefault` removed, the six `userId: String!` GraphQL fields removed. Fixes #273, #358, #360 | No (one household each) |
-| H4 | Import and export: the new id rule, and `requireOwnRowOrUnclaimed` moved to the household scope (#327 itself is already fixed by #354) | The "Import into which location?" dialog |
-| H5 | Invites, join, members page, location people page, switcher filtering, read-only views | **Yes: sharing works** |
-| H6 | Transfer, hand-over, offers banner, purges, activity log | Yes: story 2 |
-| H7 | Personal location order and sort, household switch and create | Yes |
+| H1 | ✅ Merged 2026-10-31 (#368). Settings layout and route moves (both modes). No backend change. Can start before PR 5 | Yes: new Settings layout |
+| H2 | ✅ Merged 2026-11-03 (#370). `User` model, Clerk webhook, `lastSeenAt`, E2E user creation | No |
+| `fix/catalog-write-scope` (#371) | ✅ Merged 2026-11-04. Seven tag, tag type and vendor writes check ownership. A live security bug, so it did not wait for H3 | No |
+| **H3a** | ✅ **Merged into `develop` 2026-11-13 (#375), not into `main`, and NOT deployed.** It deploys at the first checkpoint release; see the [deploy runbook](../backend/2026-11-11-deploy-runbook-households-h3a.md). `Household`, `HouseholdMember`, `LocationMember`, `User.householdSetupAt`, the data migration (two migrations, decision H16), first sign-in, real role checks in both helpers, read scoping for every resolver, `isDefault` removed, the six `userId: String!` GraphQL fields removed, the household name in the 🏠 label, `renameHousehold`, `deleteLocation` refuses the last location, the two-household purge test, an E2E-only route that adds a second household member (`POST /e2e/household-members`, decision H9). Fixes #273, #360, #359 step two, and #320 for the filters H3a changes | Small: the household name and rename; "Home" for a new account; any location but the last can be deleted |
+| `chore/build-shared-types` | ✅ Merged into `develop` 2026-11-13 (#376), not deployed. The server build bundles with esbuild, so the server can import shared code from `@p1i/types` at runtime (needed by H3b, decision H7). The server's own copies of `cartIdFor`, `parseCartId` and `isBeingBought` are deleted. [Design](../backend/2026-11-13-build-shared-types-design.md) | No |
+| **H3b** | Shared carts: `@@unique([cartId, itemId])` (decision H8), the 15 `CartItem.userId` filters, `Cart.userId` dropped, checkout and `consumeRecipes` in one transaction with a server-computed total. Fixes #358. **Must merge before H5 starts** | No (one person per household) |
+| H4 | ✅ **Merged into `develop` 2026-11-17 (#382, merge `bf87e839`), not deployed.** Import and export: the new id rule, and `requireOwnRowOrUnclaimed` moved to the target household scope (#327 itself is already fixed by #354). Replaces H3a's import fallback location (decision H12) | The "Import into which location?" dialog |
+| H5 | Split in three PRs (H5 decision O1), [plan](2026-11-17-households-plan-h5.md). **H5a ✅ merged into `develop` (#384, merge `4307d30a`, 2026-11-18), not deployed:** `Location.myRole`, `Location.hasOrganizer`, the `householdLocations` query, a location viewer reads carts, `usePermissions` and read-only views for a household `member` and a location `viewer`, the **View only** badge in the switcher (the switcher already listed only locations with a role, so there was nothing to filter), H13 lifted with an empty locations screen, and a browser context per test user in E2E. **H5b ✅ merged into `develop` (#385, merge `938fa2aa`, 2026-11-18), not deployed** ([plan](2026-11-18-households-plan-h5b.md)): one migration (`HouseholdInvite`, `User.activeHouseholdId`), invite links, the join page, the Members page, leave and remove, a fixed rule for a person in two households, and the no-household screen with **Create a household**. Follow-ups merged after it: #386 (a failed refresh no longer fails a saved write), #387 (screens show save errors), #388 (the join keeps the copy question), #389 (the copy question names the household), #390 (`isPending` tests). **H5c ✅ merged into `develop` (#391, merge `7dbaeca9`, 2026-11-20), not deployed** ([plan](2026-11-19-households-plan-h5c.md)): no migration; the `locationPeople` query, `HouseholdPerson.hasLocationRole`, `setLocationRole`, `removeLocationRole` and `leaveLocation`; one shared rule for who may change a role (`canChangeLocationRole` in `@p1i/types`); the page `/settings/household/locations/$id`; name links on the locations list; the **No location roles** mark on the Members page; a short message when a tab loses its active location; `location-people.spec.ts` (9 cloud tests). Owner decisions O23–O31 all A | H5a alone: the last location can be deleted. **H5a + H5b + H5c: sharing works** |
+| H6 | Transfer, hand-over, offers banner, purges, activity log. Split in two PRs (owner decision O32-A), [plan](2026-11-20-households-plan-h6.md). **H6a ✅ built 2026-11-20, merged into `develop` (2026-11-20, #392, merge `c0f096ed`), not deployed:** one additive migration (`HouseholdActivity`), the activity log and its page, the purges **Delete all locations** and **Remove all items**, **Delete household** (O38-A), the danger zones, and the household lock taken first by every owner-only write. **H6b ✅ built 2026-11-20, merged into `develop` (2026-11-21, #393, merge `9701ddff`), not deployed:** one additive migration (`OwnershipOffer`), transfer with the offer banner and the Members page, the hand-over on `user.deleted`, a deleted account no longer counting, the last person's leave deleting an ownerless household (O37-A), and "Clear & import" asking for the typed name (O40) | Yes: story 2 (H6b) |
+| H7 | Personal location order and sort, household switch and create. Now also `LocationPreference`, `UserPreference` and `dataUpdatedAt` (decision H6), and the end of the shared `Location.order` (decision H5). Split in two PRs (owner decision O49-A), [plan](2026-11-21-households-plan-h7.md). **H7a ✅ merged into `develop` (2026-11-22, #394, merge `bf71f485`), not deployed:** no migration; **Switch to…** and **Create new**; the `x-household-id` header and `HOUSEHOLD_CHANGED`, so a stale tab cannot read or write the other household (O21); the reload message (O51-A, wording O56-A); copying offline data into a chosen household or a new one (O22-A, O57-B). **H7b** (personal location order and the four sorts, one migration with one backfill) is merged into `develop` (2026-11-22, #395, merge `41bbbe1a`), not deployed | H7a: yes, the switch, create and the copy choice |
 
-**H3's GraphQL change is breaking, so deploy order matters** (issue #359). Six types declare
+**H3a's GraphQL change is breaking, so deploy order matters** (issue #359). Six types declare
 `userId: String!`: `Item`, `TagType`, `Tag`, `Vendor`, `Recipe`, `Shelf`. Removing a field that a
 deployed web bundle still selects makes the whole query fail. #367 removed every selection on
-2026-10-31, so H3 may drop the fields only when the web build live on Cloudflare is from that
-commit (`8465406b`) or later. The H3 deploy runbook checks this first.
+2026-10-31, so H3a may drop the fields only when the web build live on Cloudflare is from that
+commit (`8465406b`) or later. The H3a deploy runbook checks this first (decision H11). H3a
+also removes `isDefault` from the `Location` type, which breaks a stale bundle the same way.
+`main`'s web bundle still selects `isDefault`, so **the web must deploy before the server**:
+the new bundle works against the old server, and the old bundle does not work against the
+new one. The runbook turns off Railway's automatic deploy for this one merge to get that
+order.
 
 ## Testing notes
 
@@ -729,7 +1104,10 @@ The root `CLAUDE.md` rules apply. Points special to this design:
   `role` leaves every role check unpinned.
 - **Each helper call is mutation-checked**: delete the check, the test goes red.
 - **Real SQL.** At least one cloud E2E spec must run two signed-in users against the same
-  location, because no unit test runs the resolvers against Postgres.
+  location, because no unit test runs the resolvers against Postgres. H3a starts this before
+  invites exist: an E2E-only route, `POST /e2e/household-members`, adds a second member to a
+  household, and `e2e/tests/cloud-roles.spec.ts` checks the roles through GraphQL (decision
+  H9).
 - **The webhook** needs a test with a bad signature that is refused.
 
 ## Known gaps and risks
@@ -743,13 +1121,27 @@ The root `CLAUDE.md` rules apply. Points special to this design:
   implementation brief must say so.
 - **The migration is large.** Seven models change their scope column in one go. It needs the
   same care as PR 3b's cart re-key: a deploy runbook, and a check against a branch of production
-  data.
+  data. (H3a splits it into two migrations that deploy together, decision H16.)
+- **Existing households get an English name** (decision H3). The data migration cannot
+  translate, so a `tw` user who signed up before H3a sees "<name>'s Household" until they
+  rename it. Only first sign-in translates.
+- **H3a's import fallback was a stopgap** (decision H12). A log or cart row with no known
+  location went to the caller's first location by `order`. **Closed in H4:** the fallback is
+  deleted and the dialog replaces it. Carts it stored may still have an id whose prefix is not
+  their location; the H4 runbook counts them before the release.
+- **The last location cannot be deleted until H5** (decision H13). Lifted in H5a, task F.7.
 - **The read-only member rules are a first version** and may change after feedback.
 - **Hand-over needs a deleted Clerk account.** If nobody deletes it, the family cannot take over.
 - **No email.** A person learns of an invite only from the link, and of an offer only by opening
   the app.
-- **`UserPreference` may be merged into `User`.** Left for the plan.
-- **Household switch shows the previous household's cart — confirmed, must be designed for.**
+- **`UserPreference` may be merged into `User`.** Left for the plan. The table moved to H7
+  (decision H6), so H7's plan decides. **Decided in H7** (plan decision T74): it is one column,
+  `User.locationSort`.
+- **Household switch shows the previous household's cart — FIXED in H7a** (task L.3 reuses
+  H5b's `switchToHousehold`; E2E `household-switch.spec.ts` test 1 switches with a cart in
+  the old household and finds no old cart row on the page or in the saved cache). The
+  requirement below is what it meets. The original note:
+  **Household switch shows the previous household's cart — confirmed, must be designed for.**
   `main` now documents this in `apps/web/src/hooks/useLocations.ts` (the comment on
   `useDeleteLocation`). `AllCarts` and `AllCartItems` are safe today only because their readers
   filter by `activeLocationId`. A household switch changes the household, not the location, so
@@ -762,7 +1154,10 @@ The root `CLAUDE.md` rules apply. Points special to this design:
   and `e2e/tests/settings/import-strategies.spec.ts` (added after this design was first written)
   expect `isDefault`, the name "My Home", and a local → cloud copy that finishes **without** a
   dialog. The helpers `e2e/helpers/backupAssertions.ts` and `e2e/helpers/cloudSeed.ts` find the
-  default by its flag. H3 and H4 must rewrite all of them.
+  default by its flag. H3 and H4 must rewrite all of them. H3a task 3.15 rewrites them for
+  "Home" and no default (about 20 files). It keeps the `clear` → "Home is re-created"
+  expectation and the colliding item **and** the new item in `import-strategies.spec.ts`. H4
+  rewrites them again for its dialog.
 - **The import rewrite must keep the #330 fix.** Issue #330 was fixed on 2026-10-12 (#350).
   `runBulkBatches` in `apps/web/src/lib/importData.ts` now builds its resume key as
   `${mode}:${entityType}:${batchIndex}`. H4 changes the id rule in the same file. If the
@@ -774,15 +1169,19 @@ The root `CLAUDE.md` rules apply. Points special to this design:
 - **A second signed-in user in cloud E2E needs new test support.** The browser always runs as
   one fixed test user (`VITE_E2E_TEST_USER_ID`), and the API takes the user from the
   `x-e2e-user-id` header. A two-user spec needs a browser context per user. There is no
-  test route yet to create a `User` row or to send a fake `user.deleted`.
-- **H3's migration joins `verify:migration`.** It must be added to the `MIGRATIONS` list in
+  test route yet to create a `User` row or to send a fake `user.deleted`. (Phase H2 added
+  E2E-only user routes, and H3a adds `POST /e2e/household-members`, decision H9. H5a task
+  F.8 adds a browser context per user: `newUserContext` in `e2e/helpers/userContext.ts`,
+  and `shared-household.spec.ts` uses it.)
+- **H3a's two migrations join `verify:migration`.** The script asserts the final state, so the
+  PR 1 assertions on `isDefault` must be replaced in task 3.14. It must be added to the `MIGRATIONS` list in
   `apps/server/scripts/verify-migration.ts`. That script now refuses to run if a test database
   URL equals any other database URL in the environment.
 - **Done in H1: the E2E route moves.** The forecast was 76 code lines (109 with comments) in 17
   E2E files. Commit `3b02a62a` moved 132 URL lines in 16 files and touched 17 files in all.
   `e2e/` is type-checked and linted inside the root `pnpm build`.
-- **H3 breaks a stale browser bundle.** PR 5 was the first PR in the cloud-locations series that
-  was not safe for an old bundle, and accepted it. H3 changes the GraphQL scoping and removes
+- **H3a breaks a stale browser bundle.** PR 5 was the first PR in the cloud-locations series that
+  was not safe for an old bundle, and accepted it. H3a changes the GraphQL scoping and removes
   `isDefault` from the `Location` type, so it is the same kind of change. The plan must say so
   and plan the deploy the same way.
 

@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import type { ItemFormValues } from '@/components/item/ItemForm'
 import { ItemForm } from '@/components/item/ItemForm'
 import { DeleteButton } from '@/components/shared/DeleteButton'
+import { ReadOnlyNote } from '@/components/shared/ReadOnlyNote'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,9 +25,11 @@ import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useItemLayout } from '@/hooks/useItemLayout'
 import { useItemStocks } from '@/hooks/useItemStocks'
 import { useLocations } from '@/hooks/useLocations'
+import { usePermissions } from '@/hooks/usePermissions'
 import { useRecipes } from '@/hooks/useRecipes'
 import type { TrackedQuantities } from '@/lib/quantityUtils'
 import { convertTrackedQuantities } from '@/lib/quantityUtils'
+import { showSaveError } from '@/lib/saveError'
 import type { Item, PantryItem, StockConfigFields, StockFields } from '@/types'
 import { DEFAULT_PACKAGE_UNIT } from '@/types'
 
@@ -196,6 +199,10 @@ function ItemInfoTab() {
   const { id } = Route.useParams()
   const { data: item } = useItem(id)
   const updateItem = useUpdateItem()
+  // A household member sees the item's catalog fields read only (households
+  // H5 task F.5): readOnly fields, no Save and no Delete. The unit-switch
+  // dialog is reached only through Save, so it cannot open either.
+  const { canEditCatalog, roleKnown } = usePermissions()
   const deleteItem = useDeleteItem()
   const { registerDirtyState } = useItemLayout()
   const { goBack } = useAppNavigation()
@@ -233,8 +240,16 @@ function ItemInfoTab() {
     goBack()
   }
 
+  // Caught here because `ItemForm` does not await `onSubmit`: a failed save
+  // would otherwise be an unhandled rejection with nothing on screen. The form
+  // keeps the typed values and stays dirty, so Save can be pressed again.
   const doSave = async (values: ItemFormValues) => {
-    await persistInfo(values)
+    try {
+      await persistInfo(values)
+    } catch (err) {
+      showSaveError(err)
+      return
+    }
     finishSave()
   }
 
@@ -386,15 +401,24 @@ function ItemInfoTab() {
       ]
     })
 
-    await applyUnitSwitch.mutateAsync({
-      itemId: id,
-      updates: buildInfoUpdates(pending.values) as Partial<Item>,
-      stockConversions: pending.conversions.map((conversion) => ({
-        locationId: conversion.locationId,
-        quantities: conversion.after as Partial<StockFields>,
-      })),
-      recipeUpdates,
-    })
+    // A failure is caught and shown: this runs straight off the dialog's
+    // button. The dialog has already closed (`AlertDialogAction` closes it on
+    // click), and nothing was written, because it is one transaction. The form
+    // stays dirty, so Save opens the dialog again.
+    try {
+      await applyUnitSwitch.mutateAsync({
+        itemId: id,
+        updates: buildInfoUpdates(pending.values) as Partial<Item>,
+        stockConversions: pending.conversions.map((conversion) => ({
+          locationId: conversion.locationId,
+          quantities: conversion.after as Partial<StockFields>,
+        })),
+        recipeUpdates,
+      })
+    } catch (err) {
+      showSaveError(err)
+      return
+    }
 
     setPending(null)
     finishSave()
@@ -422,6 +446,12 @@ function ItemInfoTab() {
 
   return (
     <div className="p-4 pb-16 bg-background-elevated min-h-[100cqh]">
+      {roleKnown && !canEditCatalog && (
+        <ReadOnlyNote
+          className="max-w-2xl mx-auto px-0"
+          text={t('settings.catalogReadOnlyItem')}
+        />
+      )}
       <ItemForm
         initialValues={formValues}
         sections={['info']}
@@ -429,6 +459,7 @@ function ItemInfoTab() {
         onDirtyChange={registerDirtyState}
         savedAt={savedAt}
         isPending={updateItem.isPending}
+        readOnly={!canEditCatalog}
       />
 
       <AlertDialog
@@ -545,17 +576,19 @@ function ItemInfoTab() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <div className="max-w-2xl mx-auto">
-        <DeleteButton
-          trigger="Delete"
-          buttonClassName="w-full max-w-2xl mt-4"
-          dialogTitle={t('items.detail.deleteDialog.title')}
-          dialogDescription={t('items.detail.deleteDialog.description', {
-            name: item.name,
-          })}
-          onDelete={handleDelete}
-        />
-      </div>
+      {canEditCatalog && (
+        <div className="max-w-2xl mx-auto">
+          <DeleteButton
+            trigger="Delete"
+            buttonClassName="w-full max-w-2xl mt-4"
+            dialogTitle={t('items.detail.deleteDialog.title')}
+            dialogDescription={t('items.detail.deleteDialog.description', {
+              name: item.name,
+            })}
+            onDelete={handleDelete}
+          />
+        </div>
+      )}
     </div>
   )
 }

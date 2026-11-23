@@ -24,18 +24,33 @@ Server 4, Prisma 6, Postgres on Neon, `@clerk/express` (server); Vitest, Playwri
 
 ## How this plan is split
 
-The design names seven phases, H1–H7. Each phase is **one PR**, merged and deployed before the
-next one starts, because H3 changes the database and must ship alone.
+The design names seven phases, H1–H7. Each phase is **one PR**. H1 and H2 were merged to
+`main` and deployed one at a time.
+
+**From H3a on, phase PRs merge into `develop`, not `main`** (owner decision, 2026-11-12).
+Merging to `main` deploys to production: Cloudflare Pages builds the web, and Railway deploys
+the server. Phases H3a to H4 give users nothing they can see, because nothing is shared until
+H5. So each phase no longer needs its own deploy day. Instead, `develop` is merged into `main`
+at a few **checkpoint releases**, for example after H3b and again before H5. Each checkpoint
+has its own runbook and its own rehearsal on a fresh Neon branch of production, covering every
+migration that is new since the last release. **No changes go to `main` until households is
+done** (owner decision, 2026-11-13: "I'll not touch branch main before the household feature
+is done"). So there is no hotfix on `main` to bring into `develop`, and that question is
+closed. If the decision changes, ask the owner first: a rebase of `develop` needs a
+force-push, and a merge breaks the repo's rebase-only rule.
+
+**The release of H3a to H7b** (one checkpoint, all phases together) is planned in
+[`../backend/2026-11-23-households-release-plan.md`](../backend/2026-11-23-households-release-plan.md).
 
 | Phase | Detail in this file | PR |
 |---|---|---|
 | H1 Settings layout and route moves (both modes, no backend change) | **Full** — tasks 1.1–1.9 | 1 |
 | H2 `User` model, Clerk webhook, `lastSeenAt`, E2E user support | **Full** — tasks 2.1–2.7 | 2 |
-| H3 Households, roles, data migration, read scoping | Outline — its own detailed plan is written when H2 merges | 3 |
-| H4 Import and export | Outline | 4 |
-| H5 Invites, join, members, read-only views | Outline | 5 |
-| H6 Transfer, hand-over, purges, activity | Outline | 6 |
-| H7 Personal location order, household switch and create | Outline | 7 |
+| H3 Households, roles, data migration, read scoping | Outline. Split into H3a, H3b and H3c; detailed plan for H3a: [2026-11-04-households-plan-h3a.md](2026-11-04-households-plan-h3a.md); design for H3b: [2026-11-14-households-h3b-design.md](2026-11-14-households-h3b-design.md), plan: [2026-11-14-households-plan-h3b.md](2026-11-14-households-plan-h3b.md) | 3 (now H3a ✅ merged into `develop` #375, `chore/build-shared-types` ✅ merged into `develop` #376, H3b ✅ merged into `develop` #377, H3c designed 2026-11-16: [design](2026-11-16-households-h3c-design.md); H3c-1 ✅ merged into `develop` #379: [plan](2026-11-16-households-plan-h3c-1.md); H3c-2 ✅ merged into `develop` #380: [plan](2026-11-16-households-plan-h3c-2.md)) |
+| H4 Import and export | Outline. Detailed plan: [2026-11-16-households-plan-h4.md](2026-11-16-households-plan-h4.md) ✅ merged into `develop` (#382, merge `bf87e839`), not deployed; deploy: [runbook](../backend/2026-11-17-deploy-runbook-households-h4.md) | 4 |
+| H5 Invites, join, members, read-only views | Outline. Split into H5a, H5b and H5c; detailed plan for H5a: [2026-11-17-households-plan-h5.md](2026-11-17-households-plan-h5.md) (H5a ✅ merged into `develop` (#384, merge `4307d30a`), not deployed; H5b ✅ merged into `develop` (#385, merge `938fa2aa`), not deployed: [2026-11-18-households-plan-h5b.md](2026-11-18-households-plan-h5b.md); H5c ✅ merged into `develop` (#391, merge `7dbaeca9`), not deployed: [2026-11-19-households-plan-h5c.md](2026-11-19-households-plan-h5c.md)) | 5 |
+| H6 Transfer, hand-over, purges, activity | Outline. Detailed plan: [2026-11-20-households-plan-h6.md](2026-11-20-households-plan-h6.md), split into H6a and H6b (O32-A). H6a ✅ merged into `develop` (2026-11-20, #392, merge `c0f096ed`), not deployed; H6b ✅ merged into `develop` (2026-11-21, #393, merge `9701ddff`), not deployed | 6 |
+| H7 Personal location order, household switch and create | Outline. Detailed plan: [2026-11-21-households-plan-h7.md](2026-11-21-households-plan-h7.md), split into H7a and H7b (O49-A). H7a ✅ merged into `develop` (2026-11-22, #394, merge `bf71f485`), not deployed; H7b merged into `develop` (2026-11-22, #395, merge `41bbbe1a`), not deployed | 7 |
 
 **Why only H1 and H2 are detailed now.** H3–H7 will change code that H1 and H2 have not
 written yet. A detailed task written today would name files, lines and test counts that are
@@ -627,31 +642,102 @@ design and from the issues filed on `main`.
 
 ### H3 — Households, roles, migration, read scoping
 
+**H3 is now four PRs, plus one fix that came first** (agreed with the owner on 2026-11-04; H3c added 2026-11-13).
+The detailed plan is [2026-11-04-households-plan-h3a.md](2026-11-04-households-plan-h3a.md).
+Its decisions H1–H16 are written back into the design. (Decision numbers H1–H16 are not the
+phases H1–H7.)
+
+| Order | PR | Contents |
+|---|---|---|
+| 1 | `fix/catalog-write-scope` | ✅ Merged 2026-11-04 (#371). Seven tag, tag type and vendor writes check ownership through `requireOwnRowOrUnclaimed` |
+| 2 | **H3a** | ✅ Merged into `develop` 2026-11-13 (#375), not deployed. Households, roles, the data migration, first sign-in, scoping for every resolver, `isDefault` removed, the household name in the 🏠 label, rename |
+| 3 | `chore/build-shared-types` | ✅ Merged into `develop` 2026-11-13 (#376), not deployed. The server build bundles with esbuild, so the server can import shared code from `@p1i/types` at runtime. [Design](../backend/2026-11-13-build-shared-types-design.md) |
+| 4 | **H3b** | Shared carts. Must merge before H5 starts. ✅ **Merged into `develop` 2026-11-16 (#377), not deployed.** [Design](2026-11-14-households-h3b-design.md) · [brainstorming](2026-11-14-brainstorming-households-h3b.md) · [plan](2026-11-14-households-plan-h3b.md) · [deploy runbook](../backend/2026-11-15-deploy-runbook-households-h3b.md) |
+| 5 | **H3c** | Live updates for everything shared: carts, stock, items, tags, vendors, recipes, shelves and locations. After H3b, before H5. Designed 2026-11-16 and split in two. **H3c-1 (carts): merged into `develop` (#379), not deployed.** **H3c-2 (stock, logs, locations, catalog): merged into `develop` (#380), not deployed.** [Design](2026-11-16-households-h3c-design.md) · [H3c-1 plan](2026-11-16-households-plan-h3c-1.md) · [H3c-2 plan](2026-11-16-households-plan-h3c-2.md) · [deploy runbook](../backend/2026-11-16-deploy-runbook-households-h3c-1.md) |
+
+The outline below is the first version. Each bullet is marked with where it went: **[H3a]**,
+**[H3b]**, **[H7]**, or a mix. Where the H3a plan changed the bullet, the change follows it.
+
 - Models `Household`, `HouseholdMember`, `LocationMember`, `LocationPreference`,
   `UserPreference` (decide here whether it merges into `User`). `householdId` on `Location` and
   the six catalog models. `Location.order`, `isDefault` and its partial index dropped.
   `dataUpdatedAt` and its writers. One migration with a deploy runbook and a check against a
   branch of production data.
+  - **[H3a]** `Household`, `HouseholdMember`, `LocationMember`, `householdId`, `isDefault` and
+    its index dropped, the runbook and the production-branch check. **Two** migrations, not
+    one (decision H16).
+  - **[H7]** `LocationPreference`, `UserPreference` and `dataUpdatedAt` with its writers
+    (decision H6). `Location.order` is **kept** until H7 (decision H5).
 - First sign-in in one transaction, guarded by the `User` primary key. Delete
   `ensureDefaultLocation` and the four places that argue from its index (#360).
+  - **[H3a]** The `User` primary key cannot be the guard any more: phase H2 creates the `User`
+    row first. The guard is a claim column, `User.householdSetupAt` (decision H1).
 - Real role checks in `requireLocationRole` (rename roles to `viewer | participant | organizer`)
-  and the new `requireHouseholdRole`. Read scoping for every query. Fixes #273.
+  and the new `requireHouseholdRole`. Read scoping for every query. Fixes #273. **[H3a]**
 - Re-derive all nine `CartItem.userId` filters; one row per item per cart; drop `Cart.userId`
   (#358). Shared-cart checkout in one transaction, with the server computing the log total;
-  move `buildCheckoutLogQuantities` to shared code; the same for `consumeRecipes`.
+  move `buildCheckoutLogQuantities` to shared code; the same for `consumeRecipes`. **[H3b]**
+  (decisions H7 and H8)
+  - **Built in H3b (2026-11-15, on its branch, not merged):** all 12 are gone, and
+    `deleteVendor` covers the whole household. The server computes the log total with
+    `getPackedTotal`, not `buildCheckoutLogQuantities`. See the H3b design's *Result*.
+  - **12 are left at `0dfd536f`** (research 2026-11-13): H3a already changed the three in
+    `purgeUserData`, `clearAllData` and `e2eCleanup.ts`. The research also found that
+    `deleteVendor` (`vendor.resolver.ts`) deletes only the caller's carts; H3b fixes it. See
+    the [H3b design](2026-11-14-households-h3b-design.md).
+  - **There were 15 `CartItem.userId` filters, not nine** (research 2026-11-03, measured at
+    `e48bbe2f`; line numbers drift):
+    - `apps/server/src/resolvers/cart.resolver.ts` 137, 159, 161, 166, 174, 190, 201, 228,
+      375, 454
+    - `apps/server/src/resolvers/itemStock.resolver.ts` 199
+    - `apps/server/src/resolvers/import.resolver.ts` 1577
+    - `apps/server/src/resolvers/purge.resolver.ts` 26
+    - `apps/server/src/lib/e2eCleanup.ts` 83
+    - `apps/server/src/lib/authz.ts` 152, through the `cartItem` delegate
+  - H3a already changes three of them: `purge.resolver.ts` (removed with `purgeUserData`),
+    `import.resolver.ts` (`clearAllData`) and `e2eCleanup.ts` (H3a task 3.10).
 - Before changing the purge filters: the 11 missing `where` assertions in both paths, and a
   filter-form check in `purge-coverage.test.ts` (#320). Remove `purgeUserData`; `clearAllData`
-  becomes the household clear.
+  becomes the household clear. **[H3a]** (tasks 3.2 and 3.10). The real-SQL two-household test
+  listed under H6 below also moved to H3a (decision H10).
 - Remove the six `userId: String!` GraphQL fields only after a web build from `8465406b` or later
-  is live (#359).
+  is live (#359). **[H3a]** (task 3.14, decision H11)
 - Fakes for the new models that honour every `where` key and the primary keys. Every role test
   has a second person with a different role and a location the caller has no role on.
+  **[H3a]** (tasks 3.1 and 3.4; plus an E2E-only second-member route, decision H9)
 - Rewrite the E2E specs and helpers that depend on the default location
   (`data-mode-migration.spec.ts`, `import-strategies.spec.ts`, `backupAssertions.ts`,
-  `cloudSeed.ts`). Add the migration to `verify-migration.ts`.
-- Cloud UI: the 🏠 label shows the household name.
+  `cloudSeed.ts`). Add the migration to `verify-migration.ts`. **[H3a]** (tasks 3.3, 3.14 and
+  3.15; about 20 E2E files, not four)
+- Cloud UI: the 🏠 label shows the household name. **[H3a]** (task 3.13), plus
+  `renameHousehold` (decision H4)
+
+### H3c — Live updates
+
+**Designed 2026-11-16:** [2026-11-16-households-h3c-design.md](2026-11-16-households-h3c-design.md)
+([brainstorming](2026-11-16-brainstorming-households-h3c.md)). Split into H3c-1 (the whole path,
+carts only) and H3c-2 (stock, logs, locations, catalog), both before H5. **H3c-1 built
+2026-11-16** ([plan](2026-11-16-households-plan-h3c-1.md), [deploy
+runbook](../backend/2026-11-16-deploy-runbook-households-h3c-1.md)) and merged into `develop`
+(#379). **H3c-2 built 2026-11-16** ([plan](2026-11-16-households-plan-h3c-2.md); deploy:
+section 9 of the same runbook) and merged into `develop` (#380). Neither is deployed. The notes
+below are the outline from before the design.
+
+Added 2026-11-13. The owner: "I would like to have live updates soon as it's a core
+functionality for household collaboration." Scope: everything shared. To decide in its own
+brainstorming:
+
+- Transport: GraphQL subscriptions over WebSocket. The web already has the `GraphQLWsLink`
+  split in `apps/web/src/apollo/client.ts`; the server has no subscription endpoint. Clerk
+  sign-in token sent when the connection opens.
+- What an event carries: "this changed" (the web refetches), or the data itself.
+- Who receives an event: role checks per location and per household, again on every event.
+- Known limit: Neon's pooled connection does not support `LISTEN/NOTIFY`, so the first version
+  passes events inside one server process. That works while Railway runs one instance.
 
 ### H4 — Import and export
+
+**Detailed plan (2026-11-16):** [2026-11-16-households-plan-h4.md](2026-11-16-households-plan-h4.md) ✅ Built (tasks E.1–E.7 and the O9 follow-up, 2026-11-16 and 2026-11-17) on `feature/households-h4`. ✅ **Merged into `develop` 2026-11-17 (#382, merge `bf87e839`), not deployed.** Deploy: [runbook](../backend/2026-11-17-deploy-runbook-households-h4.md); the server must go first (decision T9). It also folds in issue #381 (two cross-household writes). The bullets below are the first outline.
 
 - Export: catalog, plus locations where the exporter has a role.
 - Import: owner and manager only; `clear` owner only. The new id rule; the "Import into which
@@ -670,18 +756,86 @@ design and from the issues filed on `main`.
   read-only views for members and viewers, the empty "no locations" screens.
 - Two-user cloud E2E with one browser context per user.
 
+**Split in three (H5 decision O1).** **H5a ✅ merged into `develop` (#384, merge `4307d30a`, 2026-11-18), not deployed:** the web
+learns each person's roles (`Location.myRole`, `Location.hasOrganizer`,
+`householdLocations`, `usePermissions`), read-only views for a household `member` and a
+location `viewer`, the **View only** badge, the empty "no locations" screens (decision H13
+lifted), and a browser context per test user in E2E. **H5b ✅ merged into `develop`
+(#385, merge `938fa2aa`, 2026-11-18), not deployed** ([plan](2026-11-18-households-plan-h5b.md)):
+one migration (`HouseholdInvite`, `User.activeHouseholdId`), invite links, `/join/$token`
+with a sign-in return path, the Members page (roles, remove, leave), a fixed rule for a
+person in two households, the no-household screen with **Create a household**, and
+`household-invites.spec.ts` (8 cloud tests). Deploy notes: section 9 of the
+[H4 runbook](../backend/2026-11-17-deploy-runbook-households-h4.md). Follow-ups merged after it: #386 (a failed refresh no longer fails a saved write), #387 (screens show save errors), #388 (the join keeps the copy question), #389 (the copy question names the household), #390 (`isPending` tests). **H5c** (the location
+people page) ✅ merged into `develop` (#391, merge `7dbaeca9`, 2026-11-20), not deployed
+([plan](2026-11-19-households-plan-h5c.md); deploy notes in section 10 of the H4 runbook): no
+migration, server before web. Owners, managers and organizers give, change and remove location
+roles on a location's own page; anyone leaves; **No organizer**; the Members page marks a
+person with no location role; a tab that loses its active location moves and says so. "Switcher filtering" needed no work: the
+switcher already listed only locations with a role (H3a task 3.6).
+
 ### H6 — Transfer, hand-over, purges, activity
 
 - `OwnershipOffer`, the banner, transfer, the `user.deleted` hand-over branch in
   `handleClerkEvent`, the three purges and the danger zone, `HouseholdActivity` and its page.
-- Real-SQL test with two households: a purge of one leaves the other's rows.
+- Real-SQL test with two households: a purge of one leaves the other's rows. **Moved to H3a**
+  (decision H10, `e2e/tests/purge-two-households.spec.ts`), because H3a changes the filters.
+  H6 still owes the same kind of test for its new purges.
+- **Owed, must be fixed (owner decision 2026-11-17): a deleted organizer still counts for
+  `Location.hasOrganizer`.** The count is made by `countedOrganizerIn` and read by
+  `locationIdsWithOrganizer`, both in `apps/server/src/lib/authz.ts`. It checks only that
+  the organizer is still a member of the household. It does not check `User.deletedAt`,
+  the column that marks a deleted account (set by the `user.deleted` webhook since H2). So
+  a location whose only organizer deleted their account shows no "No organizer" warning.
+  The fix belongs with the `user.deleted` hand-over branch above. Recorded in the H5 plan's
+  *Known gaps* (`2026-11-17-households-plan-h5.md`). **Goes to H6b** (tasks K.2 and K.4).
+  **Fixed in H6b task K.2** (`8989cc7f`): `countedOrganizerIn` adds `deletedAt: null`, and
+  so do `locationPeople` and `householdMembers`. K.4's hand-over removes the rows of every
+  account deleted from now on.
+
+**Detailed plan:** [2026-11-20-households-plan-h6.md](2026-11-20-households-plan-h6.md).
+Owner decisions O32–O39: all A. Split in two PRs (O32-A):
+
+| Part | Content | State |
+|---|---|---|
+| **H6a** (tasks J.1–J.9) | one additive migration (`HouseholdActivity`); `recordActivity`; the `householdActivity` query and the Activity page; `deleteAllLocations`, `removeAllLocationItems`, `deleteHousehold` (O38-A) and `recordImport` (O33-A); the two danger zones; the household lock taken first by every owner-only write; the two new purges in `purge-two-households.spec.ts` and `household-activity-purges.spec.ts` | ✅ built 2026-11-20 on `feature/households-h6a`; merged into `develop` as #392 (merge `c0f096ed`), not deployed. Deploy notes: section 11 of the [H4 runbook](../backend/2026-11-17-deploy-runbook-households-h4.md) |
+| **H6b** (tasks K.0–K.9, K.4b, K.7b) | one additive migration (`OwnershipOffer`); the five offer mutations and `myOwnershipOffers`; the offer banner and the Members page controls; the `user.deleted` hand-over (`lib/handover.ts`), with the owner's invites revoked (O43); a deleted account no longer counting (T61); the last live person's leave deleting an ownerless household (O37-A); "Clear & import" asking for the typed name (O40); `household-ownership.spec.ts` | ✅ built 2026-11-20 on `feature/households-h6b`, not merged, not deployed. Deploy notes: section 12 of the [H4 runbook](../backend/2026-11-17-deploy-runbook-households-h4.md). Before the release: the O36 count, and the O44 script if it is not 0 |
 
 ### H7 — Personal order, household switch and create
 
 - `LocationPreference` order and the four sorts; Switch to… and Create new.
+- **Moved here from H3** (H3a plan decisions H5 and H6): the `LocationPreference` and
+  `UserPreference` tables, `Location.dataUpdatedAt` and its writers, and copying the shared
+  `Location.order` into each person's `customOrder`.
 - The household switch must set the active location and clear the household-scoped Apollo cache
   (including the persisted `Player1InventoryCloudCache`) in one step. A test switches with a
   cart in the old household and sees no old rows.
+- **Owed from H5b (owner decision O21):** a write from a tab that still shows a household
+  the person left lands in their OTHER household, through `requireHousehold`, with nothing
+  shown. Fix: the web sends the household id it shows, and the server refuses a write whose
+  id does not match the household it would act in. A test with one person in two
+  households, a stale tab and a write. See the H5b plan, *Known gaps*.
+- **Owed from H5b (owner decision O22-A):** a copy of offline data chosen in
+  `DataModeCard` ("Copy local data") now asks "Copy your offline data into {household}?" with
+  **Copy here** and **Don't copy**, and can only go into the household the person acts in
+  now. H7 adds the full choice: any household the person is in (with the import role), or a
+  new one. It needs **Switch to…** and a household input on `importCheck`, `clearAllData` and
+  the 22 bulk import mutations (today they all use `requireHousehold`). See the H5b plan,
+  decision T31 and *Known gaps*.
+
+**Detailed plan:** [2026-11-21-households-plan-h7.md](2026-11-21-households-plan-h7.md). Two
+PRs (owner decision O49-A).
+
+| Part | Content | State |
+|---|---|---|
+| **H7a** (tasks L.1–L.7) | no migration; the `x-household-id` header and `HOUSEHOLD_CHANGED` in `requireHousehold` (O21 fixed); `myHouseholds`, `setActiveHousehold`, `createHousehold(alsoWhenMember:)`; **Switch to…** and **Create new**; the reload message (O51-A, wording O56-A); the copy into a chosen household or a new one (O22-A, O57-B); `household-switch.spec.ts` | ✅ merged into `develop` (2026-11-22, #394, merge `bf71f485`), not deployed. Deploy notes: section 13 of the [H4 runbook](../backend/2026-11-17-deploy-runbook-households-h4.md) |
+| **H7b** (tasks M.1–M.6) | one additive migration with one backfill (`LocationPreference`, `User.locationSort`, `Location.dataUpdatedAt`); personal order; `reorderLocations` for every household role, writing the person's own order; the four sorts; `markLocationVisited`; `location-sort.spec.ts` | ✅ merged into `develop` (2026-11-22, #395, merge `41bbbe1a`), not deployed; deploy notes in section 14 of the H4 runbook |
+
+**What changed from this outline.** The copy into another household needs NO household input
+on `importCheck`, `clearAllData` or the 22 bulk import mutations (H7 decision T71). The web
+moves the person first (`setActiveHousehold`, then `switchToHousehold`), and the copy runs
+after the reload into the household they act in. The `x-household-id` check refuses every
+batch if the household changes in the middle.
 
 ---
 

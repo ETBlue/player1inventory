@@ -8,7 +8,7 @@ import type { APIRequestContext, Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { CLOUD_WEB_URL } from '../../constants'
 import {
-  DESTINATION_DEFAULT_LOCATION_NAME,
+  destinationDefaultLocationName,
   expectFixtureStockPerLocation,
   FIXTURE_DEFAULT_LOCATION_NAME,
   FIXTURE_STOCK_BY_LOCATION,
@@ -112,17 +112,24 @@ const SEED_ONLY_STOCK = {
 /**
  * The destination, written the same way in both modes (helpers/fixture.ts).
  *
- * ONE LOCATION ONLY, named like the destination's own default. The backup brings
- * three locations of its own: its default is remapped onto this one, and
+ * ONE LOCATION ONLY, named like the destination's own home location ("My Home"
+ * in local, "Home" in cloud), so `seedCloudFixture` does not rename it. The
+ * backup brings
+ * three locations of its own: its default (`'local'`) lands on this one (in
+ * cloud the user picks it in "Import into which location?"), and
  * "Fixture Office" / "Fixture Cabin" are created with the backup's own ids. That
  * is the shape `helpers/backupAssertions.ts` was written for, and it is also the
  * only shape a static backup file can assert in cloud mode — `seedCloudFixture`
  * creates a non-default location through `createLocation`, which assigns a
  * server cuid that no fixture file can name in advance.
  */
-const DESTINATION: Fixture = {
+const destination = (baseURL: string | undefined): Fixture => ({
   locations: [
-    { key: 'home', name: DESTINATION_DEFAULT_LOCATION_NAME, isDefault: true },
+    {
+      key: 'home',
+      name: destinationDefaultLocationName(baseURL),
+      isDefault: true,
+    },
   ],
   vendors: [],
   items: [
@@ -135,7 +142,7 @@ const DESTINATION: Fixture = {
   ],
   shelves: [],
   recipes: [],
-}
+})
 
 const isCloud = (baseURL: string | undefined) => baseURL === CLOUD_WEB_URL
 
@@ -144,16 +151,15 @@ const isCloud = (baseURL: string | undefined) => baseURL === CLOUD_WEB_URL
  * It is NOT the same in the two modes, and both answers are correct.
  *
  * `importLocations` (importData.ts) `bulkPut`s the whole location list for any
- * strategy that is not `skip`, so the LOCAL default row — remapped onto the
- * `'local'` sentinel — takes the backup's name, "Fixture Home". In CLOUD,
- * `bulkCreateLocations` (apps/server/src/resolvers/import.resolver.ts) skips a
- * row whose id is already taken, so the server's default keeps "My Home". That
- * difference was PR 4b task 4's choice, made so `locations` stays on the create
- * pass ahead of the carts and logs that name them.
+ * strategy that is not `skip`, so the LOCAL default row — the `'local'`
+ * sentinel — takes the backup's name, "Fixture Home". In CLOUD the backup's
+ * `'local'` row is put on an existing location: the new "Home" on `clear`
+ * (households H4 decision O2), the location picked in "Import into which
+ * location?" on `replace`. That location keeps its own name, "Home".
  */
 function expectedDefaultLocationName(baseURL: string | undefined): string {
   return isCloud(baseURL)
-    ? DESTINATION_DEFAULT_LOCATION_NAME
+    ? destinationDefaultLocationName(baseURL)
     : FIXTURE_DEFAULT_LOCATION_NAME
 }
 
@@ -189,15 +195,15 @@ async function readItemNamesById(
   return byId
 }
 
-/** Write `DESTINATION` into whichever backend this project runs against. */
+/** Write `destination(baseURL)` into whichever backend this project runs against. */
 async function seedDestination(
   page: Page,
   request: APIRequestContext,
   baseURL: string | undefined,
 ): Promise<string> {
   const locationIds = isCloud(baseURL)
-    ? await seedCloudFixture(request, DESTINATION)
-    : await seedLocalFixture(page, DESTINATION)
+    ? await seedCloudFixture(request, destination(baseURL))
+    : await seedLocalFixture(page, destination(baseURL))
   return locationIds.home
 }
 
@@ -239,11 +245,10 @@ test.beforeEach(async ({ request, baseURL }) => {
   if (isCloud(baseURL)) await cleanupCloudData(request)
 })
 
-test.afterEach(async ({ page, request, baseURL }) => {
-  if (isCloud(baseURL)) {
-    await cleanupCloudData(request)
-    return
-  }
+test.afterEach(async ({ page, baseURL }) => {
+  // Cloud mode: nothing to clean here. Each test cleans up in its own
+  // beforeEach (E2E speed plan, decision D7).
+  if (isCloud(baseURL)) return
   await page.goto('/')
   await page.evaluate(async () => {
     const dbs = await indexedDB.databases()
@@ -276,13 +281,15 @@ test('user can clear existing data and import a backup over it', async ({
   request,
   baseURL,
 }) => {
-  // NO `test.setTimeout` HERE, AND THAT WAS MEASURED RATHER THAN ASSUMED.
-  // Measured 2026-10-08 on this branch at load average ~6: this test takes
-  // 18.1s in `cloud` and the whole file 7.3s in `local`, against Playwright's
-  // default 30s budget. `settings/import-export-cloud.spec.ts` needs 60000 on
-  // its one round-trip test because that one takes 36.5s; this one does not,
-  // and leaving the default in place is what lets a future slowdown report
-  // itself.
+  // 60s, measured. On 2026-10-08 this test took 18.1s in `cloud` and had no
+  // `test.setTimeout`, so that a slowdown would report itself. It did: on
+  // 2026-11-18 (households H5b) it failed the 30s budget in one run of the
+  // full gate, and took 30.4s when its file ran alone at load average 1.9.
+  // A trace that day: the import alone took 15.0s (`importCheck` 1.4s,
+  // `clearAllData` 1.9s, then 12 bulk mutations of 0.6 to 1.8s each against
+  // the shared Neon test database). `importCheck` and the per-batch role
+  // checks arrived with households H4. The whole file takes 7.3s in `local`.
+  test.setTimeout(60000)
   const settings = new SettingsPage(page)
   const mode = isCloud(baseURL) ? 'cloud' : 'local'
   expectBackupPreconditions()
@@ -317,8 +324,24 @@ test('user can clear existing data and import a backup over it', async ({
   await expect(dialog).toContainText('Items (1):')
   await expect(dialog).toContainText(COLLIDING_ITEM_BACKUP_NAME)
 
-  // And "Clear & import" is pressed
-  await settings.chooseConflictStrategy('Clear & import')
+  // And "Clear & import" is pressed. In cloud it asks for the household
+  // name first, typed exactly (owner decision O40, households H6 task K.0):
+  // its confirm is disabled until then, and nothing is cleared before. Local
+  // mode has no household, so the first press runs the import.
+  const householdName = isCloud(baseURL)
+    ? (
+        await makeGql(request)<{ household: { name: string } }>(
+          `query { household { name } }`,
+        )
+      ).household.name
+    : null
+  await settings.chooseClearAndImport(householdName, async () => {
+    // While the confirm waits for the name, the seed is still all there
+    expect(await readItemNamesById(page, request, baseURL)).toEqual({
+      [COLLIDING_ITEM_ID]: COLLIDING_ITEM_SEED_NAME,
+      [SEED_ONLY_ITEM_ID]: SEED_ONLY_ITEM_NAME,
+    })
+  })
   await settings.waitForImportDone(mode)
 
   // Then the account holds EXACTLY the backup's two items. This is the whole
@@ -330,9 +353,9 @@ test('user can clear existing data and import a backup over it', async ({
   })
 
   // And its stock row went with it. Read by item rather than by location id,
-  // because cloud's `clearAllData` deletes every Location row and
-  // `ensureDefaultLocation` then re-creates the default with a NEW cuid — the id
-  // the seed returned above no longer exists.
+  // because cloud's `clearAllData` deletes every Location row and creates a
+  // new "Home" with a NEW cuid in the same transaction, so the id the seed
+  // returned above no longer exists.
   expect(
     await readStocksForItem(page, request, baseURL, SEED_ONLY_ITEM_ID),
   ).toEqual([])
@@ -352,8 +375,10 @@ test('user can replace the matching rows and keep everything else', async ({
   request,
   baseURL,
 }) => {
-  // Measured 13.5s in `cloud`, so the default 30s budget stands — see the note
-  // on the `clear` test above.
+  // 60s for the reason on the `clear` test above. Measured 13.5s in `cloud`
+  // on 2026-10-08; 31.3s on 2026-11-18, when its file ran alone at load
+  // average 1.9, and it failed the 30s budget in one run of the full gate.
+  test.setTimeout(60000)
   const settings = new SettingsPage(page)
   const mode = isCloud(baseURL) ? 'cloud' : 'local'
   expectBackupPreconditions()
@@ -382,6 +407,21 @@ test('user can replace the matching rows and keep everything else', async ({
   // passes — the colliding one on upsert, "Backup New Item" on create.
   await expect(dialog).toContainText('Items (1):')
   await settings.chooseConflictStrategy('Replace matches')
+
+  // And, in CLOUD only, the backup's default location (`'local'`) needs a
+  // place: "Import into which location?" opens with the destination's home
+  // location checked, and the user keeps it (households H4 decisions O3 and
+  // T16). `clear` does not ask (O2), and local mode has no such dialog: there
+  // `'local'` is local "My Home" already. Picking the seeded home keeps every
+  // assertion below about `defaultLocationId` true.
+  if (isCloud(baseURL)) {
+    await expect(
+      settings
+        .getImportLocationDialog()
+        .getByRole('radio', { name: destinationDefaultLocationName(baseURL) }),
+    ).toBeChecked()
+    await settings.chooseImportLocation(destinationDefaultLocationName(baseURL))
+  }
   await settings.waitForImportDone(mode)
 
   const names = await readItemNamesById(page, request, baseURL)

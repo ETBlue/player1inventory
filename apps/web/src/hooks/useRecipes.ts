@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useRefetchAfterWrite } from '@/apollo/refetchAfterWrite'
 import {
   consumeRecipesBatch,
   createRecipe,
@@ -22,9 +23,10 @@ import {
   useUpdateRecipeMutation,
 } from '@/generated/graphql'
 import { deserializeRecipe } from '@/lib/deserialization'
+import { consumeItem, getPackedTotal } from '@/lib/quantityUtils'
 import type { Recipe, RecipeItem } from '@/types'
 import { useActiveLocation } from './useActiveLocation'
-import { useCloudLocationId } from './useCloudLocationId'
+import { useRequiredCloudLocationId } from './useCloudLocationId'
 import { useDataMode } from './useDataMode'
 
 export function useRecipes() {
@@ -163,6 +165,7 @@ export function useCreateRecipe() {
 export function useUpdateRecipe() {
   const queryClient = useQueryClient()
   const { mode } = useDataMode()
+  const { refetchAfterWrite, isRefetching } = useRefetchAfterWrite()
 
   const localMutation = useMutation({
     mutationFn: ({
@@ -202,6 +205,24 @@ export function useUpdateRecipe() {
       }
       return vars
     }
+    // Write, then read the recipe lists again and WAIT for them, the cloud
+    // counterpart of the local branch's returned invalidation. A failed read
+    // does not reject: the write worked (`refetchAfterWrite`). Both `{ query }`
+    // entries are read even when nothing is mounted, as they were under the
+    // old `refetchQueries` + `awaitRefetchQueries: true`, which rejected the
+    // save when a read failed (docs/global/bugs/
+    // 2026-11-18-bug-failed-refetch-rejects-saved-write.md).
+    const runCloudUpdate = async (
+      id: string,
+      updates: Partial<Omit<Recipe, 'id' | 'createdAt'>>,
+    ) => {
+      const result = await cloudUpdate({ variables: toVars(id, updates) })
+      await refetchAfterWrite([
+        { query: GetRecipesDocument },
+        { query: GetRecipeDocument, variables: { id } },
+      ])
+      return result.data?.updateRecipe
+    }
     return {
       mutate: (
         {
@@ -213,14 +234,7 @@ export function useUpdateRecipe() {
         },
         options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
       ) =>
-        cloudUpdate({
-          variables: toVars(id, updates),
-          refetchQueries: [
-            { query: GetRecipesDocument },
-            { query: GetRecipeDocument, variables: { id } },
-          ],
-          awaitRefetchQueries: true,
-        }).then(
+        runCloudUpdate(id, updates).then(
           () => options?.onSuccess?.(),
           (err) => {
             options?.onError?.(err)
@@ -232,16 +246,8 @@ export function useUpdateRecipe() {
       }: {
         id: string
         updates: Partial<Omit<Recipe, 'id' | 'createdAt'>>
-      }) =>
-        cloudUpdate({
-          variables: toVars(id, updates),
-          refetchQueries: [
-            { query: GetRecipesDocument },
-            { query: GetRecipeDocument, variables: { id } },
-          ],
-          awaitRefetchQueries: true,
-        }).then((r) => r.data?.updateRecipe),
-      isPending: cloudUpdateLoading,
+      }) => runCloudUpdate(id, updates),
+      isPending: cloudUpdateLoading || isRefetching,
     }
   }
 
@@ -324,33 +330,54 @@ export function useUpdateRecipeLastCookedAt() {
   return localMutation
 }
 
+/**
+ * One item a cook uses. The same shape in both modes.
+ *
+ * `delta` is the inventory log's signed change: minus the amount used, in the
+ * unit `consumeItem` takes (measurement units when the item tracks in
+ * measurement, otherwise packages).
+ */
+export interface ConsumeRecipeItem {
+  itemId: string
+  delta: number
+  note?: string
+  logKey?: string
+  logParams?: Record<string, string>
+}
+
+export interface ConsumeRecipesArgs {
+  occurredAt: Date
+  recipeIds: string[]
+  items: ConsumeRecipeItem[]
+  /**
+   * The stock the page shows at the active location. LOCAL mode only: it
+   * computes the new numbers from these rows, as the cooking page did before
+   * households H3b task B.6. The cloud branch never reads it, because the
+   * server reads its own stock row inside a transaction.
+   */
+  localStock: ReadonlyArray<Parameters<typeof consumeItem>[0] & { id: string }>
+}
+
 export function useConsumeRecipes() {
   const queryClient = useQueryClient()
   const { mode } = useDataMode()
   const { activeLocationId } = useActiveLocation()
   const [cloudConsumeRecipes] = useConsumeRecipesMutation()
   // Resolved at CALL time, not render time — `ConsumeRecipesInput.locationId`
-  // is `ID!` since PR 3b Task 4 and the server takes the `member` role on it,
+  // is `ID!` since PR 3b Task 4 and the server asks for the `participant` location role on it,
   // so the `'local'` sentinel of a fresh cloud session would lose the whole
   // cook to FORBIDDEN. See `useCloudLocationId`.
-  const resolveCloudLocationId = useCloudLocationId()
+  const resolveCloudLocationId = useRequiredCloudLocationId()
 
   return useMutation({
-    mutationFn: async (input: {
-      occurredAt: Date
-      recipeIds: string[]
-      items: Array<{
-        itemId: string
-        packedQuantity: number
-        unpackedQuantity: number
-        delta: number
-        quantity: number
-        note?: string
-        logKey?: string
-        logParams?: Record<string, string>
-      }>
-    }) => {
+    mutationFn: async (input: ConsumeRecipesArgs) => {
       if (mode === 'cloud') {
+        // Households H3b task B.6: only the amounts used. The server reads
+        // the stock row, applies `consumeItem` and computes the log total
+        // itself, in one transaction. Until B.6 this sent the final
+        // `packedQuantity` / `unpackedQuantity` and the log `quantity`,
+        // computed from the stock this screen had loaded, so two people
+        // cooking the same item from the same screen lost one use.
         return cloudConsumeRecipes({
           variables: {
             input: {
@@ -359,10 +386,7 @@ export function useConsumeRecipes() {
               recipeIds: input.recipeIds,
               items: input.items.map((item) => ({
                 itemId: item.itemId,
-                packedQuantity: item.packedQuantity,
-                unpackedQuantity: item.unpackedQuantity,
                 delta: item.delta,
-                quantity: item.quantity,
                 ...(item.note !== undefined ? { note: item.note } : {}),
                 ...(item.logKey !== undefined ? { logKey: item.logKey } : {}),
                 ...(item.logParams !== undefined
@@ -373,7 +397,34 @@ export function useConsumeRecipes() {
           },
         })
       }
-      return consumeRecipesBatch({ ...input, locationId: activeLocationId })
+      // Local mode is single-user, so computing here from the page's stock is
+      // safe. This is the computation `cooking.tsx` did itself before B.6,
+      // moved here unchanged: `-delta` is exactly the amount the page used.
+      return consumeRecipesBatch({
+        occurredAt: input.occurredAt,
+        recipeIds: input.recipeIds,
+        locationId: activeLocationId,
+        items: input.items.flatMap((item) => {
+          const stock = input.localStock.find((s) => s.id === item.itemId)
+          if (!stock) return []
+          const updated = { ...stock }
+          consumeItem(updated, -item.delta)
+          return [
+            {
+              itemId: item.itemId,
+              packedQuantity: updated.packedQuantity,
+              unpackedQuantity: updated.unpackedQuantity,
+              delta: item.delta,
+              quantity: getPackedTotal(updated),
+              ...(item.note !== undefined ? { note: item.note } : {}),
+              ...(item.logKey !== undefined ? { logKey: item.logKey } : {}),
+              ...(item.logParams !== undefined
+                ? { logParams: item.logParams }
+                : {}),
+            },
+          ]
+        }),
+      })
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['items'] })

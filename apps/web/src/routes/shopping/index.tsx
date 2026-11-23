@@ -2,6 +2,7 @@ import { useQueries } from '@tanstack/react-query'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowDown, ArrowUp } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { NoLocationsGate } from '@/components/location/NoLocationsGate'
 import { ListSectionDivider } from '@/components/shared/ListSectionDivider'
 import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { Toolbar } from '@/components/shared/Toolbar'
@@ -28,7 +29,7 @@ import { isInactiveHere, isStockedHere } from '@/lib/quantityUtils'
 import { cartIdFor, type Vendor } from '@/types'
 
 export const Route = createFileRoute('/shopping/')({
-  component: ShoppingIndex,
+  component: ShoppingIndexRoute,
   validateSearch: (s: Record<string, unknown>) => ({
     sort: ['alpha', 'count'].includes(s.sort as string)
       ? (s.sort as 'alpha' | 'count')
@@ -36,6 +37,16 @@ export const Route = createFileRoute('/shopping/')({
     dir: s.dir === 'asc' ? 'asc' : 'desc',
   }),
 })
+
+// Households H5 task F.7: with no location, the page is not rendered at all
+// (`NoLocationsGate`), so none of its location-scoped reads run.
+function ShoppingIndexRoute() {
+  return (
+    <NoLocationsGate>
+      <ShoppingIndex />
+    </NoLocationsGate>
+  )
+}
 
 function ShoppingIndex() {
   const { t } = useTranslation()

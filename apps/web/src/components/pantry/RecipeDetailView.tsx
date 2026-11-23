@@ -11,6 +11,7 @@ import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { Button } from '@/components/ui/button'
 import { useStockedItems, useUpdateItem } from '@/hooks'
+import { useActiveLocationRights } from '@/hooks/useActiveLocationRights'
 import { useItemSearchTailWiring } from '@/hooks/useItemSearchTailWiring'
 import { useItemSortData } from '@/hooks/useItemSortData'
 import { useRecipes, useUpdateRecipe } from '@/hooks/useRecipes'
@@ -55,6 +56,7 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
   const { search, isTagsVisible } = useUrlSearchAndFilters()
 
   const [pendingItemIds, setPendingItemIds] = useState<Set<string>>(new Set())
+  const { canEditHere } = useActiveLocationRights()
   const [quickUpdateItemId, setQuickUpdateItemId] = useState<string | null>(
     null,
   )
@@ -166,8 +168,10 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
   // local `onSuccess` RETURNS its `['recipes']` invalidation, so `mutateAsync`
   // resolves only once `recipe.items` has refetched, and the wiring hook
   // re-enables the rows against fresh data. Cloud is NOT an exception here —
-  // both of `useUpdateRecipe`'s cloud branches pass `awaitRefetchQueries: true`
-  // (`useRecipes.ts:199,219`), unlike the shelf and item hooks. What the guard
+  // both of `useUpdateRecipe`'s cloud branches (`mutate` and `mutateAsync`)
+  // go through `runCloudUpdate` in `useRecipes.ts`, which awaits
+  // `refetchAfterWrite` over `GetRecipes` and `GetRecipe` after the write
+  // (a failed read does not reject the save). What the guard
   // still covers is every path that does NOT await that refetch — `mutate`
   // call sites, whose continuation runs without awaiting the returned promise
   // (e.g. `items/$id/relation/recipes.tsx:45`) — and any concurrent write
@@ -277,7 +281,10 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
       showTags={isTagsVisible}
       disabled={pendingItemIds.has(item.id)}
       isPending={pendingItemIds.has(item.id)}
-      onQuickUpdate={() => setQuickUpdateItemId(item.id)}
+      // A location viewer may not change the stock (households H5 task F.6)
+      {...(canEditHere && {
+        onQuickUpdate: () => setQuickUpdateItemId(item.id),
+      })}
     />
   )
 

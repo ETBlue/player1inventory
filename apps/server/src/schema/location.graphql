@@ -1,23 +1,196 @@
 type Location {
   id: ID!
   name: String!
+  # The CALLER's own position of this location, 0 to n-1, in the list this
+  # answer belongs to (households H7b, decisions T76 and T77). Each person has
+  # their own order: a location they placed with `reorderLocations` comes in
+  # that place. A location they never placed comes after those, by the
+  # shared household order, then by id. So before a person reorders, they
+  # see the shared order. A single location returned by `createLocation`,
+  # `updateLocation` or an import carries the stored shared order instead.
   order: Int!
-  isDefault: Boolean!
   createdAt: String!
   updatedAt: String!
+  # The CALLER's location role here, or null for "no access" (households H5
+  # task F.1). Only a role that counts: the caller must also be a member of
+  # the location's household (decision H18). The household role never adds a
+  # location role.
+  myRole: LocationRole
+  # True when at least one organizer of this location is still a member of
+  # its household (decision H18 applied to the ORGANIZER). The settings list
+  # shows "No organizer" when it is false.
+  hasOrganizer: Boolean!
+  # When this location's stock, carts or logs last changed, as an ISO date,
+  # or null when nothing has changed since the column was added (households
+  # H7b, decisions T79 and T82). The same value for everyone. Set by every
+  # STOCK, CART or LOG event the server sends for the location. Renaming or
+  # reordering the location does not set it. The web's "Last updated" sort
+  # reads it.
+  dataUpdatedAt: String
+  # When the CALLER last made this location their active location, as an ISO
+  # date, or null when they never did (households H7b, decisions T80 and T82).
+  # Each person sees only their own value. Written by `markLocationVisited`.
+  # The web's "Last visited" sort reads it.
+  lastVisitedAt: String
+  # OLD-BUNDLE SHIM. Remove in the release after households.
+  #
+  # H3a dropped the `isDefault` column. `main`'s web bundle (before the
+  # households release) still selects this field in `GetLocations`,
+  # `CreateLocation`, `UpdateLocation`, `ReorderLocations`,
+  # `BulkCreateLocations` and `BulkUpsertLocations`. Without the field every
+  # one of those documents fails GraphQL validation, and an old device cannot
+  # load any location. The field is kept for ONE release so the server can be
+  # deployed before the web (owner decision 2026-11-17, option 4 in section
+  # 8.3 of docs/global/backend/2026-11-17-deploy-runbook-households-h4.md).
+  #
+  # The value: true for the FIRST location of the caller's `locations` list
+  # (by `order`, then `id`), false for every other one, and false for a
+  # location the caller has no role on. That is the location the old bundle
+  # expects: it picks it as the active location, maps a backup's default
+  # location onto it, and hides its delete button. It is not always the row
+  # `main` marked: there the default was a stored flag, so a row could sit
+  # above it (runbook 8.3). No data is lost.
+  #
+  # No web document of this branch selects it. A test fails if one does
+  # (src/test/oldBundleCompat.test.ts).
+  isDefault: Boolean!
+    @deprecated(reason: "Old web bundles only. Remove in the release after households.")
+}
+
+# The three location roles (decision H14). `organizer` > `participant` >
+# `viewer`.
+enum LocationRole {
+  organizer
+  participant
+  viewer
 }
 
 extend type Query {
-  # Lazily creates the caller's default location if they have none, so a new
-  # account and a pre-migration account both start with exactly one.
+  # The locations of the caller's household that the caller has a location
+  # role on, in the caller's own order (see `Location.order`; one household
+  # only since households H4 task E.5).
+  # A new person
+  # gets their household and its first location, "Home", on their first call
+  # (first sign-in, lib/household.ts).
   locations: [Location!]!
+  # The settings list (households H5 task F.1, decision T4). For a household
+  # owner or manager: EVERY location of the caller's household, in the
+  # caller's own order (see `Location.order`), with `myRole` null where they
+  # have no role. For a household `member`: exactly what `locations` returns.
+  # Reading the list gives no access to a location's stock, carts or logs.
+  householdLocations: [Location!]!
+  # How the caller sorts their location list and switcher (households H7b,
+  # decision T74). `custom` when they never chose one (owner decision O52-A).
+  myLocationSort: LocationSort!
+}
+
+# The four ways a person can sort their locations (households H7b, decision
+# T74). The web does the sorting (decision T81); the server only keeps the
+# choice. `custom` is the person's own order (`Location.order`).
+enum LocationSort {
+  name
+  lastUpdated
+  lastVisited
+  custom
+}
+
+# One person with a role on a location (households H5c, decision T32). It
+# has no e-mail address, on purpose: the name is `User.displayName` only.
+type LocationPerson {
+  userId: ID!
+  displayName: String!
+  role: LocationRole!
+  # True only on the caller's own row.
+  isMe: Boolean!
+}
+
+extend type Query {
+  # Households H5c. See the plan, decisions T39 and O24.
+  #
+  # Every person whose role on this location still counts: they are still a
+  # member of the location's household (decision H18). Organizers first, then
+  # participants, then viewers. Inside one role by name, then by id.
+  #
+  # Who may read it (owner decision O24-A): anyone with a role on the
+  # location, and every household owner and manager, also on a location where
+  # they have no role. They see names and roles only, never the location's
+  # stock, carts or logs. A household `member` with no role there, a location
+  # of another household, and an unknown id all get the same FORBIDDEN.
+  locationPeople(locationId: ID!): [LocationPerson!]!
 }
 
 extend type Mutation {
+  # Household role `member`. The caller becomes the new location's organizer.
   createLocation(name: String!): Location!
+  # Location role `organizer`.
   updateLocation(id: ID!, input: UpdateLocationInput!): Location!
+  # Household role `manager`. Any location of the caller's household, the
+  # last one too (since households H5 task F.7; before, LAST_LOCATION).
   deleteLocation(id: ID!): Boolean!
+  # Household role `owner` (households H6 task J.4, decision T55). Deletes
+  # every location of the caller's household, with its stock, logs, carts,
+  # cart rows and role rows. The catalog, the household and its people stay.
+  # No new location is made (owner decision O34-A). `false` when the
+  # household had no location; then nothing is logged or sent.
+  deleteAllLocations: Boolean!
+  # Location role `organizer` on that location, which must be in the
+  # household the caller acts in (FORBIDDEN otherwise, also for an unknown
+  # id). Deletes the location's stock rows and the rows of its carts. The
+  # location, its carts (with their last purchase date), its logs, its role
+  # rows and the catalog stay (households H6 task J.4, decision T55).
+  # `false` when there was nothing to delete.
+  removeAllLocationItems(locationId: ID!): Boolean!
+  # Any household role. Saves the CALLER's own order (households H7b,
+  # decision T78). Nobody else's order changes, and the shared order is not
+  # written. The list must hold every location of the caller's settings list
+  # (`householdLocations`), each once: for an owner or manager every location
+  # of the household, for a member the locations they have a role on. A
+  # repeated id or a list that leaves one out is BAD_USER_INPUT. An id that
+  # is not in that list (another household's, an unknown one, or one the
+  # member has no role on) is FORBIDDEN. Nothing is written when it refuses.
+  # Returns `locations`. Sends no live event: only the caller sees the order.
   reorderLocations(orderedIds: [ID!]!): [Location!]!
+  # Saves how the caller sorts their locations (households H7b, decision
+  # T74), and returns it. Only the caller's own choice. Sends no live event.
+  setLocationSort(sort: LocationSort!): LocationSort!
+  # Location role `viewer` or higher, on a location of the household the
+  # caller acts in. Another household's location, an unknown id and no role
+  # all get the same FORBIDDEN (households H7b, decision T80). Saves "now" as
+  # the caller's `lastVisitedAt` for the location. The web calls it when the
+  # location becomes the active one (owner decision O55-A). `false`, and
+  # nothing written, when the saved visit is under 60 seconds old, so many
+  # quick switches write once. Sends no live event: only the caller sees the
+  # value, and their own tab already knows it.
+  markLocationVisited(locationId: ID!): Boolean!
+
+  # ── Location roles (households H5c, task H.3, decisions T32–T38) ──
+  #
+  # Only a location of the household the caller acts in. Another household's
+  # location and an unknown id get the same FORBIDDEN (decision T35). The
+  # person must be a member of that household (decision H18), or FORBIDDEN.
+  #
+  # Who may change a role is ONE rule, `canChangeLocationRole` in
+  # `@p1i/types` (decision T33): a household owner or manager may make any
+  # change; a location organizer may give, change and remove the participant
+  # and viewer roles only, never the organizer role, and never their own
+  # organizer row. The TARGET's household role does not matter (owner
+  # decision O30-A).
+  #
+  # Each one sends one household-level LOCATION event, after the commit, and
+  # only when something changed (decision T36).
+
+  # Gives a person a role on the location, or changes it. The same role again
+  # writes nothing and returns the row (decision T38).
+  setLocationRole(locationId: ID!, userId: ID!, role: LocationRole!): LocationPerson!
+  # Takes a person's role away. Deletes one role row and nothing else: the
+  # location's carts, cart rows, stock and logs stay (decision T42). `false`
+  # when the person has no role there (a second press), but only to a caller
+  # who may read the location's people (owner decision O24-A). Anyone else
+  # gets FORBIDDEN, so the answer cannot tell them who has no role there.
+  removeLocationRole(locationId: ID!, userId: ID!): Boolean!
+  # The caller leaves the location. Any role may leave, the only organizer
+  # too (owner decision O25-A). `false` when the caller has no role there.
+  leaveLocation(locationId: ID!): Boolean!
 }
 
 input UpdateLocationInput {

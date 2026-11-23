@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DeleteButton } from '@/components/shared/DeleteButton'
+import { ReadOnlyNote } from '@/components/shared/ReadOnlyNote'
 import { TagInfoForm } from '@/components/tag/TagInfoForm'
 import {
   AlertDialog,
@@ -15,6 +16,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
+import { usePermissions } from '@/hooks/usePermissions'
 import { useTagLayout } from '@/hooks/useTagLayout'
 import {
   useDeleteTag,
@@ -24,6 +26,7 @@ import {
   useTagTypes,
   useUpdateTag,
 } from '@/hooks/useTags'
+import { showSaveError } from '@/lib/saveError'
 import { getTagAndDescendantIds } from '@/lib/tagUtils'
 import type { Tag } from '@/types'
 
@@ -43,6 +46,12 @@ function TagInfoTab() {
   const { goBack } = useAppNavigation()
   const deleteTag = useDeleteTag()
   const { data: affectedItemCount = 0 } = useItemCountByTag(id)
+  // A household member sees this page read only (households H5 task F.5)
+  const {
+    canEditCatalog,
+    roleKnown,
+    isLoading: rolesLoading,
+  } = usePermissions()
 
   // Parent-delete dialog: open when deleting a tag that has children
   const [parentDeleteOpen, setParentDeleteOpen] = useState(false)
@@ -72,25 +81,41 @@ function TagInfoTab() {
     goBack()
   }
 
-  const handleDeleteCascade = async () => {
-    await deleteTag.mutateAsync({ id, deleteChildren: true })
+  // The two choices of the "has child tags" dialog. It is not a
+  // `DeleteButton`, so each catches its own failure. Before, a failed delete
+  // was an unhandled rejection with nothing on screen.
+  const deleteWithChildren = async (deleteChildren: boolean) => {
+    try {
+      await deleteTag.mutateAsync({ id, deleteChildren })
+    } catch (err) {
+      showSaveError(err, t('common.deleteFailed'))
+      return
+    }
     setParentDeleteOpen(false)
     goBack()
   }
-
-  const handleDeleteOrphan = async () => {
-    await deleteTag.mutateAsync({ id, deleteChildren: false })
-    setParentDeleteOpen(false)
-    goBack()
-  }
+  const handleDeleteCascade = () => deleteWithChildren(true)
+  const handleDeleteOrphan = () => deleteWithChildren(false)
 
   // Don't render until we have both tag and tagTypes loaded
   // This prevents Radix Select from clearing the value when options aren't available yet
   if (!tag || tagTypes.length === 0) return null
+  // Wait for the household role before the form mounts. The name field has
+  // `autoFocus={!readOnly}`, and React focuses only on mount: a form mounted
+  // read-only while the role loads would never take the focus for an owner.
+  // When the role cannot be read at all, `isLoading` is false and the form
+  // shows read-only (the safe default), with no note (`roleKnown` is false).
+  if (rolesLoading) return null
 
   return (
     <div className="p-4 bg-background-elevated min-h-[100cqh]">
       <div className="space-y-4 max-w-2xl mx-auto">
+        {roleKnown && !canEditCatalog && (
+          <ReadOnlyNote
+            className="px-0"
+            text={t('settings.catalogReadOnlyItem')}
+          />
+        )}
         <TagInfoForm
           tag={tag}
           tagTypes={tagTypes}
@@ -109,13 +134,24 @@ function TagInfoTab() {
                     : { parentId: undefined }),
                 } as Parameters<typeof updateTag.mutateAsync>[0]['updates'],
               })
-              .then(() => goBack())
+              // A failed save shows a toast and keeps the page, so the
+              // person can try again. Before, it was an unhandled rejection
+              // with nothing on screen. The error is passed on so the form
+              // marks the edit as unsaved again; the form catches it.
+              .then(
+                () => goBack(),
+                (err: unknown) => {
+                  showSaveError(err)
+                  throw err
+                },
+              )
           }
           isPending={updateTag.isPending}
           onDirtyChange={registerDirtyState}
+          readOnly={!canEditCatalog}
         />
 
-        {hasChildren ? (
+        {!canEditCatalog ? null : hasChildren ? (
           <>
             <div className="max-w-2xl mx-auto">
               <Button

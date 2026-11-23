@@ -1,10 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import { addItemToLocation, createItem, getItemStock } from '@/db/operations'
 import { ActiveLocationProvider } from '@/hooks/useActiveLocation'
+import { watchUnhandledRejections } from '@/test/unhandledRejections'
 import type { Item, PantryItem } from '@/types'
 import { DEFAULT_LOCATION_ID } from '@/types'
 import { NewItemDialog } from './NewItemDialog'
@@ -364,5 +365,90 @@ describe('NewItemDialog', () => {
 
     // Then onOpenChange(false) is requested
     expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  // A failed save (docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md).
+  // Before the fix both writes had a try/finally with no catch, so the dialog
+  // stayed open with no message and the rejection was unhandled.
+  describe('when the save fails', () => {
+    let rejections: ReturnType<typeof watchUnhandledRejections>
+    beforeEach(() => {
+      rejections = watchUnhandledRejections()
+    })
+    afterEach(() => {
+      rejections.stop()
+      vi.restoreAllMocks()
+    })
+
+    it('user sees a message when creating a new item fails, and can try again', async () => {
+      // Given the dialog is open and the local database refuses the write
+      vi.spyOn(db.items, 'add').mockRejectedValueOnce(new Error('disk full'))
+      const user = userEvent.setup()
+      const onOpenChange = vi.fn()
+      renderDialog(<NewItemDialog open={true} onOpenChange={onOpenChange} />)
+
+      // When the user types a new name and presses Create
+      await user.type(
+        await screen.findByRole('combobox', { name: /name/i }),
+        'Milk',
+      )
+      await user.click(await screen.findByRole('button', { name: /create/i }))
+
+      // Then the dialog says the item was not created
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Could not create Milk. Please try again.',
+      )
+      // And it stays open with the name kept and Create enabled again
+      expect(onOpenChange).not.toHaveBeenCalled()
+      expect(mockNavigate).not.toHaveBeenCalled()
+      expect(screen.getByRole('combobox', { name: /name/i })).toHaveValue(
+        'Milk',
+      )
+      expect(screen.getByRole('button', { name: /create/i })).toBeEnabled()
+      // And nothing is left unhandled
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    })
+
+    it('user sees a message when adding an existing item here fails', async () => {
+      // Given an item not stocked here, and a database that refuses the write
+      await createItem({ name: 'Butter', tagIds: [] }, 'loc-other')
+      await db.itemStocks
+        .where('locationId')
+        .equals(DEFAULT_LOCATION_ID)
+        .delete()
+      vi.spyOn(db.itemStocks, 'add').mockRejectedValueOnce(
+        new Error('disk full'),
+      )
+      const user = userEvent.setup()
+      const onOpenChange = vi.fn()
+      const onSuccess = vi.fn()
+      renderDialog(
+        <NewItemDialog
+          open={true}
+          onOpenChange={onOpenChange}
+          onSuccess={onSuccess}
+        />,
+      )
+
+      // When the user picks the item
+      await user.type(
+        await screen.findByRole('combobox', { name: /name/i }),
+        'Butter',
+      )
+      await user.click(await screen.findByRole('option', { name: /butter/i }))
+
+      // Then the dialog says it was not added, and stays open
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        /could not add butter to my home/i,
+      )
+      expect(onOpenChange).not.toHaveBeenCalled()
+      expect(onSuccess).not.toHaveBeenCalled()
+      expect(screen.getByRole('combobox', { name: /name/i })).toHaveValue(
+        'Butter',
+      )
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    })
   })
 })

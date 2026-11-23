@@ -1,53 +1,16 @@
 import { expect, test } from '@playwright/test'
 import { checkA11y, getViolations, injectAxe } from 'axe-playwright'
 import { CLOUD_WEB_URL, PWA_WEB_URL } from '../constants'
+import { AXE_OPTIONS, AXE_RUN_OPTIONS } from '../helpers/axe'
 import { cleanupCloudData } from '../helpers/cloudTeardown'
 import { seedRows } from '../helpers/locationSeed'
 import { StockPagerPage } from '../pages/StockPagerPage'
 
-// WCAG AA target: 4.5:1 contrast ratio for normal text, 3:1 for large text.
-//
-// FIXED 2026-10-11 (issue #322 task 3). Until that date these four tags were
-// passed at the TOP level of the third argument. `checkA11y`'s third parameter is
-// axe-playwright's own `AxeOptions` wrapper, and it forwards only
-// `axeOptions.axeOptions` to axe (`axe-playwright/dist/index.js:111`), so the
-// object was dropped and **axe ran with its own defaults for a year**. The comment
-// that used to sit here said the level was "explicitly set"; it was not.
-//
-// THE OLD BEHAVIOUR WAS STRICTER, NOT LAXER, so no violation was missed. Axe's
-// default set is the 89 rules with `enabled !== false` and no `experimental` /
-// `deprecated` tag; these four tags select 62. Measured 2026-10-11 over 130 scans
-// (64 in `local`, 66 in `pwa`), the switch costs 28 rules and gains 1:
-//
-//   STOPPED RUNNING — all 28 are tagged `best-practice`, none of them WCAG:
-//     accesskeys, aria-allowed-role, aria-dialog-name, aria-text,
-//     aria-treeitem-name, empty-heading, empty-table-header, frame-tested,
-//     heading-order, image-redundant-alt, label-title-only,
-//     landmark-banner-is-top-level, landmark-complementary-is-top-level,
-//     landmark-contentinfo-is-top-level, landmark-main-is-top-level,
-//     landmark-no-duplicate-banner, landmark-no-duplicate-contentinfo,
-//     landmark-no-duplicate-main, landmark-one-main, landmark-unique,
-//     meta-viewport-large, page-has-heading-one, presentation-role-conflict,
-//     region, scope-attr-valid, skip-link, tabindex, table-duplicate-name
-//
-//   STARTED RUNNING — `target-size` (wcag22aa, SC 2.5.8). Axe ships it
-//     `enabled: false`, so the default run skipped it. A tag filter overrides
-//     `enabled` (`matchTags` in axe.js:19848), so naming `wcag22aa` turns it on.
-//
-// NONE of the 28 reported a violation or an incomplete on any of the 130 scans,
-// and `target-size` passed all 130, which is why the narrowing was taken. To widen
-// again, add `'best-practice'` to the list below — nothing else changes.
-const WCAG_AA_TAGS = ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']
-
-// Bare axe `RunOptions`, for `getViolations`, which takes them directly.
-const AXE_RUN_OPTIONS = {
-  runOnly: { type: 'tag' as const, values: WCAG_AA_TAGS },
-}
-
-// The same options NESTED, for `checkA11y`, which wants them under `axeOptions`.
-// Keep the nesting: flattening it type-errors with TS2559 and silently restores
-// axe's defaults.
-const AXE_OPTIONS = { axeOptions: AXE_RUN_OPTIONS }
+// The axe rule set (`WCAG_AA_TAGS`, `AXE_RUN_OPTIONS`, `AXE_OPTIONS`) lives in
+// `e2e/helpers/axe.ts`, with the history of why it is exactly those four tags.
+// It moved there in households H5 task F.4, so a cloud spec can scan with the
+// SAME rules (`location-switcher.spec.ts`, the View only badge): this file
+// does not run in the `cloud` project.
 
 // KNOWN PRE-EXISTING DEFECT — the filled destructive button (`variant="destructive"`,
 // used for the confirm action inside the SHARED `DeleteButton`) fails contrast.
@@ -159,18 +122,19 @@ async function checkA11yAllowingKnownConfirmContrast(
 
 // Prevent the empty-data redirect to /onboarding so tests can navigate to any
 // page without being intercepted. Onboarding tests set this key themselves.
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async ({ page, request, baseURL }) => {
+  // Cloud mode: start from a clean account. The cleanup runs here only, not
+  // in afterEach (E2E speed plan, decision D7).
+  if (baseURL === CLOUD_WEB_URL) await cleanupCloudData(request)
   await page.addInitScript(() => {
     localStorage.setItem('e2e-skip-onboarding', 'true')
   })
 })
 
-test.afterEach(async ({ page, request, baseURL }) => {
-  if (baseURL === CLOUD_WEB_URL) {
-    // Cloud mode: delete all test data from the database via the E2E cleanup endpoint.
-    await cleanupCloudData(request)
-    return
-  }
+test.afterEach(async ({ page, baseURL }) => {
+  // Cloud mode: nothing to clean here. Each test cleans up in its own
+  // beforeEach (E2E speed plan, decision D7).
+  if (baseURL === CLOUD_WEB_URL) return
   // Local mode: clear IndexedDB, localStorage, and sessionStorage.
   // Navigate to the app origin so IndexedDB API is accessible, then clear all databases.
   // We must stay on the same origin to call indexedDB.databases().
@@ -315,7 +279,7 @@ test('user can view household config page without accessibility violations', asy
   // The page title and the household sidebar's Back are both on screen, so
   // the scan covers the page AND the household view of the sidebar
   await expect(
-    page.getByRole('heading', { name: 'My data', level: 1 }),
+    page.getByRole('heading', { name: 'General', level: 1 }),
   ).toBeVisible()
   await expect(
     page
@@ -1165,7 +1129,7 @@ test.describe('dark mode a11y', () => {
     await page.goto('/settings/household')
     await page.waitForLoadState('networkidle')
     await expect(
-      page.getByRole('heading', { name: 'My data', level: 1 }),
+      page.getByRole('heading', { name: 'General', level: 1 }),
     ).toBeVisible()
     await expect(
       page
@@ -1695,11 +1659,17 @@ test.describe('mobile viewport a11y', () => {
     await expect(
       page.getByRole('button', { name: 'Preferences' }),
     ).toHaveAttribute('aria-expanded', 'false')
+    // Settings pages have no bottom bar on mobile since 2026-11-23. The way
+    // out is the Back icon in the top bar, so the scan covers it.
+    await expect(page.getByRole('button', { name: 'Back' })).toBeVisible()
+    await expect(
+      page.getByRole('navigation', { name: 'Bottom navigation' }),
+    ).toHaveCount(0)
 
     // When axe scans the page for accessibility violations
     await injectAxe(page)
 
-    // Then there should be no violations (including the bottom Navigation component)
+    // Then there should be no violations
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
@@ -1725,13 +1695,18 @@ test.describe('mobile viewport a11y', () => {
   test('user can view household config page without accessibility violations on mobile', async ({
     page,
   }) => {
-    // Given the household config page on a mobile viewport. It keeps the
-    // bottom bar on mobile (layoutRules.ts), so the scan covers it too.
+    // Given the household config page on a mobile viewport. Since
+    // 2026-11-23 it has no bottom bar on mobile (layoutRules.ts) and a Go
+    // back icon in its top bar, so the scan covers that button.
     await page.goto('/settings/household')
     await page.waitForLoadState('networkidle')
     await expect(
-      page.getByRole('heading', { name: 'My data', level: 1 }),
+      page.getByRole('heading', { name: 'General', level: 1 }),
     ).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Go back' })).toBeVisible()
+    await expect(
+      page.getByRole('navigation', { name: 'Bottom navigation' }),
+    ).toHaveCount(0)
 
     // When axe scans the page for accessibility violations
     await injectAxe(page)

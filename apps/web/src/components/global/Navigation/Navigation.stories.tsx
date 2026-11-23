@@ -71,14 +71,13 @@ export const CookingActive: Story = {
   render: () => <NavigationStory path="/cooking" />,
 }
 
-// Story 4: Settings tab active
-export const SettingsActive: Story = {
-  render: () => <NavigationStory path="/settings" />,
-}
+// There is no "Settings tab active" story any more: since 2026-11-23 every
+// settings page is full-screen on mobile, so the bar never shows while the
+// Settings tab would be active.
 
-// Story 5: Hidden on fullscreen pages (items, and the tags, vendors, recipes
-// and shelves lists on mobile). The bar is lg:hidden, so on a desktop-width
-// canvas it is hidden on every page.
+// Story 4: Hidden on fullscreen pages (items, and every settings page on
+// mobile). The bar is lg:hidden, so on a desktop-width canvas it is hidden on
+// every page.
 export const HiddenOnFullscreen: Story = {
-  render: () => <NavigationStory path="/settings/household/vendors" />,
+  render: () => <NavigationStory path="/settings" />,
 }

@@ -89,3 +89,14 @@ export const TypeReadonly: Story = {
     typeReadonly: true,
   },
 }
+
+// A household member (households H5 task F.5): the name is readOnly, any
+// select is disabled, and there is no Save button.
+export const ReadOnly: Story = {
+  args: {
+    tag: baseTag,
+    tagTypes,
+    parentOptions: [],
+    readOnly: true,
+  },
+}

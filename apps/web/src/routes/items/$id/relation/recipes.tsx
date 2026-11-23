@@ -7,11 +7,13 @@ import { EmptyState } from '@/components/shared/EmptyState'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useItem } from '@/hooks'
+import { usePermissions } from '@/hooks/usePermissions'
 import {
   useCreateRecipe,
   useRecipes,
   useUpdateRecipe,
 } from '@/hooks/useRecipes'
+import { showSaveError } from '@/lib/saveError'
 import type { RecipeItem } from '@/types'
 
 export const Route = createFileRoute('/items/$id/relation/recipes')({
@@ -25,6 +27,10 @@ function RecipesTab() {
   const { data: recipes = [] } = useRecipes()
   const updateRecipe = useUpdateRecipe()
   const createRecipe = useCreateRecipe()
+  // A household member sees what is assigned and cannot change it
+  // (households H5 task F.5): presses write nothing, the badges are
+  // aria-disabled, and there is no "New …" button.
+  const { canEditCatalog } = usePermissions()
   const [showDialog, setShowDialog] = useState(false)
   const [newRecipeName, setNewRecipeName] = useState('')
   const [togglingRecipeId, setTogglingRecipeId] = useState<string | null>(null)
@@ -34,7 +40,7 @@ function RecipesTab() {
   }, [updateRecipe.isPending])
 
   const toggleRecipe = (recipe: { id: string; items: RecipeItem[] }) => {
-    if (!item) return
+    if (!item || !canEditCatalog) return
 
     const isAssigned = recipe.items.some((ri) => ri.itemId === id)
     const newItems = isAssigned
@@ -42,7 +48,12 @@ function RecipesTab() {
       : [...recipe.items, { itemId: id, defaultAmount: 0 }]
 
     setTogglingRecipeId(recipe.id)
-    updateRecipe.mutate({ id: recipe.id, updates: { items: newItems } })
+    // `mutate` never rejects, so the failure comes in through `onError`.
+    // Before, it was ignored and a failed save showed nothing.
+    updateRecipe.mutate(
+      { id: recipe.id, updates: { items: newItems } },
+      { onError: (err) => showSaveError(err) },
+    )
   }
 
   const handleAddRecipe = () => {
@@ -55,6 +66,9 @@ function RecipesTab() {
           setNewRecipeName('')
           setShowDialog(false)
         },
+        // The dialog stays open with the name, so the user can try again.
+        // Before, the error was ignored and nothing on screen said so.
+        onError: (err) => showSaveError(err),
       },
     )
   }
@@ -76,8 +90,9 @@ function RecipesTab() {
               key={recipe.id}
               role="button"
               aria-pressed={isAssigned}
+              aria-disabled={!canEditCatalog || undefined}
               variant={isAssigned ? 'neutral' : 'neutral-outline'}
-              className={`cursor-pointer capitalize ${updateRecipe.isPending && togglingRecipeId === recipe.id ? 'pointer-events-none' : ''}`}
+              className={`${canEditCatalog ? 'cursor-pointer' : 'cursor-default'} capitalize ${updateRecipe.isPending && togglingRecipeId === recipe.id ? 'pointer-events-none' : ''}`}
               onClick={() => toggleRecipe(recipe)}
             >
               {recipe.name}
@@ -90,15 +105,17 @@ function RecipesTab() {
           )
         })}
 
-        <Button
-          variant="neutral-ghost"
-          size="sm"
-          className="px-0 py-0 gap-1 text-xs -my-1"
-          onClick={() => setShowDialog(true)}
-        >
-          <Plus />
-          {t('items.recipes.newRecipe.button')}
-        </Button>
+        {canEditCatalog && (
+          <Button
+            variant="neutral-ghost"
+            size="sm"
+            className="px-0 py-0 gap-1 text-xs -my-1"
+            onClick={() => setShowDialog(true)}
+          >
+            <Plus />
+            {t('items.recipes.newRecipe.button')}
+          </Button>
+        )}
       </div>
 
       {!sortedRecipes.some((recipe) =>

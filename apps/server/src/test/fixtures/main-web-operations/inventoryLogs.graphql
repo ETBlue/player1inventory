@@ -1,0 +1,69 @@
+# OLD-BUNDLE FIXTURE. Do not edit by hand. Delete with the shim fields.
+#
+# A copy of `apps/web/src/apollo/operations/inventoryLogs.graphql` from `origin/main` at 351d22ad, taken 2026-11-17.
+# That is the web bundle in production before the households release.
+# `src/test/oldBundleCompat.test.ts` checks that the current server schema
+# still accepts it, so the server can be deployed before the web.
+# Delete this folder in the release after households, together with the
+# deprecated shim fields (see that test file).
+
+# Every operation here names a location, and the server requires it (`ID!`). A
+# required argument is what keeps a caller from reading or writing the wrong
+# location quietly: omit it and codegen fails loudly.
+#
+# The whole-account `InventoryLogs` query — the export/import snapshot path —
+# lives in export.graphql and takes no location on purpose.
+query ItemLogs($itemId: ID!, $locationId: ID!) {
+  itemLogs(itemId: $itemId, locationId: $locationId) {
+    id
+    itemId
+    delta
+    quantity
+    occurredAt
+    note
+    logKey
+    logParams
+  }
+}
+
+query InventoryLogCountByItem($itemId: ID!, $locationId: ID!) {
+  inventoryLogCountByItem(itemId: $itemId, locationId: $locationId)
+}
+
+query LastPurchaseDates($itemIds: [ID!]!, $locationId: ID!) {
+  lastPurchaseDates(itemIds: $itemIds, locationId: $locationId) {
+    itemId
+    date
+  }
+}
+
+mutation AddInventoryLog(
+  $itemId: ID!
+  $delta: Float!
+  $quantity: Float!
+  $occurredAt: String!
+  $locationId: ID!
+  $note: String
+  $logKey: String
+  $logParams: JSON
+) {
+  addInventoryLog(
+    itemId: $itemId
+    delta: $delta
+    quantity: $quantity
+    occurredAt: $occurredAt
+    locationId: $locationId
+    note: $note
+    logKey: $logKey
+    logParams: $logParams
+  ) {
+    id
+    itemId
+    delta
+    quantity
+    occurredAt
+    note
+    logKey
+    logParams
+  }
+}

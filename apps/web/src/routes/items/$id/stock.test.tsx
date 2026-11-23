@@ -114,6 +114,38 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
   ]
   return {
     ...original,
+    // The ownership offer banner in `__root.tsx` (households H6b, task K.6)
+    // calls these in cloud mode. This factory replaces `src/test/setup.ts`'s,
+    // so they are stubbed here too: the real hooks need an ApolloProvider.
+    useMyOwnershipOffersQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+      refetch: () => Promise.resolve(),
+    }),
+    useAcceptOwnershipOfferMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useDeclineOwnershipOfferMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useDismissOwnershipOfferMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    // `useItems` reads the catalog from `GetItems` in a household with no
+    // location (households H5, review of task F.7). This factory replaces
+    // setup.ts's, so it must stub that hook too: the real one needs an
+    // ApolloProvider even when skipped.
+    useGetItemsQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+      networkStatus: 7,
+      refetch: () => Promise.resolve(),
+    }),
     // `useLocations` is dual-mode, so it calls `useGetLocationsQuery` in BOTH
     // modes (skipped in local). This per-file factory REPLACES the one in
     // `src/test/setup.ts` rather than layering on it, so the location stubs
@@ -121,6 +153,27 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     // provider. Placed right after `...original` so this file's own overrides
     // below still win.
     useGetLocationsQuery: () => mockUseGetLocationsQuery(),
+    // `PostLoginMigrationDialog` in `__root.tsx` offers the copy into another
+    // household (households H7 task L.5), so in cloud mode it calls these.
+    // This factory replaces `src/test/setup.ts`'s, so they are stubbed here
+    // too: the real hooks need an ApolloProvider.
+    useMyHouseholdsQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useSetActiveHouseholdMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useCreateHouseholdMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    // `usePermissions` (households H5 task F.6) reads the household role. In
+    // local mode the hook skips it; in cloud mode no role arrives, so the
+    // location roles from `GetLocations` decide alone.
+    useGetHouseholdQuery: queryStub,
     useCreateLocationMutation: () => [
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
@@ -183,6 +236,20 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
     useAbandonCartMutation: mutationStub,
     // `ActiveLocationProvider` calls this on every render (Rules of Hooks).
     useBootstrapCartsMutation: mutationStub,
+    // Households H7b task M.4: the switcher's sort and the visit.
+    useMyLocationSortQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useSetLocationSortMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useMarkLocationVisitedMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
     useVendorCartQuery: queryStub,
     useAllCartsQuery: queryStub,
     useAllCartItemsQuery: queryStub,
@@ -278,7 +345,7 @@ describe('Item stock tab', () => {
   ) => {
     localStorage.setItem(activeLocationStorageKey('cloud'), LOC_A)
     mockUseGetLocationsQuery.mockReturnValue({
-      data: { locations: [cloudLocation(LOC_A, 'Cloud Kitchen', 0, true)] },
+      data: { locations: [cloudLocation(LOC_A, 'Cloud Kitchen', 0)] },
       loading: false,
       error: undefined,
     })
@@ -1294,11 +1361,11 @@ describe('Item stock tab', () => {
 
     renderStockTab(cloudItem.id)
 
-    // Local data in cloud mode opens the "Import local data to cloud?"
-    // dialog, which is what the local fixture above triggers. Skip it — the
-    // local rows only exist here so the numbers below can be told apart from
-    // the cloud ones.
-    await user.click(await screen.findByRole('button', { name: /^skip$/i }))
+    // Local data in cloud mode would open the copy question, but it waits for
+    // the household (docs/global/bugs/2026-11-19-bug-manual-import-names-no-household.md),
+    // and `GetHousehold` answers nothing in this file. So no dialog covers the
+    // page. The local rows only exist here so the numbers below can be told
+    // apart from the cloud ones.
     await screen.findByLabelText(/^packed/i)
 
     // When the user asks to remove the item from the cloud location

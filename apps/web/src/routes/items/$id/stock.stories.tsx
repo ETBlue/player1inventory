@@ -20,6 +20,7 @@ import {
   upsertItemStock,
 } from '@/db/operations'
 import {
+  GetHouseholdDocument,
   GetItemDocument,
   GetLocationsDocument,
   ItemStocksForItemDocument,
@@ -289,17 +290,17 @@ const CLOUD_LOCATIONS = [
     id: 'cloud-kitchen',
     name: 'Cloud Kitchen',
     order: 0,
-    isDefault: true,
     createdAt: '2026-08-01T10:00:00.000Z',
     updatedAt: '2026-08-01T10:00:00.000Z',
+    myRole: 'organizer' as const,
   },
   {
     id: 'cloud-garage',
     name: 'Cloud Garage',
     order: 1,
-    isDefault: false,
     createdAt: '2026-08-01T10:00:00.000Z',
     updatedAt: '2026-08-01T10:00:00.000Z',
+    myRole: 'organizer' as const,
   },
 ]
 
@@ -348,6 +349,24 @@ function CloudStockHarness() {
     {
       request: { query: GetLocationsDocument },
       result: { data: { locations: CLOUD_LOCATIONS } },
+      maxUsageCount: Number.POSITIVE_INFINITY,
+    },
+    // The household role. `usePermissions` waits for it before it allows
+    // any write, the Stock tab's included (households H5 task F.6).
+    {
+      request: { query: GetHouseholdDocument },
+      result: {
+        data: {
+          household: {
+            __typename: 'Household',
+            id: 'household-stock-story',
+            name: 'The Lin home',
+            role: 'owner',
+            hasOwner: true,
+            pendingTransfer: null,
+          },
+        },
+      },
       maxUsageCount: Number.POSITIVE_INFINITY,
     },
     {

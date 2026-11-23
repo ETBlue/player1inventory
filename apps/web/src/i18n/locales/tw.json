@@ -5,12 +5,16 @@
     "positiveNumber": "必須大於 0。"
   },
   "common": {
+    "locationViewOnly": "你只能檢視這個據點，不能修改。",
+    "lostLocationAccess": "你已經沒有{{location}}的權限了。",
     "cancel": "取消",
     "delete": "刪除",
     "deleting": "刪除中...",
+    "deleteFailed": "無法刪除，請再試一次。",
     "nameLabel": "名稱",
     "save": "存檔",
     "saving": "存檔中...",
+    "saveFailed": "無法儲存變更，請再試一次。",
     "discard": "丟掉",
     "goBack": "回上一頁",
     "edit": "編輯",
@@ -71,6 +75,7 @@
       "title": "放棄這次購物？",
       "description": "放棄購物後，會清空購物車。"
     },
+    "cartChanged": "購物車已有變動，請確認後再試一次。",
     "checkoutDialog": {
       "title": "完成購物？",
       "description": "完成購物後，會更新各品項的庫存數量。"
@@ -119,12 +124,14 @@
       "requested": "需要",
       "available": "現有"
     },
+    "consumeFailed": "做菜沒有完成，請再試一次。",
     "cancelDialog": {
       "title": "放棄做菜？",
       "description": "食譜跟材料的打勾狀態會取消，用量設定也會歸零。"
     }
   },
   "cookingControlBar": {
+    "createReadOnly": "只有家庭擁有者或管理者可以建立新的食譜。",
     "sort": {
       "name": "名稱",
       "recent": "最近做過",
@@ -229,6 +236,7 @@
     "back": "返回"
   },
   "items": {
+    "createReadOnly": "只有家庭擁有者或管理者可以建立新的品項。",
     "newButton": "新增品項",
     "addDialog": {
       "title": "新增品項",
@@ -239,7 +247,8 @@
       "alreadyStocked": "已在此地點",
       "alreadyStockedHere": "「{{name}}」已在「{{location}}」中。",
       "packageUnitLabel": "包裝單位",
-      "packageUnitPlaceholder": "例如：瓶、公斤"
+      "packageUnitPlaceholder": "例如：瓶、公斤",
+      "createFailed": "無法建立「{{name}}」，請再試一次。"
     },
     "searchTail": {
       "rowAction": "{{action}}：{{name}}",
@@ -249,6 +258,7 @@
       "addToRecipe": "加入食譜",
       "inRecipes": "屬於 {{recipes}}",
       "addToShelf": "加入層架",
+      "catalogReadOnly": "只有擁有者或管理者可以加到這裡。",
       "notMatchingShelf": "不符合此層架的篩選條件",
       "filterPicks": {
         "title": "將「{{name}}」加入「{{shelf}}」",
@@ -430,7 +440,9 @@
         "notStockedDescription": "{{name}} 尚未在 {{location}} 建立庫存。",
         "addToLocation": "加入這個據點",
         "addFailed": "無法將 {{name}} 加入 {{location}}，請再試一次。",
-        "removeFromLocation": "從這個據點移除"
+        "removeFromLocation": "從這個據點移除",
+        "removeForbidden": "只有{{location}}的據點王可以把{{name}}移出這個據點。",
+        "removeFailed": "無法把{{name}}移出{{location}}，請再試一次。"
       },
       "removeLocationDialog": {
         "title": "將 {{name}} 從 {{location}} 移除？",
@@ -467,12 +479,120 @@
     "createItem": "新增品項"
   },
   "settings": {
+    "catalogReadOnly": "只有家庭擁有者或管理者可以新增或修改這些項目。",
+    "catalogReadOnlyItem": "只有家庭擁有者或管理者可以修改這個項目。",
     "title": "設定",
     "household": {
       "title": "我的資料",
       "general": {
         "label": "一般",
         "description": "匯出與匯入資料"
+      },
+      "name": {
+        "label": "家庭名稱",
+        "ownerOnly": "只有家庭擁有者可以修改名稱。",
+        "saved": "家庭名稱已儲存",
+        "forbiddenError": "只有家庭擁有者可以修改家庭名稱。",
+        "invalidError": "請輸入 1 到 {{max}} 個字的名稱。",
+        "saveError": "無法儲存家庭名稱，請再試一次。"
+      },
+      "members": {
+        "title": "成員",
+        "description": "家庭成員與邀請",
+        "you": "（你）",
+        "roleLabel": "{{name}} 的家庭角色",
+        "invite": "邀請成員",
+        "inviteRole": "家庭角色",
+        "inviteLocations": "據點角色",
+        "createLink": "建立邀請連結",
+        "linkLabel": "邀請連結",
+        "copyLink": "複製連結",
+        "copied": "已複製連結",
+        "copyFailed": "無法複製，請自行選取連結並複製。",
+        "linkNote": "任何拿到這個連結的人都可以加入一次，期限到 {{date}}。",
+        "openInvites": "尚未使用的邀請",
+        "noInvites": "目前沒有尚未使用的邀請。",
+        "createdBy": "由 {{name}} 建立",
+        "expires": "有效期限：{{date}}",
+        "noLocationRoles": "沒有據點角色",
+        "giveLocationRole": "指派據點角色",
+        "revoke": "撤銷",
+        "revokeConfirm": "要撤銷這個邀請嗎？連結將無法再使用。",
+        "revoked": "已撤銷邀請",
+        "remove": "移除",
+        "removeLabel": "移除 {{name}}",
+        "removeConfirm": "要把 {{name}} 移出這個家庭嗎？他會失去所有據點的權限。",
+        "removeConfirmManager": "其他人建立的尚未使用的邀請仍然有效。如果對方可能複製過其中的連結，請撤銷該邀請。",
+        "leave": "離開家庭",
+        "leaveConfirm": "要離開這個家庭嗎？你會失去所有據點的權限。",
+        "ownerCannotLeave": "擁有者不能離開。請先轉移擁有權。",
+        "alone": "這個家庭只有你一個人。如果這個家庭沒有任何資料，而你用邀請加入另一個家庭，這個家庭會被刪除。",
+        "loadError": "無法讀取成員，請再試一次。",
+        "error": "無法儲存變更，請再試一次。",
+        "leaving": "離開中…",
+        "removing": "移除中…",
+        "invitesLoadError": "無法讀取尚未使用的邀請，請再試一次。",
+        "locationsLoadError": "無法讀取據點，請再試一次。",
+        "noLocations": "這個家庭還沒有任何據點。",
+        "transfer": "轉移擁有權",
+        "transferLabel": "轉移擁有權給 {{name}}",
+        "transferConfirm": "要把 {{household}} 交給 {{name}} 嗎？對方接受後，你會變成管理者。",
+        "waiting": "等待 {{name}} 接受",
+        "cancelOffer": "取消",
+        "cancelOfferLabel": "取消給 {{name}} 的邀請",
+        "becomeOwner": "成為擁有者",
+        "noOwner": "這個家庭沒有擁有者。",
+        "lastLeaveWarning": "你是這裡的最後一個人。離開會刪除這個家庭和裡面的所有東西。"
+      },
+      "activity": {
+        "title": "動態",
+        "description": "誰在這個家庭裡改了什麼",
+        "empty": "這裡還沒有任何動態。",
+        "loadMore": "載入更多",
+        "noAccess": "只有擁有者和管理者可以看到動態。",
+        "back": "回到家庭",
+        "loadError": "無法載入動態，請再試一次。",
+        "loadMoreError": "無法載入更多，請再試一次。",
+        "retry": "重試",
+        "you": "你",
+        "youTarget": "你",
+        "someone": "某人",
+        "someoneTarget": "某人",
+        "unknownLocation": "某個據點",
+        "unknownRole": "（不明的角色）",
+        "deletedAccount": "{{name}}（已刪除的帳號）",
+        "unknownAction": "{{actor}} 做了一項變更",
+        "locationRoleSet": "{{actor}} 把 {{location}} 的{{role}}角色給了 {{target}}",
+        "locationRoleRemoved": "{{actor}} 把 {{target}} 移出了 {{location}}",
+        "locationLeft": "{{actor}} 離開了 {{location}}",
+        "householdRoleChanged": "{{actor}} 把 {{target}} 設為{{role}}",
+        "inviteCreated": "{{actor}} 建立了一個{{role}}的邀請",
+        "inviteRevoked": "{{actor}} 撤銷了一個邀請",
+        "memberJoined": "{{actor}} 加入了家庭",
+        "memberLeft": "{{actor}} 離開了家庭",
+        "memberRemoved": "{{actor}} 把 {{target}} 移出了家庭",
+        "householdCleared": "{{actor}} 清空了家庭",
+        "locationsDeleted_one": "{{actor}} 刪除了唯一的據點",
+        "locationsDeleted_other": "{{actor}} 刪除了全部 {{count}} 個據點",
+        "locationsDeletedNoCount": "{{actor}} 刪除了所有據點",
+        "locationItemsRemoved": "{{actor}} 移除了 {{location}} 的所有物品",
+        "import": "{{actor}} 匯入了資料",
+        "ownershipOffered": "{{actor}} 想把家庭交給 {{target}}",
+        "ownershipOfferCancelled": "{{actor}} 收回了給 {{target}} 的交接",
+        "ownershipDeclined": "{{actor}} 拒絕成為擁有者",
+        "ownershipAccepted": "{{actor}} 成為了擁有者",
+        "handoverStarted": "{{actor}} 的帳號已刪除，家庭需要新的擁有者",
+        "accountDeleted": "{{actor}} 的帳號已刪除"
+      },
+      "danger": {
+        "title": "危險區域",
+        "clear": "清空家庭",
+        "clearDescription": "刪除目錄和所有據點及其內容，並建立新的「Home」。成員和他們的家庭角色會保留。",
+        "deleteLocations": "刪除所有據點",
+        "deleteLocationsDescription": "刪除所有據點及其庫存、購物車、紀錄和角色。目錄會保留，也不會建立新的據點。",
+        "deleteHousehold": "刪除家庭",
+        "deleteHouseholdDescription": "刪除家庭和裡面的所有東西。所有人都會失去存取權。",
+        "typeName": "請輸入 {{name}} 以確認"
       }
     },
     "user": {
@@ -566,7 +686,9 @@
           "title": "尚未建立物資清單",
           "description": "可以透過搜尋功能新增可套用此供應商的品項喔"
         }
-      }
+      },
+      "createForbidden": "只有家庭擁有者或管理者可以新增供應商。",
+      "createFailed": "無法新增{{name}}，請再試一次。"
     },
     "locations": {
       "label": "據點",
@@ -580,11 +702,57 @@
       "deleteLabel": "刪除 {{name}}",
       "deleteTitle": "刪除「{{name}}」？",
       "deleteDescription": "將會移除這個據點。",
+      "deleteError": "無法刪除這個據點，請再試一次。",
+      "reorderError": "據點清單有變動，正在重新載入，請再試一次。",
+      "reorderFailed": "無法儲存新的順序，請再試一次。",
       "defaultHint": "預設",
       "dragToReorder": "拖曳以重新排序 {{name}}",
       "dragInstructions": "按空白鍵或 Enter 拿起據點，使用方向鍵移動，再按一次空白鍵或 Enter 放下。",
       "emptyTitle": "尚無據點",
-      "emptyDescription": "使用上方按鈕新增據點。"
+      "emptyDescription": "使用上方按鈕新增據點。",
+      "noAccess": "無權限",
+      "noOrganizer": "沒有據點王",
+      "yourRole": "你的角色：",
+      "open": "開啟{{name}}",
+      "sortBy": "排序依據",
+      "sort": {
+        "custom": "自訂",
+        "name": "名稱",
+        "lastUpdated": "最近更新",
+        "lastVisited": "最近造訪"
+      },
+      "people": {
+        "title": "人員",
+        "description": "在這個據點有角色的人",
+        "roleLabel": "{{name}} 的據點角色",
+        "add": "新增人員",
+        "addPerson": "人員",
+        "addRole": "角色",
+        "noOneToAdd": "家庭裡的每個人在這裡都已經有角色了。",
+        "nobody": "這裡還沒有任何人有角色。",
+        "removeLabel": "把 {{name}} 移出這個據點",
+        "removeConfirm": "要把 {{name}} 移出{{location}}嗎？對方將無法再看到這個據點的庫存、購物車和紀錄。",
+        "leave": "離開據點",
+        "leaveConfirm": "要離開{{location}}嗎？你將無法再看到這個據點的庫存、購物車和紀錄。",
+        "leaveOnlyOrganizer": "你是這個據點唯一的據點王。你離開之後，只有家庭的擁有者或管理者可以重新命名這個據點或新增人員。",
+        "noOrganizerNote": "這個據點沒有據點王。只有家庭的擁有者或管理者可以重新命名這個據點或新增人員。",
+        "noOrganizerAction": "請把據點王的角色交給某個人。",
+        "noAccess": "你沒有這個據點的權限。",
+        "back": "回到據點列表",
+        "leaving": "離開中…",
+        "removing": "移除中…",
+        "loadError": "無法讀取人員，請再試一次。",
+        "error": "無法儲存變更，請再試一次。",
+        "retry": "再試一次",
+        "unnamed": "據點",
+        "choosePerson": "選擇一個人",
+        "membersLoadError": "無法讀取家庭成員，請再試一次。"
+      },
+      "danger": {
+        "title": "危險區域",
+        "removeAll": "移除所有物品",
+        "removeAllDescription": "刪除這個據點的庫存和購物車裡的物品。據點、人員、紀錄和目錄會保留。"
+      }
     },
     "shelves": {
       "label": "貨架",
@@ -681,14 +849,28 @@
       }
     },
     "postLoginMigration": {
-      "title": "將本地資料匯入雲端？",
-      "description": "此裝置上有本地資料。是否要匯入您的雲端帳戶？",
-      "import": "匯入",
-      "skip": "略過",
       "autoImporting": "正在將本機資料複製到雲端…",
       "errorTitle": "複製失敗",
-      "errorForbidden": "本機資料裡有些資料屬於別的雲端帳號，所以複製被拒絕了，沒有複製任何資料，您的本機資料沒有變動",
-      "errorOther": "複製失敗：{{message}}"
+      "errorForbidden": "本機資料裡有些資料屬於別的家庭，所以複製被拒絕了，沒有複製任何資料，您的本機資料沒有變動",
+      "errorRole": "只有家庭擁有者或管理者可以把資料複製進家庭，所以複製被拒絕了，沒有複製任何資料，您的本機資料沒有變動",
+      "errorOther": "複製失敗：{{message}}",
+      "confirmTitle": "要把離線資料複製到 {{household}} 嗎？",
+      "confirmDescription": "這台裝置上的資料會複製一份到這個家庭，裝置上的資料不會變動。",
+      "confirmShared": "這個家庭是共用的，而且你不是擁有者。家庭裡的其他人會看到這些資料。",
+      "copyHere": "複製到這裡",
+      "dontCopy": "不要複製",
+      "cannotCopyMember": "只有這個家庭的擁有者或管理者可以把資料複製進來。這台裝置上的資料不會變動。",
+      "cannotCopyClear": "只有這個家庭的擁有者可以清除它並把資料複製進來。這台裝置上的資料不會變動。",
+      "clearConfirmTitle": "要先清空 {{household}} 嗎？",
+      "clearConfirmDescription": "「複製到這裡」會先刪除 {{household}} 的目錄和所有據點及其內容，然後複製您的離線資料。成員和他們的家庭角色會保留。",
+      "chooseLabel": "複製到",
+      "newHousehold": "新的家庭",
+      "newHouseholdName": "新家庭的名稱",
+      "newHouseholdTitle": "要把離線資料複製到新的家庭嗎？",
+      "newHouseholdNote": "會建立一個新家庭，你是它的擁有者。這個頁面會先切換到新家庭，再開始複製。這台裝置上的資料不會變動。",
+      "moveNote": "這個頁面會先切換到 {{household}}，再開始複製。",
+      "moveAndCopy": "切換過去並複製",
+      "moveError": "無法切換到那個家庭，沒有複製任何資料。請再試一次。"
     },
     "export": {
       "label": "下載我的資料",
@@ -702,8 +884,24 @@
       "importing": "正在匯入 {{entity}}…",
       "batchProgress": "{{completed}} / {{total}} 批次",
       "importError": "匯入 {{entity}} 時失敗了。",
-      "importErrorForbidden": "檔案裡有些資料屬於別的帳號，所以匯入被拒絕了，沒有匯入任何資料",
-      "importErrorForbiddenAfterClear": "檔案裡有些資料屬於別的帳號，所以匯入被拒絕了。系統上的資料在那之前已經清空了，您的備份檔案沒有變動",
+      "importErrorForbidden": "檔案裡有些資料屬於別的家庭，所以匯入被拒絕了，沒有匯入任何資料",
+      "importErrorForbiddenAfterClear": "檔案裡有些資料屬於別的家庭，所以匯入被拒絕了。系統上的資料在那之前已經清空了，您的備份檔案沒有變動",
+      "importErrorRole": "只有家庭擁有者或管理者可以匯入資料，所以匯入被拒絕了，沒有匯入任何資料",
+      "memberNotice": "只有家庭擁有者或管理者可以匯入資料。",
+      "skippedLocations": "這些據點你沒有權限修改，所以略過了：{{names}}",
+      "skippedRows_one": "有 {{count}} 筆資料指向你無法使用的據點或品項，所以略過了",
+      "skippedRows_other": "有 {{count}} 筆資料指向你無法使用的據點或品項，所以略過了",
+      "locationDialog": {
+        "title": "要匯入到哪個據點？",
+        "description": "檔案中預設據點的資料，會匯入到你選的據點。",
+        "newLocation": "新據點",
+        "newLocationName": "新據點的名稱",
+        "loading": "正在載入據點…",
+        "loadError": "無法載入據點，請再試一次。",
+        "noLocations": "你沒有可以修改的據點，請選擇「新據點」。",
+        "cancel": "取消",
+        "confirm": "匯入"
+      },
       "retry": "再試一次",
       "importDone": "匯入完成。",
       "success": "資料匯入成功",
@@ -726,6 +924,7 @@
         "skip": "只匯入沒重疊的",
         "replace": "遇到重疊時，用檔案的蓋掉系統的",
         "clear": "清空系統的，全部只用檔案的",
+        "clearConfirmDescription": "這會先刪除家庭的目錄和所有據點及其內容，然後匯入檔案。成員和他們的家庭角色會保留。",
         "idMatch": "ID",
         "nameMatch": "名稱",
         "bothMatch": "ID + 名稱",
@@ -857,7 +1056,21 @@
   },
   "locationSwitcher": {
     "triggerLabel": "切換據點（目前：{{name}}）",
-    "manage": "管理據點"
+    "manage": "管理據點",
+    "triggerLabelViewOnly": "切換據點（目前：{{name}} 僅檢視）",
+    "viewOnly": "僅檢視"
+  },
+  "roles": {
+    "location": {
+      "organizer": "據點王",
+      "participant": "搬運工",
+      "viewer": "圍觀的"
+    },
+    "household": {
+      "owner": "擁有者",
+      "manager": "管理者",
+      "member": "成員"
+    }
   },
   "pwa": {
     "updateAvailable": "有新版本可以使用。",
@@ -866,5 +1079,67 @@
     "offlineSyncedAt": "顯示 {{time}} 的資料",
     "offlineNeverSynced": "目前沒有資料可顯示，請連線後再讀取。",
     "writeBlocked": "目前離線中，暫時無法儲存變更。"
+  },
+  "householdChanged": {
+    "notice": "你目前在 {{household}}。這個頁面還停留在 {{oldHousehold}}，所以重新載入了。如果你剛才在儲存變更，那筆變更沒有儲存。",
+    "noticeNoOldName": "你目前在 {{household}}。這個頁面還停留在另一個家庭，所以重新載入了。如果你剛才在儲存變更，那筆變更沒有儲存。",
+    "close": "關閉"
+  },
+  "noLocations": {
+    "title": "你在這個家庭還沒有據點。",
+    "create": "建立據點"
+  },
+  "join": {
+    "heading": "加入家庭",
+    "title": "加入 {{household}}",
+    "invitedBy": "{{name}} 邀請了你。",
+    "yourRoles": "你的角色",
+    "join": "加入",
+    "alreadyMember": "你已經在這個家庭裡了。",
+    "invalid": "這個邀請已經失效，請再要一個新的。",
+    "needsCloud": "加入家庭需要使用雲端同步。這台裝置上的資料會留在這裡，不會被複製。",
+    "signIn": "登入以加入",
+    "error": "無法加入，請再試一次。",
+    "loadError": "無法讀取這個邀請，請再試一次。"
+  },
+  "noHousehold": {
+    "title": "你目前不在任何家庭裡。",
+    "create": "建立家庭",
+    "nameLabel": "家庭名稱",
+    "nameHint": "留空就會使用預設名稱。",
+    "error": "無法建立家庭，請再試一次。",
+    "useLocalMode": "切換至離線模式",
+    "useLocalModeHint": "資料僅儲存在此裝置上，你仍會保持登入。",
+    "signInToAnotherAccount": "登入其他帳號",
+    "signOutError": "無法登出，請再試一次。"
+  },
+  "householdSwitcher": {
+    "trigger": "切換到…",
+    "description": "移到另一個家庭，或建立新的家庭",
+    "createNew": "建立新家庭",
+    "loading": "正在載入家庭…",
+    "loadError": "無法載入你的家庭。",
+    "switchError": "無法切換家庭，請再試一次。"
+  },
+  "createHouseholdDialog": {
+    "title": "建立新家庭",
+    "nameLabel": "家庭名稱",
+    "nameHint": "留空就會使用預設名稱。你會成為擁有者，並移到這個家庭。",
+    "create": "建立",
+    "error": "無法建立家庭，請再試一次。"
+  },
+  "ownership": {
+    "banner": {
+      "label": "擁有權邀請",
+      "handover": "{{household}} 的擁有者已刪除帳號。你要成為擁有者嗎？",
+      "transfer": "{{name}} 想讓你成為 {{household}} 的擁有者。"
+    },
+    "accept": "接受",
+    "notNow": "稍後再說",
+    "decline": "拒絕",
+    "accepted": "你現在是 {{household}} 的擁有者了。",
+    "gone": "這個邀請已經失效。",
+    "failed": "無法送出你的回覆，請再試一次。",
+    "close": "關閉"
   }
 }

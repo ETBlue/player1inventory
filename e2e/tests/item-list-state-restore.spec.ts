@@ -1,7 +1,7 @@
 import type { APIRequestContext } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { CLOUD_WEB_URL } from '../constants'
-import { ensureCloudDefaultLocation } from '../helpers/cloudSeed'
+import { ensureCloudHomeLocation } from '../helpers/cloudSeed'
 import { cleanupCloudData } from '../helpers/cloudTeardown'
 import { splitInlineStock } from '../helpers/locationSeed'
 import { PantryPage } from '../pages/PantryPage'
@@ -173,11 +173,10 @@ test.beforeEach(async ({ page, request, baseURL }) => {
   }
 })
 
-test.afterEach(async ({ page, request, baseURL }) => {
-  if (baseURL === CLOUD_WEB_URL) {
-    await cleanupCloudData(request)
-    return
-  }
+test.afterEach(async ({ page, baseURL }) => {
+  // Cloud mode: nothing to clean here. Each test cleans up in its own
+  // beforeEach (E2E speed plan, decision D7).
+  if (baseURL === CLOUD_WEB_URL) return
 
   await page.goto('/')
   await page.evaluate(async () => {
@@ -220,7 +219,7 @@ async function seedItems(
     // writes one `prisma.item.create` and no stock row, so an item seeded with
     // `createItem` alone never appears in the pantry. The app's `useCreateItem`
     // hook runs `createItem` then `upsertItemStock`; this seed does the same.
-    const { id: locationId } = await ensureCloudDefaultLocation(options.request)
+    const { id: locationId } = await ensureCloudHomeLocation(options.request)
     // Seed in parallel — 40 sequential round-trips would otherwise blow past the
     // test timeout before the page is even navigated to. Each item's stock write
     // still awaits its own `createItem`; different items are independent.

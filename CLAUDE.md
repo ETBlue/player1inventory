@@ -17,7 +17,8 @@ pnpm test:server  # Run server tests only
 pnpm test:watch   # Run web tests in watch mode
 pnpm test:ui      # Run web tests with UI browser interface
 pnpm test:e2e      # Run E2E tests with Playwright (headless) — ONE project at a time, or narrowed by path
-pnpm test:e2e:all  # THE GATE — runs local, cloud and pwa as three separate invocations
+pnpm test:e2e:all  # THE GATE — runs local, cloud (local Postgres), cloud-neon (8 files on Neon) and pwa, one after another
+pnpm test:e2e:all:neon # The checkpoint gate — local, the WHOLE cloud list on Neon, and pwa
 pnpm test:e2e:ui   # Run E2E tests with Playwright UI (interactive)
 pnpm test:e2e:debug # Debug E2E tests step-by-step
 pnpm lint         # Lint with Biome — apps/web/src AND e2e/
@@ -108,58 +109,371 @@ that really set up that role.
 
 ## Authorization (cloud)
 
-> See `docs/global/permissions/2026-10-04-households-design.md` (which replaces the role table of `docs/global/permissions/2026-08-29-design-location-rbac.md`) — rights come from roles, not from having created the row: a **household** role (owner / manager / member) governs the catalog and membership, and a **location** role (organizer / participant / viewer) governs a location's stock, carts and logs. Designed, **not yet built** — cloud models are still scoped by a flat `userId`, with one deliberate exception: **`ItemStock` carries no `userId` column at all**. It is scoped *through* its location (`where: { location: { userId } }`), the shape RBAC needs, and the same pattern `RecipeItem` already uses (`{ recipe: { userId } }`). A `userId` column there would put the forbidden `stock.userId === ctx.userId` guard within easy reach at every call site — do not add one. Every `ItemStock` resolver goes through `requireLocationRole(locationId, role)` instead, which is the one function body RBAC will fill in.
+> See `docs/global/permissions/2026-10-04-households-design.md` (which replaces the role table of `docs/global/permissions/2026-08-29-design-location-rbac.md`). Rights come from roles, not from having created the row. **Households are built in H3a** (merged into `develop` in #375, not deployed; deploy steps in `docs/global/backend/2026-11-11-deploy-runbook-households-h3a.md`). **Shared carts are built in H3b** (merged into `develop` in #377, not deployed; deploy steps in `docs/global/backend/2026-11-15-deploy-runbook-households-h3b.md`): a cart belongs to its location, every cart read and write is scoped by location role, `Cart.userId` is dropped, and `CartItem.userId` means only "added by". **Import and export are built in H4** (merged into `develop` in #382, merge `bf87e839`, not deployed; deploy steps in `docs/global/backend/2026-11-17-deploy-runbook-households-h4.md`). H4 needs the **server before the web**, the opposite of H3a; that runbook says how the two rules fit in one release. Each person still has exactly one household until H5b (invites), so nothing is shared yet in production.
 >
-> **Never write `row.userId === ctx.userId` as an authorization check.** It is not merely premature: it denies a legitimate `member` editing a shared location's data, which is the point of the feature, and it would have to be torn out of every call site when RBAC lands. If a guard is needed now, put it behind a helper whose signature already takes the location and the required role, so RBAC becomes one function body rather than N call sites. Local mode is single-user IndexedDB and is out of scope — no role check belongs in `apps/web/src/db/`.
+> **Roles in the web, read-only views and empty households are built in H5a** (merged into `develop` in #384, merge `4307d30a`, 2026-11-18; not deployed; plan `docs/global/permissions/2026-11-17-households-plan-h5.md`; deploy notes in section 8 of the H4 runbook). **The households release deploys the SERVER first, then the web** (owner decision 2026-11-17, option 4; runbook section 8.3). For that, the server keeps a one-release shim: see *Old-bundle shim* below. What H5a adds:
 >
-> **There is a second seam: `requireOwnRowOrUnclaimed` in `apps/server/src/lib/authz.ts`.** Added 2026-10-28 (issue #327). It decides account ownership for the **nine models that belong to no location**, so `requireLocationRole` cannot reach them: `Item`, `Tag`, `TagType`, `Vendor`, `Recipe`, `InventoryLog`, `Cart`, `CartItem`, `Shelf`. One row id gets one of three answers — the caller's own row returns `'own'`, somebody else's row **throws** `FORBIDDEN`, an id no row holds returns `'unclaimed'`. The "somebody else's" case throws instead of returning, so a call site cannot ignore it. No call site compares a `userId`.
+> | Part | What |
+> |---|---|
+> | `Location.myRole` | the caller's counted location role there, or `null`. `GetLocations` and the three location mutations select it, so the web knows every location role (task F.1) |
+> | `Location.hasOrganizer` | `false` when no organizer of the location is still in the household (task F.1) |
+> | `householdLocations` | the settings list: every location of the household for an owner or manager (`myRole: null` = "No access"), the switcher's list for a member (tasks F.1, F.3) |
+> | `vendorCart` for a `viewer` | an unsaved empty cart instead of `FORBIDDEN`; it creates the cart only for `participant` (task F.2) |
+> | `reorderLocations` | refuses a list that is not the household's full set (`BAD_USER_INPUT`, task F.2). **Since H7b task M.3 this row is out of date:** it writes the CALLER's own order, takes any household role, checks the caller's own settings list, and publishes nothing. See the H7b block below |
+> | `deleteLocation` | the LAST location can be deleted. `LAST_LOCATION` is gone (decision H13 lifted, task F.7). `lockHousehold` is still taken first |
+> | `createVendor(locationId:)` | optional. With no location the vendor is written with no cart. `""` is not "no location": it is refused like any unknown id |
+> | web: `usePermissions()` | one hook for "may I edit the catalog" and "may I edit this location" (`apps/web/src/hooks/CLAUDE.md`). It hides controls only; the server checks every write |
+> | web: read-only views | a household `member` sees the catalog read-only; a location `viewer` sees that location's stock, carts and cooking read-only; the switcher shows **View only** (`apps/web/src/routes/CLAUDE.md`, *Read-only views by role*) |
+> | web: no locations | `NoLocationsGate` shows "You have no locations in this household yet" on Pantry, Shopping, a cart, Cooking and the item Stock and log tabs. A cloud write that needs a location throws `NoCloudLocationError` before anything is sent (`useRequiredCloudLocationId`) |
+> | E2E: a browser per user | `newUserContext(browser, userId)` (`e2e/helpers/userContext.ts`) makes a context that acts as `userId`; see *E2E* below and `e2e/CLAUDE.md` |
 >
-> **Its body is what changes when households or RBAC land.** `where: { id, userId }` becomes whatever the new scope is, and no call site moves. That is the same contract `requireLocationRole` carries, and it is why the model is passed as a string literal (`OwnedModel`) rather than a delegate.
+> | Role ladder | Names, weakest first | Governs |
+> |---|---|---|
+> | `HouseholdRole` (Prisma enum) | `member`, `manager`, `owner` | the catalog, the household and its locations list |
+> | `LocationRole` (Prisma enum) | `viewer`, `participant`, `organizer` | one location's stock, carts and logs |
 >
-> **One thing it does NOT share with `requireLocationRole`: a free id is distinguishable from a stranger's id.** `requireLocationRole` refuses "not found" and "not yours" with the same error on purpose. `requireOwnRowOrUnclaimed` cannot: an import has to create new rows, so an unclaimed id must return `'unclaimed'` and let the write proceed. What protects the ids is that they are `cuid()` and cannot be guessed, and that the refusal names neither the model nor the owner. Do not copy `requireLocationRole`'s stated reason onto this helper — the first version of its comment and of the design doc both did, and both were wrong.
+> All checks go through `apps/server/src/lib/authz.ts`:
 >
-> **22 bulk import mutations in `apps/server/src/resolvers/import.resolver.ts` are guarded.** Counted 2026-10-28: **18** through `requireOwnRowOrUnclaimed` (reached by the per-batch `requireOwnRowIdsOrUnclaimed` in that file), **2** through `requireOwnLocationIdsOrUnclaimed`, **2** through `requireOwnItemStockRefs`. Several task briefs said 18, which is only the first group. Count them rather than quoting this:
+> | Helper | What it does |
+> |---|---|
+> | `requireHousehold(ctx)` | the caller's household id. Also first sign-in: it calls `ensureHousehold` (`lib/household.ts`), which makes the household and its first location, "Home", once, guarded by the `User.householdSetupAt` claim. Since H5b task G.2 a person in several households gets one fixed answer (decision T14): `User.activeHouseholdId` while they are still a member there, else the oldest membership by `joinedAt`, then `householdId`. One `user.findUnique` on the common path. **Since H7a task L.1 it also compares** that id with `ctx.shownHouseholdId` (the `x-household-id` header, the household the tab shows) and throws `HOUSEHOLD_CHANGED` when they differ (owner decision O21). No header: no compare. `requireHousehold(ctx, { ignoreShown: true })` skips the compare; only the `household` query uses it |
+> | `requireHouseholdRole(ctx, householdId, role, db?)` | refuses with `FORBIDDEN` unless the caller's household role is `role` or stronger. Inside an interactive transaction pass its `tx` as `db` (since H5b task G.5), so the read uses the transaction's connection |
+> | `requireCatalogRole(ctx, role)` | both of the above; returns the household id. Catalog reads ask `member`, writes `manager` |
+> | `requireLocationRole(ctx, locationId, role)` | refuses unless the caller has `role` or stronger on that location. A location role counts only while the matching `HouseholdMember` row exists (decision H18) |
+> | `locationIdsWithRole(ctx, role?, { householdId }?)` | every location the caller has a counted role on, optionally only in one household (since H4 task E.1). Use it for a read across locations; never write a new membership query. The five reads behind an export (`locations`, `inventoryLogs`, `allCarts`, `allCartItems`, `allItemStocks`) pass `{ householdId: await requireHousehold(ctx) }` since H4 task E.5, so they give one household only. Since H5 task F.2 so do `cartItemCountByItem` (with no `locationId`) and `itemStocksForItem`; the copy-on-add of `addItemToLocation` and `checkout` passes the TARGET location's household (`householdOfLocation`), not the caller's |
+> | `locationRolesByLocation(ctx, householdId)` | the caller's counted role on each location of ONE household, as a `Map`. Read once per household per request (`ctx.requestCache.locationRoles`). `Location.myRole` reads it (since H5 task F.1) |
+> | `locationIdsWithOrganizer(ctx, householdId)` | the locations of one household with an organizer who is still in it (decision H18 applied to the ORGANIZER, through `countedOrganizerIn`) and whose account is not deleted (`User.deletedAt` is null; households H6b task K.2, decision T61). Cached the same way. `Location.hasOrganizer` reads it (since H5 task F.1) |
+> | `forgetLocationRoles(ctx)` | clears both role caches above. **No resolver calls it.** `forgetRolesAroundEach` (`lib/mutationRoleCache.ts`) wraps the whole `Mutation` map in `resolvers/index.ts` and calls it before and after EVERY root mutation field, also when the field throws. The root fields of one mutation share the cache, so without it `a: createLocation … b: createLocation …` gives `b` `myRole: null`. A new writer of a `LocationMember` or `HouseholdMember` row (H5b's join, remove, leave) needs nothing extra. `lib/mutationRoleCache.test.ts` calls every `Mutation` field of the executable schema with no user and fails if one leaves a cache filled. That proves only that at least one forget runs for each field (every field is wrapped): with no user a field throws before it reads anything, so the forget before OR the one after is enough. The before half, the after half and the throw case are pinned by their own unit tests of `forgetRolesAroundEach` in the same file. (Between the review of H5 task F.1 and the review of F.2, five resolvers called it by hand and a SOURCE-TEXT guard, `role-cache.guard.test.ts`, checked them. The guard missed a write through a helper, a call that was only a comment, and more, so it was replaced.) Since H5b task G.2 it also forgets `householdId` (decision T15): a join, leave, removal or create changes the caller's household, so a later root field must read it again. So a household pinned on `requestCache` holds for a query but NOT for a `Mutation` field; a test that needs one person to act in one of two households sets `User.activeHouseholdId` instead (`world.setActiveHousehold` in `src/test/householdWorld.ts`) |
+> | `roleAtLeast(role, min)` | `true` when a location role is `min` or stronger. For a resolver that asks a low role and does more for a higher one: `vendorCart` asks `viewer` and creates a missing cart only for `participant` (since H5 task F.2) |
+> | `requireLocationInHousehold(ctx, locationId, householdId)` | the location is in that household (one scoped read, `FORBIDDEN` otherwise). Since H4 task E.1. A person in two households holds roles in both, so `requireLocationRole` alone cannot say which household a location is in |
+> | `requireLocationItems(ctx, locationId, itemIds)` | every item is in the location's household. Call it AFTER `requireLocationRole` |
+> | `requireCatalogIds(ctx, householdId, model, ids)` | every id a write attaches is in the household (#273) |
+> | `requireOwnRowOrUnclaimed(ctx, model, id, targetHouseholdId)` | see the next paragraphs. The fourth argument is the household the write goes INTO, since H4 task E.1 |
+>
+> **Invites, join, members and the no-household screen are built in H5b** (merged into
+> `develop` as #385, merge `938fa2aa`, 2026-11-18; not deployed; plan
+> `docs/global/permissions/2026-11-18-households-plan-h5b.md`; deploy notes in section 9 of
+> the H4 runbook). One migration, `20261118000000_add_household_invites` (table
+> `HouseholdInvite`, column `User.activeHouseholdId`), deploys with the server. Since H5b a
+> person CAN be in two households. What H5b adds:
+>
+> | Part | What |
+> |---|---|
+> | which household (decision T14) | `requireHousehold` picks `User.activeHouseholdId` while the person is still a member there, else the oldest membership. See `requireHousehold` in the table above |
+> | one lock order (decision T16) | the `User` row (`lockUser`) before any household row (`lockHouseholds`, sorted by id). See *Joining a household* below |
+> | 3 queries | `householdInvites` (owner and manager; a manager sees `member` invites only, O15-A). The `token` is on the `HouseholdInvite` type only, so only this query and the `createInvite` answer carry it, `invitePreview(token)` (`requireAuth` only, never throws for a token: `status` is `VALID`, `ALREADY_MEMBER` or `INVALID`, and `INVALID` carries no name), `householdMembers` (any household role, no e-mail) |
+> | 7 mutations | `createInvite` and `revokeInvite` (`resolvers/invite.resolver.ts`, task G.3), `joinHousehold` (G.4), `setHouseholdRole`, `removeMember`, `leaveHousehold`, `createHousehold` (`resolvers/household.resolver.ts`, G.5). All seven publish household-level `LOCATION` after the commit (decision T19), so the live guard holds **69** fields. `revokeInvite` answers `false`, not an error, for every invite this caller may not revoke (unknown, another household's, used, revoked, or a `manager` invite for a manager) |
+> | refusals (decision T18) | `BAD_USER_INPUT` with `extensions.reason`: `INVITE_INVALID` (one answer for unknown, expired, used and revoked), `ALREADY_MEMBER`, `ALREADY_IN_HOUSEHOLD`. Role refusals stay `FORBIDDEN`. A person in no household gets `NO_HOUSEHOLD` (a `GraphQLError` code) |
+> | web: the household guard | `HouseholdChangeGuard` (`apps/web/src/apollo/householdGuard.ts`, decision T23) clears the Apollo cache and reloads when the server answers another household id. It cannot see a move into NO household; `NoHouseholdGate` clears the cache then. See `apps/web/src/routes/CLAUDE.md`, *Join Page* and *No household* |
+> | web: pages | `/join/$token`, `/sign-in?redirect=` and `/sign-up?redirect=` (`safeRedirectPath`; `/sign-up` since 2026-11-23, `docs/global/bugs/2026-11-23-bug-join-redirect-lost-on-sign-up.md`), `/settings/household/members` (cloud only), the no-household screen (`apps/web/src/routes/settings/CLAUDE.md`, `apps/web/src/components/CLAUDE.md`) |
+> | E2E | `household-invites.spec.ts`, 8 cloud tests; see *E2E* below and `e2e/CLAUDE.md` |
+>
+> **Joining a household (households H5b task G.4).** `joinHousehold(token)` in
+> `resolvers/invite.resolver.ts` is one transaction, and it never calls `requireHousehold`
+> (decision T22). Two rules from it hold for every later writer:
+>
+> | Rule | Why |
+> |---|---|
+> | **One lock order: `lockUser` (the `User` row) first, then household rows, sorted by id (`lockHouseholds`).** Only `joinHousehold` and `createHousehold` take `lockUser`. Never write a `User` row after a household lock unless `lockUser` is already held. **One write breaks this and cannot be avoided: deleting a household also writes every `User` row that names it**, because `User.activeHouseholdId` is `onDelete: SetNull` and a person who left or was removed still names it. So `joinHousehold` retries its whole transaction ONCE on Prisma's `P2034` (`retryOnceOnConflict` in `resolvers/invite.resolver.ts`) | locks taken in opposite orders give a Postgres deadlock (`40P01`), which Prisma reports as `P2034`. The helpers are in `lib/household.ts` |
+> | **`joinHousehold` locks every household it may delete**, in the same sorted call as the household it joins | without it, a person joining the joiner's empty own household at the same moment could commit between the "is it empty" check and the delete, and lose their new membership with it |
+> | **`joinHousehold` sets the first sign-in claim** (`User.householdSetupAt`) when it is still null | a person can join before any request made them a household. Without the claim, after a later leave or removal `ensureHousehold` would make them a new household instead of answering `NO_HOUSEHOLD` |
+> | **A new model that belongs to a household or a location must be added to `emptyHouseholdWhere`** (`lib/invite.ts`) | the join deletes the joiner's own household when that `where` matches (decision T21). A household holding only data of a model the `where` does not name would be deleted |
+>
+> The fakes model that `where`: `householdFake` throws on any key of it that it does not
+> model, and reads the other models' rows from `householdWorld`'s `contents` store
+> (`world.contents.rows`). A test that `extend`s the world with its own `item` or `cart`
+> model must ALSO put rows in `contents`, or the "is it empty" check will not see them.
+>
+> **Members, roles, leaving and creating (households H5b task G.5).** In
+> `resolvers/household.resolver.ts`, tested in `household-members.resolver.test.ts`:
+>
+> | Field | Who | What it does |
+> |---|---|---|
+> | `householdMembers` | any household role (owner decision O13-A) | every person whose account is not deleted (since households H6b task K.2, decision T61; the Add person list is built from it): `userId`, `displayName`, `role`, `joinedAt`, `isMe`, and since households H5c task H.2 `hasLocationRole` (`true` when the person has a counted role on at least one location of this household; one read for the whole list, decision T40). Owner first, then by `joinedAt`, then by `userId`. `HouseholdPerson` has NO e-mail field, and the name read selects `{ id, displayName }` only. `setHouseholdRole` returns a `HouseholdPerson` too, so it reads `hasLocationRole` the same way, after the commit |
+> | `setHouseholdRole(userId, role)` | owner | `member` ↔ `manager`. `role: owner` and the owner's own row are `BAD_USER_INPUT`; a person not in the household is `FORBIDDEN`. The same role again changes no member row and publishes nothing (the lock's `UPDATE` still moves `Household.updatedAt`). Location roles and open invites stay (a demote is not a removal; owner decision O20) |
+> | `removeMember(userId)` | owner: anyone but themself (`BAD_USER_INPUT`); manager: only a `member` | deletes the person's `LocationMember` rows on THIS household's locations, revokes every open invite of THIS household they made (owner decision O20, which replaced O18-A; decision T30), then deletes their member row (decision T11). All in one transaction |
+> | `leaveHousehold` | manager or member; the owner gets `BAD_USER_INPUT` | the same deletes and the same invite revoke, for the household the caller acts in |
+> | `createHousehold(name)` | a person in NO household (owner decision O16-A); else `BAD_USER_INPUT`, `extensions.reason` `ALREADY_IN_HOUSEHOLD` | `lockUser`, the first sign-in claim, the membership count, then `createHouseholdFor` (`lib/household.ts`, shared with first sign-in), then `activeHouseholdId`. It never calls `requireHousehold` (decision T22) |
+>
+> The first three take the household lock first (`lockHouseholdOrForbid` in `lib/household.ts`,
+> which uses `lockHouseholds`;
+> a household deleted since `requireHousehold` found it gives `FORBIDDEN`, not Prisma's
+> `P2025`) and NEVER write a `User` row (decision T16), so
+> the person's `activeHouseholdId` may still name the household they left. `ensureHousehold`
+> ignores it, because it requires a current membership. They read the caller's role with
+> `requireHouseholdRole(ctx, householdId, role, tx)`: the optional fourth argument makes the
+> read use the transaction's own connection, not a second one from the pool. The test file
+> gives the global `prisma` mock its own copy of each model object over the same stores, so a
+> spy on `prisma.householdMember` sees only reads outside a transaction (a read that forgot
+> `tx`), and a spy on `world.client.householdMember` only reads through `tx`. All four
+> publish household-level `LOCATION` after the commit. **A removed or leaving person's open
+> tabs do not hear it**: `shouldDeliver` checks membership, and they are no longer members
+> (tested; the H5a known gap is still open). Their next request shows the right screen.
+>
+> **The location people page is built in H5c** (merged into `develop` as #391, merge
+> `7dbaeca9`, 2026-11-20; branched from `develop` at `712f76f6`; not deployed; plan
+> `docs/global/permissions/2026-11-19-households-plan-h5c.md`; deploy notes in section 10 of
+> the H4 runbook). No migration. The new web bundle selects a new query and a new field, so
+> the **server deploys before the web**. What H5c adds:
+>
+> | Part | What |
+> |---|---|
+> | the rule (decision T33) | ONE pure function, `canChangeLocationRole({ householdRole, callerRole, from, to })` in `packages/types/src/locationRoles.ts`. A household owner or manager may make any change, to anyone, themselves too. A location organizer may give, change and remove `participant` and `viewer` only, never `organizer`, and never their own organizer row. The TARGET's household role does not count (owner decision O30-A). The server check and the web's buttons both call it. The location ladder (`LOCATION_ROLE_RANK`, `locationRoleAtLeast`) lives in the same file, and `lib/authz.ts` and `apps/web/src/lib/locationRole.ts` use it instead of their own copies (task H.1) |
+> | `locationRoleOf(ctx, locationId, db?)` | `lib/authz.ts`, task H.1. The caller's counted role on a location, or `null`. Unlike `requireLocationRole` it does not refuse: "no role" is a valid input to the rule. It does not check WHICH household the location is in, so a caller that must stay in one household checks that first |
+> | 1 query | `locationPeople(locationId)` (`resolvers/location.resolver.ts`, task H.2): every person with a COUNTED role on the location (decision H18 applied to each row; since households H6b task K.2 also not a deleted account), organizers first, then by name, then by id; `userId`, `displayName`, `role`, `isMe`, no e-mail. Who may read it (owner decision O24-A): anyone with a role there, and every household owner and manager, also on a No access location. They get names and roles only, never the location's stock, carts or logs. Anyone else, another household's location and an unknown id all get the same `FORBIDDEN` |
+> | 1 field | `HouseholdPerson.hasLocationRole` (task H.2), for the "No location roles" mark on the Members page (owner decision O28-A). See the `householdMembers` row above |
+> | 3 mutations | `setLocationRole(locationId, userId, role)`, `removeLocationRole(locationId, userId)`, `leaveLocation(locationId)` (`resolvers/location.resolver.ts`, task H.3). Each takes the household lock FIRST (`lockHouseholdOrForbid`, moved from `household.resolver.ts` to `lib/household.ts` in task H.1), then reads the location, the caller's roles and the target's membership through `tx` (decision T34). Only a location of the household the caller acts in (decision T35). Each publishes ONE household-level `LOCATION` after the commit, and only when something changed (decision T36), so the live guard holds **72** fields |
+> | "nothing to do" (decision T38) | `setLocationRole` with the role the person already has: no write, no event, the row comes back. `removeLocationRole` with no role row: `false`, but only to a caller who may read the location's people (O24-A); anyone else gets `FORBIDDEN`, so the answer cannot tell them who has a role. `leaveLocation` with no role: `false` |
+> | what a remove deletes (decision T42) | ONE `LocationMember` row. Carts, cart rows, stock and logs stay. Any role may leave, the only organizer too (owner decision O25-A); the location then shows **No organizer** |
+> | the race with `removeMember` | both writes take the household lock, so a role given at the same moment as a removal waits, then finds the person is not a member and refuses. Proved by call order in `location-people.resolver.test.ts` only: the Prisma fake has no row lock |
+> | web | the page `/settings/household/locations/$id` (cloud only; local mode redirects to the list), the name links on Settings › Locations, the Members page mark, the hooks in `hooks/useLocationPeople.ts`, `usePermissions().canOpenLocationPage` and `.canChangeRole`, and a toast when a tab loses its active location (owner decision O27-A). See `apps/web/src/routes/settings/household/locations/CLAUDE.md`, `apps/web/src/hooks/CLAUDE.md` and `apps/web/src/routes/CLAUDE.md` |
+> | E2E | `location-people.spec.ts`, 9 cloud tests, up to two browsers; see `e2e/CLAUDE.md` |
+>
+> **`refetchAfterWrite` now waits for each read on its own** (`apps/web/src/apollo/refetchAfterWrite.ts`,
+> fixed in task H.4). It waited for `client.refetchQueries()`, which is a `Promise.all`, so it
+> stopped waiting at the FIRST read that failed. After a participant leaves a location the
+> `LocationPeople` read is always `FORBIDDEN`, so `leave()` resolved and `isPending` went
+> false about 100 ms before `GetLocations` landed. It now waits for every read, and still
+> never rejects. This is a shared helper, so it changes the 7 older write hooks too, but only
+> when one read fails while another is still open. Tested in
+> `apps/web/src/apollo/refetchAfterWrite.test.ts`.
+>
+> **The activity log, the purges and the danger zones are built in H6a** (on
+> `feature/households-h6a`, from `develop` at `7dbaeca9`; merged into `develop` (2026-11-20, #392, merge `c0f096ed`), not deployed; plan
+> `docs/global/permissions/2026-11-20-households-plan-h6.md`, tasks J.1 to J.9; deploy notes
+> in section 11 of the H4 runbook). **One additive migration**,
+> `20261120000000_add_household_activity`: one enum (`ActivityAction`, 19 values, H6b's six
+> included) and one table (`HouseholdActivity`). It deploys with the server, and the
+> **server deploys before the web**. Owner decisions O32 to O39: all A. What H6a adds:
+>
+> | Part | What |
+> |---|---|
+> | the table (decision T46) | `HouseholdActivity`: `id`, `householdId` (the ONLY foreign key, `ON DELETE CASCADE`), `actorId`, `action`, `targetUserId?`, `locationId?`, `details` (JSONB), `createdAt`. `actorId`, `targetUserId` and `locationId` have NO foreign key on purpose: a log row must outlive the person and the location it names, and a key to `User` would block `/e2e/cleanup`. A location's name is stored in `details` when the row is written. Index `(householdId, createdAt DESC, id)`. No retention limit (T48). It is NOT in `emptyHouseholdWhere` (T49): a household holding only log rows is still "empty" for a join |
+> | `recordActivity(tx, entry)` (decision T47) | `apps/server/src/lib/activity.ts`, the ONLY writer. It takes the transaction client, never the global `prisma`, and every logged write calls it as the LAST step of its own transaction. So a log row for a change that rolled back cannot exist. `createInvite` and `revokeInvite` became interactive transactions for this |
+> | what is logged (decision T51, task J.2) | the 3 location role writes, `setHouseholdRole`, `createInvite`, `revokeInvite`, `joinHousehold`, `leaveHousehold`, `removeMember`, `clearAllData`, the 2 new purges and `recordImport`. NOT logged: `createLocation`'s organizer row for its creator, `createHousehold`, renames, item and stock writes (those are in `InventoryLog`). `deleteHousehold` writes no row: the cascade deletes the log with the household |
+> | 1 query (decisions T53, T54, task J.3) | `householdActivity(before: ID, first: Int)` (`resolvers/activity.resolver.ts`, `schema/activity.graphql`). Owner or manager of the caller's household; anyone else `FORBIDDEN`. Newest first by `(createdAt, id)`. `first` defaults to 50, at most 200; 0 or less is `BAD_USER_INPUT`, and so is an unknown or another household's `before`. Each `HouseholdActivityEntry` has typed fields (`actorName`, `actorIsMe`, `actorDeleted`, `targetName`, `targetIsMe`, `targetDeleted`, `locationName`, `fromRole`, `toRole`, `householdRole`, `count`, `importCounts`); the web builds one translated sentence from them. A deleted account shows its stored name with "(deleted account)" after it (O35-A) |
+> | 4 mutations (decision T55, owner decisions O33, O34, O38, tasks J.2 and J.4) | `deleteAllLocations` (owner; every location of the household goes, with its stock, carts, logs and role rows; the catalog stays; no new "Home", O34-A). `removeAllLocationItems(locationId)` (organizer of that location, in the household the caller acts in; deletes its `ItemStock` rows and the `CartItem` rows of its carts; keeps the `Cart` rows with `lastPurchasedAt`, the logs and the roles). `deleteHousehold` (owner; the household and all its data, O38-A). `recordImport(counts: ImportCountsInput!)` (owner or manager; one `IMPORT` row per import, O33-A; the web calls it once at the end of `importCloudData`). The two purges answer `false`, with no log row and no event, when there was nothing to delete |
+> | one ordered delete (decision T64) | `deleteHouseholdData(tx, householdId)` in `lib/household.ts`: the fourteen `deleteMany` of a household's data, `tag` before `tagType` (`Tag.type` is `NoAction`). `clearAllData` and `deleteHousehold` both call it. `verify-migration.ts` keeps a copy |
+> | the lock order (decision T52) | `clearAllData`, `renameHousehold`, `deleteAllLocations`, `deleteHousehold` and `deleteLocation` take `lockHouseholdOrForbid` FIRST in their transaction, and read the caller's role AFTER it, through `tx`. So a household deleted since `requireHousehold` gives `FORBIDDEN`, not Prisma's raw `P2025` (the H5b known gap), and a role taken away at the same moment is seen. `removeAllLocationItems` takes the same lock and reads the location and the role through `tx` (`locationRoleOf(ctx, id, tx)`) |
+> | `deleteHousehold` and the `User` rows | it clears every `User.activeHouseholdId` that names the household BEFORE it takes the household lock, so the order "User rows, then households" (decision T16) still holds, and it retries once on `P2034`. It also checks the owner role EARLY, with the global client, before the transaction, so a manager or member never writes another person's `User` row. The check after the lock is still the one that counts |
+> | live events (decision T57) | `deleteAllLocations` publishes household-level `LOCATION`. `removeAllLocationItems` publishes `STOCK` and `CART` at that location, each only when it changed rows. `recordImport` and `deleteHousehold` publish nothing (in `publishesNothing`; after a household delete nobody is a member, so an event would reach nobody). The web's `HouseholdActivity` query refetches on `LOCATION`, `CATALOG`, `STOCK` and `CART` |
+> | web (tasks J.5 to J.7) | the page `/settings/household/activity` (cloud only, owner and manager; `ActivityList`), an **Activity** item in the household sidebar and the mobile accordion, a danger zone on the household page (`HouseholdDangerZone`: **Clear household**, **Delete all locations**, **Delete household**, owner only) and one on the location people page (`LocationDangerZone`: **Remove all items**, organizer only). Every purge asks for the household or location name, typed exactly (the web only, T56; `DeleteButton`'s new typed-name mode). Hooks: `useHouseholdActivity`, `usePurges.ts`; `usePermissions().canReadActivity`, `.canPurgeHousehold`, `.canRemoveAllItems(locationId)`. See `apps/web/src/hooks/CLAUDE.md`, `apps/web/src/components/CLAUDE.md` and `apps/web/src/routes/settings/CLAUDE.md` |
+> | E2E (task J.8) | `household-activity-purges.spec.ts` (7 cloud tests, up to two browsers), 2 more tests in `purge-two-households.spec.ts` (the new purges with two households, on real SQL), and an activity row read back in `cleanup-endpoint.spec.ts`. See `e2e/CLAUDE.md` |
+>
+> **Counts after H6a**, measured 2026-11-20 on `feature/households-h6a`. Count them again
+> rather than quote them:
+>
+> | Count | Value | Command |
+> |---|---|---|
+> | live guard fields | **76**: 74 in `publishes`, 2 in `publishesNothing` (`recordImport`, `deleteHousehold`) | `awk '/^const publishes: /,/^}/' apps/server/src/resolvers/live-publish.guard.test.ts \| grep -cE '^  [a-zA-Z]+: \{'` gives the `publishes` part only (74 then). See the H6b table below for both commands |
+> | models `/e2e/cleanup` deletes | **20** | `grep -cE '^ +DELETE FROM "' apps/server/src/lib/e2eCleanupSql.ts` (since E2E speed plan task S.2; the old `grep -o 'prisma\.[a-zA-Z]*\.deleteMany' apps/server/src/lib/e2eCleanup.ts` command now prints 0) |
+> | `await requireCatalogRole(ctx, 'manager')` in `import.resolver.ts` | **23**: the 22 bulk import mutations and `recordImport` | `grep -c "await requireCatalogRole(ctx, 'manager')" apps/server/src/resolvers/import.resolver.ts` |
+> | `.graphql` schema files | **14** (`activity.graphql` is new) | `ls apps/server/src/schema/*.graphql \| wc -l` |
+>
+> **Transfer, the hand-over and deleted accounts are built in H6b** (on
+> `feature/households-h6b`, from `develop` after H6a #392; **merged into `develop` (2026-11-21, #393, merge `9701ddff`), not deployed**; plan
+> `docs/global/permissions/2026-11-20-households-plan-h6.md`, tasks K.0 to K.9; deploy notes
+> in section 12 of the H4 runbook). **One additive migration**,
+> `20261120100000_add_ownership_offers`: one enum (`OfferKind`: `transfer`, `handover`) and
+> one table (`OwnershipOffer`). It deploys with the server, and the **server deploys before
+> the web**. Owner decisions O40 to O48. What H6b adds:
+>
+> | Part | What |
+> |---|---|
+> | the table (decision T58, task K.1) | `OwnershipOffer`: `id`, `householdId` (`ON DELETE CASCADE`), `toUserId` (a foreign key to `User`, `ON DELETE CASCADE`, so `/e2e/cleanup` can delete a `User` row), `fromUserId` (NO foreign key: the offer outlives the person who made it), `kind`, `createdAt`, `dismissedAt`. Unique `(householdId, toUserId)`: one offer per person per household. NOT in `emptyHouseholdWhere` (T49). `Household.ownerGoneAt` is older (H3a); H6b is the first code that writes it |
+> | `schema/ownership.graphql` (task K.3) | type `OwnershipOffer` (`householdName`, `toName`, `fromName`; names only, no e-mail), `Household.hasOwner` and `Household.pendingTransfer` (owner only, else `null`), the query `myOwnershipOffers` (offers TO the caller in EVERY household they are in, dismissed ones too) |
+> | 5 mutations (`resolvers/ownership.resolver.ts`, T59) | `offerOwnership(userId)` (owner; replaces any other open transfer offer), `cancelOwnershipOffer` (owner; `false` when none), `acceptOwnershipOffer(id)` (only the offer's `toUserId`; demotes the old owner to `manager` FIRST, then promotes, then sets `Household.ownerId` and clears `ownerGoneAt`, then deletes every offer of the household), `declineOwnershipOffer(id)`, `dismissOwnershipOffer(id)` (the banner's "Not now": sets `dismissedAt`, the offer stays). Each write takes `lockHouseholdOrForbid` first and reads the role and the offer through `tx`. Accept, decline and dismiss read the offer once BEFORE the lock, only to learn which household to lock; an offer gone at that read is `FORBIDDEN` (the same as an unknown id), an offer gone between that read and the lock is `OFFER_GONE` (accept) or `false`. The first four publish household-level `LOCATION`; `dismissOwnershipOffer` is in `publishesNothing` |
+> | `lib/handover.ts` (tasks K.3, K.4, K.4b) | `removeFromHousehold` (moved from `household.resolver.ts`; also deletes offers TO the person), `startHandover` (the design's table, live accounts only), `restartHandoverIfNeeded` (T62: when the last hand-over offer goes and nobody owns the household, the next people get offers), `handOverDeletedAccount` |
+> | the hand-over on `user.deleted` (T60, task K.4) | `handleClerkEvent` (`lib/clerkWebhook.ts`): ONE transaction, retried once on `P2034`. First the `User` upsert (the `lockUser` of T16; `deletedAt` is set only when still null, so a repeated event keeps the first date), then `handOverDeletedAccount`: `lockHouseholds` on every household of the person, sorted. When no OTHER live person is left in a household (any role), `deleteHouseholdData` and the household delete. Else a manager or member is removed (`ACCOUNT_DELETED`), and an owner's roles go, their open invites are revoked (owner decision O43, task K.4b), `ownerId: null`, `ownerGoneAt: now`, every offer of the household goes, and `startHandover` writes `handover` offers and `HANDOVER_STARTED`. After the commit, one household-level `LOCATION` per household that still exists, with no `sourceClientId`. A second delivery finds no membership and does nothing |
+> | a deleted account does not count (T61, task K.2) | `user: { deletedAt: null }` in `countedOrganizerIn` (`lib/authz.ts`, so `Location.hasOrganizer`), in `peopleOfLocation` (`locationPeople`) and in `householdMembers` (and so in the web's Add person list). `roleOfPerson` is NOT filtered on purpose: a role write must see the row that is really there |
+> | the last person leaves (owner decision O37-A, task K.3) | `leaveHousehold` deletes the household with `deleteHouseholdData` when no OTHER live person is left. The rule is "no other live person", not "no owner". It retries once on `P2034` |
+> | owner texts (task K.3) | the owner's leave: "Transfer ownership first."; `setHouseholdRole(role: owner)`: "Use Transfer ownership." (both `BAD_USER_INPUT`) |
+> | web (tasks K.0, K.5 to K.7b) | `OwnershipOfferBanner` in `__root.tsx` (cloud only; Accept and Decline for a transfer, Accept and **Not now** for a hand-over), the Members page (**Transfer ownership** with a confirm, "Waiting for {name} to accept" with **Cancel**, "This household has no owner." with **Become the owner**, the O37-A warning on the last person's Leave, and Leave off until the server has answered the list, O48). Hooks in `hooks/useOwnershipOffers.ts`; `usePermissions().canTransferOwnership`. "Clear & import" in cloud asks for the typed household name (O40, task K.0). See `apps/web/src/components/CLAUDE.md`, `apps/web/src/hooks/CLAUDE.md` and `apps/web/src/routes/settings/CLAUDE.md` |
+> | E2E (task K.8) | `household-ownership.spec.ts`, 9 cloud tests, up to two browsers: transfer, decline, the hand-over, a deleted organizer, the deleted only person (the first real-SQL run of `deleteHouseholdData` through the webhook), two accepts at once, the O37-A leave, and two axe scans. `cleanup-endpoint.spec.ts` now seeds a real offer. See `e2e/CLAUDE.md` |
+>
+> **Counts after H6b**, measured 2026-11-20 on `feature/households-h6b` at `5cd82bf4`.
+> Count them again rather than quote them:
+>
+> | Count | Value | Command |
+> |---|---|---|
+> | live guard fields in `publishes` | **78** (74 after H6a; the four offer writes) | `awk '/^const publishes: /,/^}/' apps/server/src/resolvers/live-publish.guard.test.ts \| grep -cE '^  [a-zA-Z]+: \{'` |
+> | live guard fields in `publishesNothing` | **3**: `recordImport`, `deleteHousehold`, `dismissOwnershipOffer` | `awk '/^const publishesNothing: /,/^}/' apps/server/src/resolvers/live-publish.guard.test.ts \| grep -cE '^  [a-zA-Z]+:'` |
+> | models `/e2e/cleanup` deletes | **21** (`OwnershipOffer` is new) | `grep -cE '^ +DELETE FROM "' apps/server/src/lib/e2eCleanupSql.ts` (since E2E speed plan task S.2; the old `grep -o 'prisma\.[a-zA-Z]*\.deleteMany' apps/server/src/lib/e2eCleanup.ts` command now prints 0) |
+> | `.graphql` schema files | **15** (`ownership.graphql` is new) | `ls apps/server/src/schema/*.graphql \| wc -l` |
+> | migration folders | **20** (this said 21 until 2026-11-23: the old command, `ls apps/server/prisma/migrations \| grep -c _`, also counts the file `migration_lock.toml`) | `ls -d apps/server/prisma/migrations/*/ \| wc -l` |
+> | server bundle | **254.0 KiB**, 15 `.graphql` files copied | the `esbuild:` line of `pnpm build` |
+> | tests | web **3729 / 364 files**, server **2689 / 85**, `scripts/spec` **70** | `pnpm test` |
+> | cloud spec files | **38 of 42** in `e2e/tests/` | the two commands under *Proving a Test Works* |
+>
+> **The H6a table's live guard row was wrong about its own command.** The `awk` command
+> counts the `publishes` list only; it gave 74 at H6a, not 76. The H6a total of 76 was right,
+> but only with the `publishesNothing` count added. That is why there are two rows above.
+>
+> **Household switch, Create new, the stale-tab fix and the copy choice are built in H7a**
+> (on `feature/households-h7a`, from `develop` at `9701ddff`; **merged into `develop` (2026-11-22, #394, merge `bf71f485`), not deployed**;
+> plan `docs/global/permissions/2026-11-21-households-plan-h7.md`, tasks L.1 to L.7; deploy
+> notes in section 13 of the H4 runbook). **No migration.** The new web bundle selects a new
+> query and sends a new argument, so the **server deploys before the web**. Owner decisions
+> O49 to O57 (O54-B, O57-B, the others A). What H7a adds:
+>
+> | Part | What |
+> |---|---|
+> | the shown household (decisions T66, T67, task L.1) | the web sends `x-household-id`, the household THIS PAGE shows (`getShownHouseholdId()` in `apollo/householdGuard.ts`, read once per page load; not `last-household-id` read again, which another tab may have changed). The server reads it with `householdIdFrom` (`src/context.ts`: 1 to 64 characters; a comma or whitespace counts as missing) into `ctx.shownHouseholdId`. `requireHousehold` throws `GraphQLError` code `HOUSEHOLD_CHANGED` when it names another household (exported as `householdChanged()` from `lib/authz.ts`). No call site changed: every catalog read and write, the import mutations and `clearAllData` get the check through `requireHousehold`. No header (`makeGql` in E2E, an old bundle): no compare |
+> | 1 query (T69, task L.2) | `myHouseholds: [HouseholdChoice!]!`: `id`, `name`, `role` (the caller's), `isActive`, oldest membership first. Any signed-in person; a person in no household gets `[]`, and no household is made. It does NOT call `requireHousehold` (that runs first sign-in). Its own type, not `Household`, so the Apollo cache does not mix up `role` |
+> | 1 mutation (T68) | `setActiveHousehold(householdId)`: `lockUser`, the membership read through `tx` (`FORBIDDEN` when not a member, the same as an unknown id), then `User.activeHouseholdId`. Per person, not per device (O50-A). Does not call `requireHousehold`, so a stale tab can switch. In `publishesNothing`, not logged |
+> | 1 argument (T70) | `createHousehold(name, alsoWhenMember: Boolean = false)`. With `true` the membership count is skipped, so a person in a household can make another one. **Switch to… › Create new** sends it; the no-household screen does not, so its guard against two tabs stays |
+> | web: the recovery (T72, task L.3) | `householdChangedLink` in `apollo/client.ts` (both the Clerk and the E2E client) calls `recoverFromHouseholdChange()` once per page load: it asks `GetHousehold` (`no-cache`), stores the message in `sessionStorage`, and calls `switchToHousehold`; with `NO_HOUSEHOLD` it calls `forgetHousehold()`. The failed write is NOT sent again. `switchToHousehold` and `forgetHousehold` set the same flag before they clear the cache, so the refetches a clear starts do not start a second recovery. After the reload `HouseholdChangedNotice` (in `__root.tsx`) shows once: "You are now in {household}. This page still showed {oldHousehold}, so it was reloaded. If you were saving a change, it was not saved." (O51-A, wording O56-A) |
+> | web: the switch (task L.4) | `HouseholdSwitcher` (**Switch to…**, item 9 of the household sidebar and of the mobile accordion, cloud only) and `CreateHouseholdDialog`. Hooks `useMyHouseholds`, `useSwitchHousehold`, `useCreateAnotherHousehold` (`hooks/useMyHouseholds.ts`). The switch reuses H5b's `switchToHousehold`: it clears the Apollo cache in memory and in `Player1InventoryCloudCache`, removes `active-location-id:cloud`, and loads a page again. Since 2026-11-23 that page is the same settings page (a row page below a section: its list page; anywhere else `/`), and the tab's page history is emptied (`pageAfterSwitch` in `hooks/useMyHouseholds.ts`); before, it was always `/` |
+> | web: the copy choice (T73, task L.5) | both copy questions list every household where `canCopyInto(role, strategy)` allows the copy, plus **A new household** (O22-A). A household joined on this device is listed too when the role allows it (O57-B); `migration-skip-households` still stops only the AUTOMATIC question after sign-in (O12-A). Another household: the page moves there first, and the copy runs after the reload (`sessionStorage['copy-into-household']`). No household argument on the import mutations (T71) |
+> | E2E (task L.6) | `household-switch.spec.ts`, 6 cloud tests: switch with a cart in the old household, Create new, the stale tab (O21) on real SQL, the copy into a managed household, and two axe scans. See `e2e/CLAUDE.md` |
+>
+> **Counts after H7a**, measured 2026-11-21 on `feature/households-h7a`. Count them again
+> rather than quote them (the commands are in the H6b table above):
+>
+> | Count | Value |
+> |---|---|
+> | live guard fields in `publishes` | **78** (unchanged) |
+> | live guard fields in `publishesNothing` | **4**: `recordImport`, `deleteHousehold`, `dismissOwnershipOffer`, `setActiveHousehold` |
+> | models `/e2e/cleanup` deletes | **21** (unchanged) |
+> | `.graphql` schema files | **15** (unchanged; the new fields are in `household.graphql`) |
+> | migration folders | **20** (unchanged; `git log --oneline 9701ddff..HEAD -- apps/server/prisma/` is empty. This said 21 until 2026-11-23; see the H6b table) |
+> | server bundle | **260.2 KiB**, 15 `.graphql` files copied |
+> | tests | web **3840 / 373 files**, server **2767 / 87**, `scripts/spec` **70** |
+> | cloud spec files | **39 of 43** in `e2e/tests/`; the `cloud` project collects **210** tests |
+>
+> **Personal location order and the four sorts are built in H7b** (on
+> `feature/households-h7b`, from `develop` at `bf71f485`; **merged into `develop` (2026-11-22, #395, merge `41bbbe1a`), not deployed**; plan
+> `docs/global/permissions/2026-11-21-households-plan-h7.md`, tasks M.1 to M.6; deploy notes
+> in section 14 of the H4 runbook). **One additive migration with one backfill**,
+> `20261122000000_add_location_preferences`. It deploys with the server, and the **server
+> deploys before the web**. Owner decisions O52-A, O53-A, O54-B, O55-A and O58-A. What H7b
+> adds:
+>
+> | Part | What |
+> |---|---|
+> | the migration (decisions T74, T75, T79, task M.1) | one enum `LocationSort` (`name`, `lastUpdated`, `lastVisited`, `custom`); `User.locationSort` (nullable: `null` means the default, O52-A); `Location.dataUpdatedAt` (nullable, filled ONCE with the newest `ItemStock.updatedAt` of the location; a location with no stock row keeps `NULL`); the table `LocationPreference` (`userId`, `locationId`, `customOrder?`, `lastVisitedAt?`, `updatedAt`; primary key `(userId, locationId)`; both foreign keys `ON DELETE CASCADE`; an index on `locationId`). NOT in `emptyHouseholdWhere`: a preference is not data a person loses. The backfill on a nullable column is a named exception in `apps/server/prisma/CLAUDE.md` |
+> | `dataUpdatedAt` (T79, task M.2) | `publishChange` sets it to now on every location it publishes `STOCK`, `CART` or `LOG` to, in ONE `location.updateMany`, in `finally`, after the events, in its own guard (it never throws). `LOCATION` and `CATALOG` do not set it. Prisma's `updateMany` also moves `Location.updatedAt` (`@updatedAt`). It is written after the commit, so a crash between the two loses one timestamp |
+> | the personal order (T76, T77, task M.3) | no copy of `Location.order`. `inPersonalOrder` (`location.resolver.ts`) sorts by the caller's `customOrder`, then the rows with none by the shared `order`, then by `id`, and sets `order` to the row's place, 0 to n−1. `locations` and `householdLocations` use it. The caller's preference rows are read ONCE per request (`locationPreferencesOf` in `lib/locationPreferences.ts`, `RequestCache.locationPreferences`, cleared by `forgetLocationRoles`). The shared `Location.order` is still written by `createLocation` (max + 1) and by imports, and `firstLocationIdOf` (the old-bundle `isDefault` shim) still reads it |
+> | `reorderLocations` (T78) | writes the CALLER's own order: one `LocationPreference` upsert per id, in one transaction. Any household role (it was `manager`). A repeated id is `BAD_USER_INPUT`; an id outside the caller's own settings list (`householdLocations` for an owner or manager, `locations` for a member) is `FORBIDDEN`, the same answer as an unknown id; a list that is not the full set is `BAD_USER_INPUT`. It moved from `publishes` to `publishesNothing`: only this person sees the change |
+> | 2 fields (T82) | `Location.dataUpdatedAt` (ISO, shared) and `Location.lastVisitedAt` (ISO, the caller's own) |
+> | 1 query, 2 mutations (T74, T80) | `myLocationSort` (`custom` when the column is `null`, `DEFAULT_LOCATION_SORT`); `setLocationSort(sort)`; `markLocationVisited(locationId)` (`viewer` on a location of the household the caller acts in; writes `lastVisitedAt`, or nothing and answers `false` under 60 seconds, `VISIT_INTERVAL_MS`). All three publish nothing |
+> | web (T81, task M.4) | `sortLocations` (`lib/locationSort.ts`): names by `localeCompare` in the app language with `sensitivity: 'base'`, dates newest first with `null` last, ties by name then id. `useLocationSort()`: cloud reads `myLocationSort` and writes `setLocationSort`; local mode offers **Name** and **Custom** only, saved in `localStorage['location-sort']` (O54-B). **Sort by** (`LocationSortSelect`) on Settings › Locations; drag handles for every household role (`usePermissions().canReorderLocations`), only with **Custom**; the switcher uses the same sort (O53-A). `ActiveLocationProvider` sends `markLocationVisited` once per change of the active location, cloud only (O55-A). In cloud both lists set `order` from the row's place in the list the server sent. See `apps/web/src/routes/settings/household/locations/CLAUDE.md` and `apps/web/src/hooks/CLAUDE.md` |
+> | not live (O58-A) | "Last updated" does not move while a page is open: the location lists refetch only on `LOCATION`. They show new dates when they mount again |
+> | export | a cloud export writes the caller's own order as each location's `order`, because `GetLocations` answers it |
+> | E2E (task M.5) | `location-sort.spec.ts`, 7 cloud tests (own order with two people, last updated, last visited, by name, the same sort in a second browser, two axe scans), and 1 local test in `settings/locations.spec.ts`. `cleanup-endpoint.spec.ts` seeds a preference row. See `e2e/CLAUDE.md` |
+>
+> **Counts after H7b**, measured 2026-11-22 on `feature/households-h7b` at `14f9501c`. Count
+> them again rather than quote them (the commands are in the H6b table above):
+>
+> | Count | Value |
+> |---|---|
+> | live guard fields in `publishes` | **77** (78 after H7a; `reorderLocations` moved out) |
+> | live guard fields in `publishesNothing` | **7**: `recordImport`, `deleteHousehold`, `dismissOwnershipOffer`, `setActiveHousehold`, `markLocationVisited`, `reorderLocations`, `setLocationSort` |
+> | models `/e2e/cleanup` deletes | **22** (`LocationPreference` is new) |
+> | `.graphql` schema files | **15** (unchanged; the new fields are in `location.graphql`) |
+> | migration folders | **21** (`add_location_preferences` is new. This said 22 until 2026-11-23; see the H6b table) |
+> | server bundle | **266.6 KiB**, 15 `.graphql` files copied |
+> | tests | web **3899 / 378 files**, server **2834 / 89**, `scripts/spec` **70** |
+> | cloud spec files | **40 of 44** in `e2e/tests/`; `--list` collects **218** in `cloud`, **190** in `local`, **73** in `pwa` |
+>
+> **`removeItemFromLocation` needs `organizer`, not `participant`** (owner decision 2026-11-11, `f4d993db`). It deletes every log of the item at that location, including other members' logs.
+>
+> **`ItemStock` carries no `userId` column at all**, by design from before households. It is scoped *through* its location: `requireLocationRole` for one location, `locationIdsWithRole` for several. Do not add a `userId` column there.
+>
+> History: until H3a this section said households were "decided, not yet built", that cloud models were "scoped by a flat `userId`", and that `requireLocationRole` was "the one function body RBAC will fill in". All three were true then and are not now. `Location` and the six catalog models have no `userId` column since the `drop_user_scope` migration (H3a task 3.14).
+>
+> **Never write `row.userId === ctx.userId` or `row.householdId === …` as an authorization check.** It denies a legitimate `member` editing a shared location's data, which is the point of the feature. Every check goes through a helper in `lib/authz.ts`. A `where` filter on a read is fine. Local mode is single-user IndexedDB and is out of scope: no role check belongs in `apps/web/src/db/`.
+>
+> **There is a second seam: `requireOwnRowOrUnclaimed` in `apps/server/src/lib/authz.ts`.** Added 2026-10-28 (issue #327). It decides ownership for the **nine models an import writes by the id in the file**. `requireLocationRole` alone cannot decide these, because an import must tell a free id from a taken one. (This said "the nine models that belong to no location" until H4 task E.1. That was wrong: `Cart`, `CartItem`, through its cart, and `InventoryLog` all have a location.) The nine: `Item`, `Tag`, `TagType`, `Vendor`, `Recipe`, `InventoryLog`, `Cart`, `CartItem`, `Shelf`. One row id gets one of three answers — the caller's own row returns `'own'`, somebody else's row **throws** `FORBIDDEN`, an id no row holds returns `'unclaimed'`. The "somebody else's" case throws instead of returning, so a call site cannot ignore it. No call site compares a `userId`.
+>
+> **Its body is what changes when the scope changes**, and no call site moves. That is why the model is passed as a string literal (`OwnedModel`) rather than a delegate. It was `where: { id, userId }` for all nine until H3a.
+>
+> **Since households H3a task 3.7 the body has two scopes.** For the six catalog models (`Item`, `Tag`, `TagType`, `Vendor`, `Recipe`, `Shelf` — the `CatalogModel` type) "own" means **in the caller's household** (`where: { id, householdId: await requireHousehold(ctx) }`), so a row another member of the household made is `'own'`. `InventoryLog` used `where: { id, userId }` until H4. The helper checks no household ROLE; the catalog resolvers check it first, and since H4 task E.3 so do the 22 import mutations (see *The import role gate* below). No call site moved, including the 22 import mutations.
+>
+> **Since households H4 task E.1 the scope is the TARGET household, passed as a fourth argument** (decisions T4–T6 in `docs/global/permissions/2026-11-16-households-plan-h4.md`). The six tag / vendor call sites pass the id `requireCatalogRole` returned, and since task E.3 so do the 22 import mutations (`requireCatalogRole(ctx, 'manager')`). (Between E.1 and E.3 the import helper passed `requireHousehold(ctx)`.) With `writable` = the target household's locations where the caller is `participant` or higher: catalog rows `{ id, householdId: target }`; `InventoryLog` `{ id, locationId: { in: writable } }`; `CartItem` `{ id, cart: { locationId: { in: writable } } }`. `InventoryLog.userId` means "written by" and is never a scope. **`Cart` is checked in a fixed order (issue #361):** an id with no colon is `BAD_USER_INPUT`; a prefix not in `writable` is `FORBIDDEN` BEFORE the cart table is read; only then the unscoped "is it taken" read; and "own" means the stored cart is at the location its id names (`{ id, locationId: prefix }`). So a bare cart id, or a cart id naming a deleted location, no longer falls back to the caller's first location: the batch is refused. Since task E.3 the fallback itself (the import fallback location of decision H12) is deleted, for logs too.
+>
+> **Since households H3b task B.7, `Cart` and `CartItem` are scoped by location role, not by account.** A cart is `'own'` when the caller is `participant` or higher on its location; a cart item is `'own'` when its CART is. A row at a location where the caller is only `viewer`, has no role, or that belongs to another household throws `FORBIDDEN`. An unused id is `'unclaimed'`. `CartItem.userId` means "added by" and is never a scope, so a row another member added to a shared cart is `'own'`. Inside `requireOwnRowOrUnclaimed` the participant list is `locationIdsWithRole(ctx, 'participant', { householdId })`, the TARGET household's locations only, since H4 task E.1 (it was `locationIdsWithRole(ctx, 'participant')`, every household, until then). So a cart or cart item of the caller's OTHER household is refused too. With no role argument `locationIdsWithRole` still returns every location with any role.
+>
+> **The two cart item imports follow decision P3 of the H3b plan** (`docs/global/permissions/2026-11-14-households-plan-h3b.md`). Rows of one `(cartId, itemId)` pair are summed first. Every write is ONE `upsert` on `cartId_itemId`, never a write by the payload's id, so no path raises `P2002`. `bulkCreateCartItems` (`skip` and `clear`) skips a pair whose ids include one already in the cloud, and otherwise ADDS (`increment`). `bulkUpsertCartItems` (`replace`) SETS the pair's amount. Neither moves a row: a payload that names an existing id under another pair writes that pair and leaves the stored row where it is. A new row takes the lowest unused id of its pair. Since H3b task B.8 the web sends EVERY cart item to `bulkUpsertCartItems` on `replace`, so a new id whose pair already has a row SETS it (before B.8 it went to `bulkCreateCartItems` and ADDED). On `skip` the web drops a whole pair when any of its ids is already in the cloud, the same rule the server applies (`partitionPayload` in `apps/web/src/lib/importData.ts`). Local mode follows the same rules (`importLocalCartItems`, and Dexie versions 19 and 20; see `apps/web/src/db/CLAUDE.md`).
+>
+> **The catalog (task 3.7).** Every catalog resolver starts with `requireCatalogRole(ctx, role)` (`lib/authz.ts`), which returns the caller's household id: reads ask for `member`, writes for `manager` (design, *Household roles*). The one exception is marking a recipe as cooked (`updateRecipeLastCookedAt`, and the `lastCookedAt` write in `consumeRecipes`), which needs only `member`, because it is a cooking right. Every id a write ATTACHES — an item's `tagIds` / `vendorIds`, a recipe's item ids, a shelf's `itemIds` and `filterConfig` ids, a tag's `typeId` / `parentId`, `applyShelfFilterPicks`' picks — goes through `requireCatalogIds(ctx, householdId, model, ids)` (issue #273): another household's id is `FORBIDDEN`, an id no row holds is `BAD_USER_INPUT`, except on the shelf arrays (`{ missing: 'allow' }`), which are not foreign keys and may name a deleted item. The three `itemCountBy*` queries filter the junction row by `item: { householdId }`. Tested with three people in `apps/server/src/resolvers/catalog-household.resolver.test.ts`.
+>
+> **One thing it does NOT share with `requireLocationRole`: a free id is distinguishable from a stranger's id.** `requireLocationRole` refuses "not found" and "not yours" with the same error on purpose. `requireOwnRowOrUnclaimed` cannot: an import has to create new rows, so an unclaimed id must return `'unclaimed'` and let the write proceed. What protects the ids: an id made by the server (`cuid()`) or by local mode (`crypto.randomUUID()`) cannot be guessed, and the refusal names neither the model nor the owner. That is NOT true for `Cart.id`, which is derived from a location id and a vendor id, nor for an id a hand-edited file chooses. For carts the protection is the location check that runs before the cart table is read (since H4 task E.1). Do not copy `requireLocationRole`'s stated reason onto this helper — the first version of its comment and of the design doc both did, and both were wrong.
+>
+> **The import role gate (households H4 task E.3).** Every one of the 22 bulk import mutations starts with `requireCatalogRole(ctx, 'manager')`, right after `requireAuth` and before the empty-batch return. So only a household owner or manager may import, and a `member` is refused with `FORBIDDEN` before any other read, even a member who organizes a location (decision O7). `clearAllData`, which the `clear` strategy runs first, asks `owner`. The id `requireCatalogRole` returns is the TARGET household, and every check in the mutation gets it: the row-id guard, `resolveLogLocations`, `resolveCartLocations`, `requireOwnLocationIdsOrUnclaimed`, `requireOwnItemStockRefs` and `resolveCartItemParents`. So a location, a stored row and an item must all be in that one household (issue #381, gap 1). `createVendor` also checks its location with `requireLocationInHousehold` (gap 2). Nothing goes to a fallback location any more:
+>
+> | Import row | Answer |
+> |---|---|
+> | a log with no `locationId` | `BAD_USER_INPUT`, `extensions.reason` `IMPORT_NEEDS_LOCATION`, nothing in the batch written |
+> | a cart id with no `:` | `BAD_USER_INPUT`, before any read |
+> | a log, stock row or cart at a location that does not exist, where the caller is below `participant`, or of another household | `FORBIDDEN`, nothing written |
+> | a location id `'local'` or containing `:` | `BAD_USER_INPUT`, before any read |
+> | an existing location of another household | `FORBIDDEN` (it was skipped, or renamed by `bulkUpsertLocations`, when the caller held a role there) |
+>
+> Tested in `apps/server/src/resolvers/import-role-gate.resolver.test.ts`, with one person in two households and the target chosen by that person's `User.activeHouseholdId` (since H5b task G.2; a pin on `ctx.requestCache.householdId` is forgotten before every `Mutation` field, decision T15). **The target household IS the household the person acts in, and that is a rule, not a gap** (since H7a, decision T71). There is no household argument on the import mutations: to copy into another household the web moves the person first (`setActiveHousehold`, then `switchToHousehold`), and the copy runs after the reload. If the household changes in the middle of an import (another tab switches), every later batch is refused with `HOUSEHOLD_CHANGED` (the `x-household-id` check in `requireHousehold`). What the tests prove is that the location and the item must be in the SAME household as the target. (Until H7a this said "A test cannot yet tell the target household from the caller's household". Both are still `requireHousehold(ctx)`, on purpose.)
+>
+> **The `importCheck` query (households H4 task E.2, decision T1).** A refused import used to be refused per batch of 50, so the batches sent before it stayed written and "Nothing was imported" was not true. Now the web asks first. `importCheck(ids: ImportCheckInput!, forClear: Boolean): ImportCheck!` (`apps/server/src/resolvers/importCheck.resolver.ts`) is read-only. It starts with `requireCatalogRole(ctx, forClear ? 'owner' : 'manager')`, takes the file's ids per model plus `locationRefs` and `itemRefs` (the location and item ids that rows POINT at), at most **1000** ids per call (the web sends chunks and joins the answers, `checkImportIds` in `apps/web/src/lib/importData.ts`). It answers `anotherHousehold`, `blockedLocationIds` (below `participant`), `renameBlockedLocationIds`, `missingLocationIds`, `missingItemIds` and `blockedRows`. When `anotherHousehold` is true the web stops before `clearAllData` and before the first batch, so nothing is written. Otherwise the web leaves out the blocked and missing rows and names the skipped locations after the import (decision O5). **It is a convenience, not a guard** (decision T2): a client can skip it, and the 22 mutations still check every row. It compares households in SQL, inside the resolver; no call site compares a `householdId`. Like the cart guard, it reads a cart id only when its prefix is a location the caller may write (or one the file creates). The web also uses it to list the locations "Import into which location?" offers (`fetchImportTargetLocations`). It did this because the web did not know location roles in H4. Since H5 task F.1 `GetLocations` carries `myRole`, but the dialog still asks `importCheck`: its answer also leaves out a location deleted since the list was read. **A new web bundle against an older server cannot import at all**, because the query fails GraphQL validation; that is why H4 deploys the server first (decision T9).
+>
+> **22 bulk import mutations in `apps/server/src/resolvers/import.resolver.ts` are guarded.** Counted 2026-10-28, and the same on 2026-11-04 after households H3a task 3.9, on 2026-11-15 after households H3b tasks B.7 and B.10, and on 2026-11-17 after households H4: **18** through `requireOwnRowOrUnclaimed` (reached by the per-batch `requireOwnRowIdsOrUnclaimed` in that file), **2** through `requireOwnLocationIdsOrUnclaimed`, **2** through `requireOwnItemStockRefs`. Several task briefs said 18, which is only the first group. Count them rather than quoting this:
 >
 > ```bash
 > grep -c 'requireOwnRowIdsOrUnclaimed(ctx' apps/server/src/resolvers/import.resolver.ts      # 18
 > grep -c 'requireOwnLocationIdsOrUnclaimed(ctx' apps/server/src/resolvers/import.resolver.ts # 2
 > grep -c 'requireOwnItemStockRefs(ctx' apps/server/src/resolvers/import.resolver.ts          # 2
+> grep -c "await requireCatalogRole(ctx, 'manager')" apps/server/src/resolvers/import.resolver.ts  # 23 since H6a: the 22 above, plus recordImport
 > ```
 >
-> **Seven catalog mutations call it directly too — since 2026-11-04.** `updateVendor` and `deleteVendor` in `vendor.resolver.ts`; `updateTagType`, `deleteTagType`, `createTag`, `updateTag` and `deleteTag` in `tag.resolver.ts`. Before that date they wrote with `where: { id }` alone, so any signed-in user who knew another account's id could rename or delete the row. See `docs/global/bugs/2026-11-04-bug-unscoped-catalog-writes.md`. What each does with the three answers:
+> **Six catalog mutations call it directly too — since 2026-11-04.** `updateVendor` and `deleteVendor` in `vendor.resolver.ts`; `updateTagType`, `deleteTagType`, `updateTag` and `deleteTag` in `tag.resolver.ts`. Before that date they wrote with `where: { id }` alone, so any signed-in user who knew another account's id could rename or delete the row. See `docs/global/bugs/2026-11-04-bug-unscoped-catalog-writes.md`. (This said seven until households H3a task 3.7, when `createTag` and `updateTag`'s `typeId` / `parentId` checks moved to `requireCatalogIds`, with the same three answers.) What each does with the three answers:
 >
-> | Answer | Update mutation | Delete mutation | `typeId` / `parentId` on `createTag` / `updateTag` |
+> | Answer | Update mutation | Delete mutation | `typeId` / `parentId` on `createTag` / `updateTag` (`requireCatalogIds`) |
 > |---|---|---|---|
 > | `'own'` | writes | deletes | accepted |
 > | throws `FORBIDDEN` | nothing is written | nothing is deleted — the check runs BEFORE the scoped cart or tag cleanup | nothing is written |
 > | `'unclaimed'` | `NOT_FOUND`, same message as before | the old result: `false`, or `true` for `deleteTag` with `deleteChildren` | `BAD_USER_INPUT` |
 >
-> `deleteTag`'s descendant walk and its orphaning `updateMany` carry a `userId` **filter**, because before the fix `createTag` accepted another account's `parentId`, so another account's tag may sit under the caller's. Tested against `ownedRowFake` in `apps/server/src/resolvers/catalog-ownership.resolver.test.ts`.
+> `deleteTag`'s descendant walk and its orphaning `updateMany` carry a `householdId` **filter** (a `userId` one until H3a task 3.7), because before the fix `createTag` accepted another account's `parentId`, so another household's tag may sit under the caller's. Tested against `ownedRowFake` in `apps/server/src/resolvers/catalog-ownership.resolver.test.ts`.
 >
-> **Six GraphQL types still declare `userId: String!`, and no web document selects it any more.** This is **step one of two** for issue #359, done 2026-10-31. The fields are `Item` (`item.graphql:18`), `TagType` (`tag.graphql:5`), `Tag` (`tag.graphql:12`), `Vendor` (`vendor.graphql:4`), `Recipe` (`recipe.graphql:59`) and `Shelf` (`shelf.graphql:20`).
->
-> **The schema still has all six. Issue #359 is NOT closed.** Step two removes them, and that is a households change in its own release. Do not read "the selections are gone" as "the field is gone".
->
-> Why the two steps are split: dropping a field a deployed bundle still selects fails GraphQL **validation**, so the whole query errors rather than one field going null. The Cloudflare deploy and the server deploy are separate steps, so there is always a window where the two disagree. Removing the selections first closes that window — once no deployed bundle names the field, step two breaks nothing.
->
-> Check the state with these two commands, not from memory:
+> **Issue #359: both steps are done; the issue stays OPEN until H3a merges and deploys.** Six GraphQL types declared `userId: String!` (`Item`, `TagType`, `Tag`, `Vendor`, `Recipe`, `Shelf`). Step one (2026-10-31, #367) removed every web selection of them. Step two (H3a task 3.14, `2312707a`) removed the six fields from the schema. Check with:
 >
 > ```bash
-> grep -rn userId apps/web/src/apollo/operations/          # must return nothing
-> grep -rn "userId: String!" apps/server/src/schema/ | wc -l  # 6 until step two
+> git grep -n userId -- apps/web/src/apollo/operations/          # must return nothing
+> git grep -c "userId: String!" -- apps/server/src/schema/        # must return nothing since 2312707a
 > ```
 >
-> **Nothing in `apps/web` ever read the field** — that is what made step one safe. Measured 2026-10-31: the only `.userId` accesses in `apps/web/src` are `snapshot.userId` in `apollo/persistence.ts` (the Apollo cache's own Dexie column, unrelated) and two comments. Both test counts were unchanged by the removal: web **2321 / 251**, server **522 / 32**.
+> Why the two steps were split: dropping a field a deployed bundle still selects fails GraphQL **validation**, so the whole query errors rather than one field going null. The Cloudflare deploy and the server deploy are separate steps, so there is always a window where the two disagree. Removing the selections first closed that window for `userId`. **`Location.isDefault` did NOT get a step one**: `main`'s web bundle still selects it. The H3a runbook first solved that by deploying the web before the server; since 2026-11-17 the server keeps the field instead (next paragraph).
+>
+> **Old-bundle shim — read this before you remove or change any GraphQL field or input field** (built 2026-11-17, H4 runbook section 8.3). Until every device has the households bundle, the server must accept everything `main`'s old web bundle sends. Five schema fields exist only for that, all `@deprecated(reason: "Old web bundles only. … Remove in the release after households.")`: `Location.isDefault` (`true` for the first location of the caller's list), `CheckoutItemInput.itemId` (with `cartItemId` made optional; the stored amount is bought), and `ConsumeRecipesItemInput.packedQuantity` / `.unpackedQuantity` / `.quantity` (ignored). `apps/server/src/test/oldBundleCompat.test.ts` guards it in four ways: (1) it validates a COPY of `main`'s documents (`apps/server/src/test/fixtures/main-web-operations/`) against the schema; (2) it checks the old `Checkout` and `ConsumeRecipes` variables; (3) it compares a COPY of `main`'s server schema (`apps/server/src/test/fixtures/main-server-schema.graphql`) with the current one, and `findBreakingChanges` must return exactly the six `userId` fields, `Mutation.purgeUserData` and `PurgeResult`, and `findDangerousChanges` only the optional `CheckoutItemInput.cartItemId`; (4) it fails if a current web document selects a deprecated field. Document validation alone does NOT look inside an input type sent as a variable, and the variable test covers only two operations. Check (3) is what catches a change to any other input type the old bundle sends, for example `ItemInput` or `TagInput` from `main`'s import (proved by mutation: `ItemInput.estimatedDueDays` made `Int!` and `TagInput.parentId` deleted turn it red). If you change a type on purpose, check that no old document or variable uses it before you add it to the list. The old checkout shape buys the STORED amount and SKIPS an `itemId` with no row being bought, as `main`'s server did; its amount rule of `CART_CHANGED` cannot fire. `isDefault` reads the first id once per household per request (`RequestCache.firstLocationIds`, cleared by `forgetLocationRoles`). Remove together, in the release after households: the five fields, `firstLocationIdOf` and the `firstLocationIds` cache entry, both fixtures and the test.
 >
 > **The `userId` still named in `exportData.ts` and `importData.ts` tests is deliberate.** Those mappers are allow-lists — each names the keys it forwards, so anything else is dropped by omission. The tests feed `userId` in by hand, so they now prove the general rule that an unexpected key never reaches a backup file, not that one real field is stripped. No live Apollo result carries it any more.
 
-> Nine of those 22 also scope the **other** id in a reference — the `tagId`, `vendorId`, `itemId`, `cartId` or `typeId` a payload attaches its own row to. That is **13** lookups, and a reference that does not resolve is still SKIPPED, not refused: a partial backup legitimately names a parent the user has since deleted. See `docs/features/settings/2026-10-28-design-import-ownership-guard.md`.
+> Twelve of those 22 also check the **other** ids a payload attaches its own row to. Nine did since plan task 8 (13 references), and households H3a task 3.9 added three. Not every id is checked against the same thing:
+>
+> | Id | Mutations | Checked against | An id that does not pass |
+> |---|---|---|---|
+> | `tagIds`, `vendorIds` | both item mutations | the target household (the caller's household before H4 task E.3; the household the person acts in, since H7a also checked against the tab's `x-household-id`) | that edge is skipped |
+> | `typeId` | `bulkCreateTags`; `bulkUpsertTags` since 3.9 | the target household (the caller's household before H4 task E.3; the household the person acts in, since H7a also checked against the tab's `x-household-id`) | the tag is skipped |
+> | `parentId` | `bulkUpsertTags` since 3.9 | the target household (the caller's household before H4 task E.3), or a tag of the same payload written first | the tag is skipped |
+> | recipe item ids | both recipe mutations | the target household (the caller's household before H4 task E.3; the household the person acts in, since H7a also checked against the tab's `x-household-id`) | that ingredient is skipped |
+> | `itemId` | both log mutations | the target household, which is also the log's location's household since H4 task E.3 (the caller's household, not the location's, before) | the log is skipped |
+> | `cartId` | both cart item mutations | the cart must be at a location of the TARGET household where the caller is `participant` or higher (the target only since H4 task E.3, any household before; by location role since H3b task B.7; by `Cart.userId` before task B.3) | the row is skipped, a viewer's included (until task B.7 a viewer got `FORBIDDEN` for the whole batch) |
+> | `itemId` | both cart item mutations | the target household, which is the cart's household since H4 task E.3 (the household of the CART's location since 3.9) | the row is skipped |
+> | `itemIds` and the tag, vendor and recipe ids in `filterConfig` | both shelf mutations, since 3.9 | see below | that id is dropped; the shelf lands |
+>
+> **The shelf rule is different from the others.** Only an id that is a row of ANOTHER household is dropped. An id no row holds is KEPT, the same as `createShelf`'s `missing: 'allow'`. The reason: on `replace` the web client writes new shelves in its first pass, and rows that conflict with a cloud row by name only in its second pass, so a shelf names rows that do not exist yet. Task 3.9 first dropped those ids too; `03e32094` fixed it. So for shelves a stranger's id and a free id give different answers, which `requireOwnRowOrUnclaimed` also does; the ids are `cuid()` or `crypto.randomUUID()`, unless a hand-edited file chose them.
+>
+> For every other row above, an id that does not resolve is SKIPPED, not refused: a partial backup legitimately names a parent the user has since deleted, and "not yours" looks the same as "not there". See `docs/features/settings/2026-10-28-design-import-ownership-guard.md`.
+>
+> **Three things in the import helpers changed in households H3a task 3.9.**
+>
+> - `requireOwnLocationIdsOrUnclaimed(ctx, locations, role)` now takes the location role to ask for and returns the ids that already exist. (Since H4 task E.3 it also takes the target household, refuses `'local'` and ids with `:`, and refuses an existing location of another household.) `bulkCreateLocations` asks `participant` (it only skips an existing row); `bulkUpsertLocations` asks `organizer` (it renames one, and `updateLocation` asks `organizer` for a rename). Membership is read by `requireLocationRole`, so a location the caller holds no counted role on is refused, never "unclaimed", even in the caller's own household.
+> - A created location gets `householdId` and an `organizer` row for the caller, in one transaction (`createImportedLocation`). An update writes and changes no role row. `order` is the payload's own value, not `max + 1`.
+> - The cart item imports check the item against the household of the **cart's location** (`resolveCartItemParents`: the cart by `userId`, then `requireLocationRole` on its location, then `householdOfLocation`), not the caller's household. Since H3b task B.7 the cart is found by `locationIdsWithRole(ctx, 'participant')`, and `householdOfLocation` follows. Since H4 task E.3 the cart is found among the TARGET household's writable locations only (`{ householdId }`), so the item is checked against the target and `householdOfLocation` is not read.
 
-> **The `User` row — households H2, built 2026-10-31.** `model User` (`apps/server/prisma/schema.prisma`) is one row per Clerk account: `id` is the Clerk user id, plus `displayName`, an optional `email`, `lastSeenAt` and `deletedAt`. Nothing relates to it yet; H3 adds the relations. Nothing reads it for authorization either. Two paths write it:
+> **The `User` row — households H2, built 2026-10-31.** `model User` (`apps/server/prisma/schema.prisma`) is one row per Clerk account: `id` is the Clerk user id, plus `displayName`, an optional `email`, `lastSeenAt` and `deletedAt`. Since H3a it also has `householdSetupAt` (the first sign-in claim, decision H1), and `HouseholdMember` and `LocationMember` point at it. (This said "Nothing relates to it yet" until H3a.) Two paths write it:
 >
 > | Path | Where | What it does |
 > |---|---|---|
-> | Clerk webhook | `POST /webhooks/clerk` → `clerkWebhookHandler` in `apps/server/src/lib/clerkWebhook.ts` | checks the Svix signature with `verifyWebhook` and `CLERK_WEBHOOK_SIGNING_SECRET` (unset → 500, bad signature → 400, nothing written). `user.created` / `user.updated` upsert the name and email; `user.deleted` sets `deletedAt` and keeps the name |
+> | Clerk webhook | `POST /webhooks/clerk` → `clerkWebhookHandler` in `apps/server/src/lib/clerkWebhook.ts` | checks the Svix signature with `verifyWebhook` and `CLERK_WEBHOOK_SIGNING_SECRET` (unset → 500, bad signature → 400, nothing written). `user.created` / `user.updated` upsert the name and email; `user.deleted` sets `deletedAt` once and keeps the name, then, in the same transaction, runs the household hand-over (`handOverDeletedAccount` in `lib/handover.ts`, households H6b task K.4): the person leaves every household, and a household they owned is handed over to the live people left, or deleted with its data when none is left |
 > | request-path safety net | `ensureUserOrLog` in `apps/server/src/lib/userRow.ts`, called from the GraphQL context in `index.ts`, in both the Clerk branch and the E2E branch | creates a missing row (name from Clerk, with fallback values if Clerk fails or takes over 3 s) and sets `lastSeenAt` once per UTC day |
 >
 > **The webhook route is mounted ABOVE `app.use(express.json(…))`, with `express.raw`.** The signature covers the raw bytes Clerk sent. Below the JSON parser the body is already an object, and the check runs on re-serialized JSON. `apps/server/src/webhookRouteOrder.test.ts` reads `index.ts` as text and fails if the order changes.
@@ -171,6 +485,132 @@ that really set up that role.
 > - **It never un-deletes and never renames.** On an existing row the only column it writes is `lastSeenAt`, so a `deletedAt` set by `user.deleted` stays set.
 >
 > **Deploying it needs two steps outside the code:** set `CLERK_WEBHOOK_SIGNING_SECRET` on the server, and add the endpoint in the Clerk dashboard with the events `user.created`, `user.updated` and `user.deleted`. Until the secret is set, the webhook answers 500. Until the endpoint is added, Clerk sends nothing. In both cases the safety net still creates every row on the user's next request.
+
+## Live updates (cloud)
+
+> Design: `docs/global/permissions/2026-11-16-households-h3c-design.md`. Plans:
+> `docs/global/permissions/2026-11-16-households-plan-h3c-1.md` (carts) and
+> `2026-11-16-households-plan-h3c-2.md` (stock, logs, locations, catalog). Deploy:
+> `docs/global/backend/2026-11-16-deploy-runbook-households-h3c-1.md` (section 9 is H3c-2).
+>
+> **Built in households H3c-1 and H3c-2 (2026-11-16).** H3c-1 is merged into `develop`
+> (#379), and so is H3c-2 (#380). Neither is deployed. A change in one
+> tab reaches the other open tabs of the same household within about a second. The event
+> says only "this changed" (`kind`, `locationId`); the web refetches.
+>
+> **Five kinds** (`enum ChangeKind` in `apps/server/src/schema/live.graphql`):
+>
+> | Kind | Level | Sent by (examples) | The web refetches |
+> |---|---|---|---|
+> | `CART` | location | cart mutations, `checkout`, `removeItemFromLocation`, `deleteItem`, `createVendor`, `deleteVendor`, `removeAllLocationItems` (H6a) | the 5 cart queries |
+> | `STOCK` | location | `upsertItemStock`, `addItemToLocation`, `checkout`, `consumeRecipes`, `applyUnitSwitch`, stock imports, `deleteItem`, `removeAllLocationItems` (H6a) | `PantryData`, `ItemStocksForItem` |
+> | `LOG` | location | `addInventoryLog`, `checkout`, `consumeRecipes`, log imports, `deleteItem` | `ItemLogs`, `InventoryLogCountByItem`, `LastPurchaseDates` |
+> | `LOCATION` | household (`locationId: null`) | the location mutations and imports (not `reorderLocations` since H7b: the order is personal), `clearAllData`, `deleteAllLocations` (H6a), the household and member mutations (H5b, H5c), the four offer writes and the `user.deleted` hand-over (H6b) | **every active query** (`'all'`) |
+> | `CATALOG` | household (`locationId: null`) | every catalog mutation and import, `renameHousehold`, `clearAllData` | `PantryData` and the 15 catalog queries |
+>
+> **Why `LOCATION` and `CATALOG` are household-level:** a deleted location cannot pass
+> `requireLocationRole`, so a location-level event about a delete would never be delivered.
+> A household-level event is checked against household membership instead. **Why
+> `LOCATION` refetches everything:** a location change touches the switcher, the pantry,
+> carts and stock pages, and it is rare. A location deleted with its rows sends no
+> `CART`/`STOCK`/`LOG` for that location; the `LOCATION` event covers them.
+>
+> **One call per mutation, with all its kinds**, after the write has committed. A mutation
+> publishes every kind it changed, including side effects: a delete that cascades into
+> carts sends `CART` too. The exception is when the kinds sit at different locations:
+> `deleteItem` reads, BEFORE the delete, where it has stock, logs and cart rows, and makes
+> one `publishChange` call per kind with its own list of locations. A write that changes
+> nothing (a refusal, a missing row, an import that skips every row)
+> sends nothing. Imports publish in `finally`, because they are not one transaction
+> (`withCatalogEvent` in `import.resolver.ts` for the catalog imports).
+>
+> | Part | Where | Rule |
+> |---|---|---|
+> | Event bus | `apps/server/src/lib/liveEvents.ts` | in memory, **one process only**. Before a second Railway instance, the bus must move to a shared service (Redis or similar); Neon's pooled connection has no `LISTEN/NOTIFY`. A listener that throws does not stop the others (a `Set`, not `EventEmitter`) |
+> | Publishing | `publishChange(ctx, kinds, locations)` and `publishHouseholdChange(ctx, kinds, householdId)` in `lib/publishChange.ts` | call it AFTER the write or the `$transaction` has resolved, never inside the callback. It never throws. One event per (kind, location), no duplicates. `publishChange` uses the LOCATION's household; both send `ctx.clientId`. Since H7b `publishChange` also sets `Location.dataUpdatedAt` for `STOCK`, `CART` and `LOG` (decision T79) |
+> | Tab id | `Context.clientId`, from `x-client-id` (HTTP) or `connectionParams.clientId` (socket) | the server never sends a tab its own change. A socket without one is refused |
+> | Delivery | `shouldDeliver` in `resolvers/live.resolver.ts` | checks the role again for EVERY event: `viewer` on the location through `requireLocationRole`, or `member` of the household for a household-level event (`locationId: null`, any kind) |
+> | Socket | `lib/wsServer.ts`, same port and path as HTTP (`/graphql`) | sign-in through `identifyCaller`, shared with HTTP |
+> | Web runner | `LiveUpdatesRunner` (`apps/web/src/apollo/`), in cloud mode when signed in | 300 ms batch, then refetches the ACTIVE queries named in `QUERIES_BY_KIND` (`liveUpdates.ts`). A reconnect refetches every active query once. A kind the bundle does not know refetches every active query |
+>
+> **`QUERIES_BY_KIND` is kept by hand, and nothing catches a query missing from it.** It is
+> a `Record<ChangeKind, …>`, so `tsc` fails when a KIND has no entry. Its tests check that
+> every name it lists is a real query. No test checks the other direction: a new query that
+> shows catalog, stock or log data, and is not added to the map, simply does not update
+> live. The comment table above the map lists which kinds each query depends on; add a row
+> there when you add a query. Export queries (`InventoryLogs`, `ShoppingCarts`,
+> `AllItemStocks`) are left out on purpose: no mounted component watches them.
+>
+> **Every `Mutation` field must be in one of two lists** in
+> `apps/server/src/resolvers/live-publish.guard.test.ts`: `publishes` (with its kinds) or
+> `publishesNothing` (with a reason). A new mutation in no list fails the test. Today: 84
+> fields, 77 in `publishes` and 7 in `publishesNothing` (measured 2026-11-22 after
+> households H7b; count with the two commands in the H6b *Counts* table above). H7b added
+> `markLocationVisited` and `setLocationSort` to `publishesNothing`, and moved
+> `reorderLocations` there from `publishes`: the order is the person's own, so a
+> household-level `LOCATION` would make every member refetch for a change only one person
+> sees. Before H7b: 82, 78 and 4. H7a added
+> `setActiveHousehold` to `publishesNothing`: the person's other tabs learn of a switch on
+> their next request. Before H7a: 81, 78 and 3. H6b added
+> `offerOwnership`, `cancelOwnershipOffer`, `acceptOwnershipOffer` and
+> `declineOwnershipOffer` to `publishes` (household-level `LOCATION`) and
+> `dismissOwnershipOffer` to `publishesNothing`. Before H6b: 76, 74 and 2. H6a added
+> `deleteAllLocations` and `removeAllLocationItems` to `publishes`, and `recordImport` and
+> `deleteHousehold` to `publishesNothing`, each with its reason. Before H6a: 72, all in
+> `publishes` (62 until households H5b task
+> G.3 added `createInvite` and `revokeInvite`, 64 until task G.4 added `joinHousehold`, 65
+> until task G.5 added `setHouseholdRole`, `removeMember`, `leaveHousehold` and
+> `createHousehold`, all seven household-level `LOCATION`; 69 until households H5c task H.3
+> added `setLocationRole`, `removeLocationRole` and `leaveLocation`, also household-level
+> `LOCATION`, tested in `location-people.resolver.test.ts`). H3c-1 had a third list,
+> `waitingForH3c2` (51 fields); H3c-2 task D.4 emptied it and deleted it.
+> The guard cannot see whether a resolver really calls `publishChange` or
+> `publishHouseholdChange`; the per-mutation tests in `cart-live-publish.resolver.test.ts`,
+> `stock-live-publish.resolver.test.ts`, `location-live-publish.resolver.test.ts` and
+> `catalog-live-publish.resolver.test.ts` do. It does not see queries either:
+> `vendorCart` creates a missing, EMPTY cart and publishes nothing (the guard file's
+> "queries that write" note).
+>
+> **Close codes** (`lib/wsServer.ts`, `lib/tokenCheckError.ts`):
+>
+> | Code | When | The `graphql-ws` client |
+> |---|---|---|
+> | `4401` | no user, a token Clerk rejects, no valid `clientId` | does not retry. The runner subscribes again on `online` or when the tab becomes visible |
+> | `1013` | the token check failed for another reason (Clerk not reached) | retries, up to 5 times in a row |
+> | `1001` | the socket is 60 minutes old | retries after about 1.3 to 4 s with a fresh token |
+>
+> **E2E.** The E2E web client has its own socket with `{ e2eUserId, clientId }`, and the
+> E2E build puts `window.__p1iLiveUpdates` (`connects`, `terminate`) on the page. Two specs,
+> both `cloud` only (in the `local` project's `testIgnore`):
+>
+> | Spec | Tests | What it proves |
+> |---|---|---|
+> | `e2e/tests/live-cart.spec.ts` | 3 | a cart change shows; another household's change never arrives; a change made while the socket was closed shows after the reconnect |
+> | `e2e/tests/live-pantry.spec.ts` | 5 | on the pantry, with no reload: a quantity (`STOCK`), a rename (`CATALOG`), a new location in the switcher (`LOCATION`), a checkout's quantity, a deleted item leaving (it also checks the kinds on the socket) |
+>
+> Both use `e2e/helpers/liveSocket.ts`: `routeLiveSocket` puts `page.routeWebSocket` between
+> page and server to count events by kind and to refuse sockets; `warmUpLiveSocket` makes a
+> first change and waits for its own refetch; `markDocument` / `stillSameDocument` prove
+> there was no reload.
+>
+> **A new location shows only to people with a role on it.** `visibleLocations`
+> (`location.resolver.ts`) lists only locations where the caller holds a role, and
+> `createLocation` gives a role only to its creator. So `live-pantry.spec.ts` test 3 uses the
+> browser's own user on "another device", not a second member. That is location scoping,
+> not a live update bug. Test 2 and test 5 need the second person to be a household
+> `manager`: renaming and deleting an item need `requireCatalogRole`.
+>
+> Two traps `live-cart.spec.ts` found, both about absence:
+>
+> - **A wrongly delivered event changes nothing on screen.** It only makes the tab refetch
+>   its own cart. So "another household's change does not show" must count socket messages,
+>   not look at the page.
+> - **A warm-up refetch can show a later step.** Test 1 passed with `publishChange` removed
+>   from `addToCart`, because the warm-up's own refetch was still in flight and showed the
+>   item. The warm-up now waits for its own `CartItems` refetch.
+>
+> Test 2 uses an ORDER check, not a fixed wait: events for one socket are queued and checked
+> in order, so once a later event has arrived, an earlier one would have arrived first.
 
 ## Project Structure
 
@@ -223,7 +663,7 @@ Entity names are displayed in title case using Tailwind's `capitalize` class (`t
 
 **Applies to:** item names, tag names, recipe names — in list cards, detail page headers, name input fields, and tag type dropdowns.
 
-**Vendor and location names are excluded** — both are user-specified and may use intentional casing (e.g. "iHerb", "7-Eleven", "my Garage"). Their displays render names as stored. Vendor badges (in `ItemCard` and the item vendors tab) explicitly add `normal-case` to override the Badge component's built-in `capitalize`. Location names carry no `capitalize` anywhere — `LocationSwitcher` (both variants and its dropdown) and `LocationList` (row label and drag overlay) all render them as stored.
+**Vendor, location and household names are excluded** — all three are user-specified and may use intentional casing (e.g. "iHerb", "7-Eleven", "my Garage", "the Lin home"). Their displays render names as stored. Vendor badges (in `ItemCard` and the item vendors tab) explicitly add `normal-case` to override the Badge component's built-in `capitalize`. Location names carry no `capitalize` anywhere — `LocationSwitcher` (both variants and its dropdown) and `LocationList` (row label and drag overlay) all render them as stored. Household names (cloud only, since households H3a task 3.13) carry none either: `HouseholdLabel` (the sidebar 🏠 link, the household sidebar heading, the mobile settings accordion trigger) and `HouseholdNameCard` render them as stored. The household page title is "General" since 2026-11-23, not the name. Three tests check that no ancestor has `capitalize` (`Sidebar.cloud.test.tsx`: the 🏠 link; `routes/settings/household/index.cloud.test.tsx`: the sidebar heading and, since 2026-11-23, the name card's text for a manager instead of the page title).
 
 **Already covered by Badge base class:** tag badges and recipe badges. Vendor badges override with `normal-case`.
 
@@ -339,7 +779,7 @@ After each implementation phase (each numbered step in an implementation plan), 
 
 ```bash
 pnpm lint                                  # ROOT, not apps/web: web src + e2e/ (see below)
-pnpm build 2>&1 | tee /tmp/p1i-build.log   # FULL build from repo root: codegen + web (tsc -b && vite) + server (tsc) + e2e/ type-check
+pnpm build 2>&1 | tee /tmp/p1i-build.log   # FULL build from repo root: codegen + web (tsc -b && vite) + server (tsc + esbuild bundle + start check) + e2e/ type-check
 (cd apps/web && pnpm build-storybook)
 pnpm check                                 # ROOT, not apps/web: web src + e2e/ (see below)
 grep 'TS6385' /tmp/p1i-build.log && echo "FAIL: deprecated imports found" || echo "OK: no deprecated imports"
@@ -362,9 +802,22 @@ skips half the work. Nothing else in the gate checks `e2e/` formatting: `pnpm li
 `apps/server`'s build already carries a second pass for `scripts/`.
 
 **`pnpm test` runs both workspaces.** The root script is `pnpm -r test`, which recurses into
-every workspace package that defines a `test` script — today `apps/web` (**2321 tests**
-across 251 files) and `apps/server` (**522** across 32). Measured 2026-10-28 on
-`fix/import-ownership-guard`, plus **70** in `scripts/spec` from `pnpm test:spec`.
+every workspace package that defines a `test` script — today `apps/web` (**3899 tests**
+across 378 files) and `apps/server` (**2834** across 89). Measured 2026-11-22 on
+`feature/households-h7b`, after households H7b task M.6 (it said 3840 / 373 and 2767 / 87
+on 2026-11-21 on `feature/households-h7a`, 3729 / 364 and 2689 / 85 on 2026-11-20 on
+`feature/households-h6b`, after households H6b task K.9, and 3607 / 360 and 2563 / 83
+the same day on `feature/households-h6a`, after households H6a task J.9, 3454 / 347 and 2401 / 78 on
+2026-11-19 on `feature/households-h5c`, after households H5c task H.9, 3319 / 337 and 2111 / 76
+at `develop` `712f76f6`, before H5c, 3102 / 325 and 2104 / 76 on 2026-11-18 on
+`feature/households-h5b`, after households H5b task G.10, 2922 / 305 and 1820 / 70
+on 2026-11-17 on `feature/households-h5`, after households H5a task F.9, 2678 / 283 and 1765 / 67
+earlier that day on `feature/households-h4`, after households H4, 2586 / 281 and 1566 / 64 on
+2026-11-16 after households H3c-2, 2577 / 281 and 1412 / 61
+after H3c-1 the same day, 2543 / 276 and 1274 / 52 on
+2026-11-15 on `feature/households-h3b`, 2549 / 277 and 1244 / 51 earlier that
+day, 2529 / 275 and 1161 / 47 on 2026-11-11, on H3a, and
+2321 / 251 and 522 / 32 on 2026-10-28, before households H3a), plus **70** in `scripts/spec` from `pnpm test:spec`.
 
 A short history of these numbers, because they move almost every week and briefs keep
 quoting them: they said ~1700 and ~100 until 2026-09-29; `apps/server` said 259 across 20
@@ -741,13 +1194,16 @@ migration against real SQL — passed the whole gate. Proved by mutation: a deli
 exits 2.
 
 ```
-build:     tsc && tsc -p tsconfig.scripts.json && cp src/schema/*.graphql dist/schema/
-typecheck: tsc --noEmit && tsc -p tsconfig.scripts.json
+build:     prisma generate && tsc --noEmit && tsc -p tsconfig.scripts.json && node scripts/build.mjs && node scripts/check-start.mjs
+typecheck: prisma generate && tsc --noEmit && tsc -p tsconfig.scripts.json
 ```
 
-**The two passes do not overlap**, which is why this costs little: `tsc` checks and emits the
-**53** files under `src`, the second pass checks the **3** under `scripts`, and nothing is
-checked twice. The first version of this fix reused the whole-project `typecheck` and so
+**The two passes overlap by one file**, which is why this costs little: `tsc --noEmit` checks the
+files under `src`, and the second pass checks the `.ts` files under `scripts` (**3** when this
+was written, **7** on 2026-11-23) plus ONE `src` file, `src/lib/databaseUrl.ts` (since E2E
+speed plan task S.6; see *The no-overlap trick* below). (Until S.6 nothing was checked twice. `src` was **53** files when this was written; on 2026-11-13
+`tsc --noEmit --listFiles` listed **86**. The two `.mjs` build scripts in `scripts/` are not
+type-checked, because `allowJs` is off.) The first version of this fix reused the whole-project `typecheck` and so
 checked `src` twice — 105 files instead of 53, and 3.4s. **`apps/web`'s own second pass,
 added 2026-10-30, does overlap** — see *Web test and story files ARE type-checked* above for
 what that costs.
@@ -759,6 +1215,10 @@ what that costs.
 |---|---|---|---|
 | `verify-migration.ts` only | 1 | 188 | 3.04s, 2.89s, 3.09s, 3.08s |
 | plus `databaseIsolation.ts` and its `.test.ts` | 3 | 234 | 3.45s, 3.63s |
+
+Re-measured 2026-11-13 on `chore/build-shared-types`, when the build gained the esbuild
+bundle and the start check (see below): the old steps took **3.70–3.92s**, and the whole
+server build **3.84–4.43s**. The start check alone costs about 0.2–0.5s.
 
 The 46 extra declaration files are **vitest's types**, pulled in by the test file's
 `import … from 'vitest'`. That is the whole cost: about **0.5s** on every server build, in
@@ -772,16 +1232,50 @@ test file, so `tsc` checks every `apps/server/src/**/*.test.ts`: measured 2026-1
 `pnpm --filter server exec tsc --noEmit` exit 2 with `TS2322`. `apps/web`'s test files have
 been checked since 2026-10-30.)
 
-Why two tsconfigs rather than one: `tsconfig.json` **emits**, with `rootDir: "src"` and
-`outDir: "dist"`. Adding `scripts` to its `include` moves `rootDir` to `.` and emits
-`dist/src/…` plus `dist/scripts/…`, which breaks `start: node dist/index.js`.
-`tsconfig.scripts.json` extends it with `rootDir: "."`, `noEmit: true` and
-`include: ["scripts"]`. **Do not merge them.**
+Why two tsconfigs rather than one: until 2026-11-13 `tsconfig.json` **emitted** `dist/`,
+with `rootDir: "src"`, and adding `scripts` to it would have moved the output to `dist/src/…`.
+That reason is gone. `tsconfig.json` now sets `noEmit: true` and has no `outDir` or
+`rootDir`; esbuild writes `dist/` (see below). The configs stay separate for the no-overlap
+reason only: `tsconfig.scripts.json` extends `tsconfig.json` with `include: ["scripts"]`, so
+each file is checked once.
 
-**The no-overlap trick depends on a fact that could change.** `scripts/` imports nothing from
-`src` today — only `@prisma/client`, `vitest`, node builtins, and its own sibling modules. If
-a script ever imports from `src`, TypeScript pulls those files into the scripts program and
-checks them again, and the saving goes away. Correct either way, but measure before adding
+**`apps/server`'s build bundles the server with esbuild, then starts it once** — since
+2026-11-13 (`chore/build-shared-types`). Design:
+`docs/global/backend/2026-11-13-build-shared-types-design.md`.
+
+- **Why:** `@p1i/types` exports raw TypeScript. A plain `tsc` emit kept the bare import, and
+  `node dist/index.js` failed with `ERR_UNKNOWN_FILE_EXTENSION`. `tsc`, `tsx` and Vitest all
+  read the source, so none of them saw it. Now the server imports `cartIdFor`, `parseCartId`
+  and `isBeingBought` from `@p1i/types`, and its own copies are deleted.
+- **`scripts/build.mjs`** bundles `src/index.ts` into `dist/index.js` (about 129 KiB when this was written, 236.0 KiB on
+  2026-11-20 after households H6a, 254.0 KiB the same day after households H6b, 260.2 KiB after households H7a, 266.6 KiB on 2026-11-22 after households H7b, plus a source map). It bundles `workspace:` packages and keeps every other dependency external.
+  It copies the `.graphql` files (15 since H6b, 14 since H6a; 12 when this was written) **flat** into `dist/`, not `dist/schema/`, because
+  `src/schema/index.ts` reads them from the folder of the running file. `dist/` no longer
+  holds the 46 `*.test.js` files the old `tsc` emit shipped.
+- **`scripts/check-start.mjs`** runs `node --enable-source-maps dist/index.js` with
+  `PORT=0`, a database URL that points at a closed local port, `E2E_TEST_MODE=false`, in an
+  empty temp folder. It waits for `Server ready at` within 20s, reads the real port from
+  that line, then opens a WebSocket to `/graphql` with no `clientId` and passes only when the
+  server closes it with **4401** (since households H3c-1 task C.3, `lib/wsServer.ts`). It
+  always stops the server. It needs no secrets and makes no Clerk call.
+- **Proved by mutation:** leaving `@p1i/types` external fails it with
+  `ERR_UNKNOWN_FILE_EXTENSION`, exit 1; copying the `.graphql` files into `dist/schema/`
+  fails it with `ENOENT … dist/schema.graphql`; removing the `attachWsServer(…)` call from
+  `index.ts` fails it with `WebSocket error at /graphql: Unexpected server response: 400`.
+- **It runs inside `pnpm --filter server build`**, so the root `pnpm build`, the gate and
+  Railway's build all run it. The `cloud` E2E project starts the server from source with
+  `tsx`, so E2E does not prove the bundle; this check does.
+- **Not yet proved on Railway.** Nobody has run the start check there. If it fails there,
+  the deploy build fails and the old server keeps running. Read the build log.
+
+**The no-overlap trick depends on a fact that could change, and it changed once.** Until
+2026-11-23 `scripts/` imported nothing from `src`. Since E2E speed plan task S.6,
+`scripts/databaseIsolation.ts` and `scripts/e2eLocalDb.ts` import `src/lib/databaseUrl.ts`
+(the shared database URL checks; `databaseIsolation.ts` re-exports `databaseIdentity` and
+`assertNotAnotherDatabase` from it). That file imports nothing, so the scripts pass checks
+**1** `src` file twice: `--listFiles` went from 236 to 237 files, and no build time change
+could be seen under load. If a script imports a `src` file that imports more, TypeScript
+pulls those in too, and the saving shrinks. Correct either way, but measure before adding
 such an import.
 
 **Final phase only** — after all steps are complete, run the **whole** E2E suite with one
@@ -791,12 +1285,51 @@ command:
 pnpm test:e2e:all
 ```
 
-`e2e/run-all.sh` runs the three projects — `local`, `cloud`, `pwa` — as three separate
-Playwright invocations, one after another. It does **not** stop at the first failing
-project: all three run, and a summary table at the end gives each project's result, elapsed
-time and test counts. It exits non-zero if any project failed. Each project writes its own
-HTML report (`playwright-report/local`, `/cloud`, `/pwa`), and the reporter never opens a
-browser, so the command is safe to run non-interactively.
+`e2e/run-all.sh` runs **four rows** — `local`, `cloud`, `cloud-neon`, `pwa` — as four
+separate Playwright invocations, one after another (since E2E speed plan task S.8,
+2026-11-23; three rows before). It does **not** stop at the first failing row: all of them
+run, and a summary table at the end gives each row's result, elapsed time and test counts,
+and a line under it says which database each cloud row used. It exits non-zero if any row
+failed. Each row writes its own HTML report (`playwright-report/local`, `/cloud`,
+`/cloud-neon`, `/pwa`), and the reporter never opens a browser, so the command is safe to
+run non-interactively.
+
+**Two gates, two commands** (owner answers P6-A and P10-A of the E2E speed plan,
+`docs/global/testing/2026-11-22-e2e-speed-plan.md`):
+
+| Gate | Command | Rows | When |
+|---|---|---|---|
+| per PR | `pnpm test:e2e:all` | `local`; `cloud`, the whole cloud list on the **local** E2E database; `cloud-neon`, the 8 files of `e2e/neonSpecs.ts` on the **Neon test branch**; `pwa` | the final phase of every branch |
+| checkpoint | `pnpm test:e2e:all:neon` (`run-all.sh --full-neon`) | `local`; `cloud-neon` with the WHOLE cloud list on Neon; `pwa`. No `cloud` row | before each checkpoint release, as a named step of the deploy runbook (section 15 of `docs/global/backend/2026-11-17-deploy-runbook-households-h4.md`) |
+
+**`cloud` green on the local database is not Neon green.** A local query takes well under
+1 ms, a Neon query about 52 ms. A fast database closes latency races and makes a short wait
+pass. The `cloud-neon` row covers the pooler, the live socket and the lock races on every
+PR; the checkpoint gate covers the rest. See `e2e/CLAUDE.md`, *Which database each cloud
+project uses*.
+
+Measured 2026-11-23 (E2E speed plan task S.9), all green: the per-PR gate **21m44s** and
+**21m24s** (two runs; `cloud` 4m16s and 4m04s, `cloud-neon` 12m01s and 11m51s), the
+checkpoint gate **44m33s** (`cloud-neon` with all 40 files, 39m10s). Before the plan: 69m26s.
+The numbers per row are in `e2e/CLAUDE.md`, *Cloud E2E is not database-isolated*.
+
+**The per-PR gate needs the local E2E database on this machine**, migrated to the newest
+migration. One-time setup and the rule "run `pnpm --filter server e2e:db:migrate` after
+every new migration" are in `e2e/CLAUDE.md`, *The local E2E database*. A database that is
+behind stops the run at the start (`globalSetup`), with a message that names the command.
+
+**Each gate also records the time of every test** (since E2E speed plan task S.1,
+2026-11-22). Per project, `run-all.sh` writes and keeps:
+
+| File | What it holds |
+|---|---|
+| `e2e-results/<project>.json` | Playwright's JSON report. The config adds the `json` reporter only when `PLAYWRIGHT_JSON_OUTPUT_FILE` is set, and `run-all.sh` sets it |
+| `e2e-results/test-results-<project>/` | a copy of `test-results/` (error text, trace, screenshot), made right after the project ends. The next Playwright run deletes `test-results/`, so without the copy a failure in `local` loses its files when `cloud` starts (since task S.5) |
+
+At the end it runs `node scripts/spec/e2e-times.mjs` on the JSON files of the rows it ran. That prints,
+per project, the total, the 15 slowest tests and the time per spec file. `e2e-results/` is
+gitignored. **A `--reporter=…` argument turns the JSON report off**: it replaces the
+config's reporters. So do not pass one when you want the times.
 
 **Do not run the bare `pnpm test:e2e` as your gate on this machine.** One invocation runs
 all three projects together and keeps every server alive for the whole run — three web
@@ -910,7 +1443,7 @@ text alone settles nothing — the repeat at low load and the timing measurement
 the contention is between the concurrent **servers**, not concurrent tests. Passing
 `--workers=N` on the command line does nothing.
 
-No `--grep`. Playwright's `webServer` config starts the servers for you. This runs **three** projects — **348 tests in 27 spec files** (measured 2026-10-04): **176 in `local`** across 22 spec files, **103 in `cloud`** across 20, and **69 in `pwa`** across 2. It said 341 in 26 files on 2026-09-29. The `pwa` project arrived with the PWA work and uses a fourth port, `PWA_WEB_PORT 5176`, so four ports must be free before a run, not three.
+No `--grep`. Playwright's `webServer` config starts the servers for you. On 2026-10-04 this ran **three** projects (four rows since 2026-11-23, see above) — **348 tests in 27 spec files** (measured 2026-10-04): **176 in `local`** across 22 spec files, **103 in `cloud`** across 20, and **69 in `pwa`** across 2. It said 341 in 26 files on 2026-09-29. The `pwa` project arrived with the PWA work and uses a fourth port, `PWA_WEB_PORT 5176`, so four ports must be free before a run, not three.
 
 **Do not narrow the final run with `--grep`.** `--grep` matches a single joined string made of the project name, the spec file's path **relative to `e2e/tests/`**, every `describe` title, and the test title. An area word selects a test only if that exact word appears somewhere in that string. So a list of feature areas silently drops whole spec files whose names happen to use a different word form.
 
@@ -1099,6 +1632,19 @@ The timing is important: create the branch and worktree after brainstorming is c
 Use git worktrees by default for feature work. Create isolated workspaces in `.worktrees/` directory. See "Advanced: Git Worktrees" section below for setup details.
 
 **Worktree before implementation (mandatory):** After brainstorming is complete and the branch name is derived, before writing the design doc, always create a git worktree using `superpowers:using-git-worktrees` (or follow the manual steps in "Advanced: Git Worktrees" below if the skill is unavailable). All subsequent work — design doc, implementation plan, and code — happens inside the worktree. Branch name is derived from the brainstorming topic: choose `feature/`, `fix/`, `refactor/`, or `docs/` prefix based on context, then add a short kebab-case topic (e.g. brainstorming about cooking expand/collapse → `feature/cooking-expand`).
+
+**Households work targets `develop`, not `main` (since 2026-11-12).** A merge to `main`
+deploys to production: Cloudflare Pages builds the web, and Railway deploys the server. So
+until the households feature is done, households phase PRs (H3a onward) use `develop` as their
+base, and `develop` is merged into `main` only at planned **checkpoint releases**. Each
+checkpoint has its own deploy runbook and a fresh rehearsal on a Neon branch of production.
+Base a households branch on `origin/develop` and rebase onto it. **No changes go to `main`
+until households is done.** The owner decided this on 2026-11-13 ("I'll not touch branch main
+before the household feature is done"). So the question of how a `main` hotfix reaches
+`develop` is closed. If that ever changes, ask the owner first: rebasing `develop` onto `main`
+rewrites a shared branch and needs a force-push, and merging `main` into `develop` breaks the
+rebase rule below. See `docs/global/permissions/2026-10-31-households-plan.md`, *How this plan
+is split*.
 
 **Absorbing upstream changes: always rebase, never merge**
 
@@ -1448,13 +1994,14 @@ weak fixture. The server suite has hit this six times:
   model only (`shoppingFake.cart.createMany`). The doubles that covered the other four could
   not be reused: `shoppingFake.vendor.create` ignores `data.id` and generates
   `vendor-${++seq}` (line 106), `cartItemFake` exports **no client at all** — only the
-  `cartItemMatches` matcher — and `inventoryLogFake` has no `findFirst`. A missing fake does
+  `cartItemMatches` matcher (since 2026-11-04 the export is `filterCartItems`) — and `inventoryLogFake` has no `findFirst`. A missing fake does
   not report as missing. It reports as "no test for this model", which reads like a gap in
   coverage rather than a gap that cannot be closed. Fixed 2026-10-28 (issue #327) by
   `apps/server/src/test/ownedRowFake.ts`
 
-**`ownedRowFake` is the shared double for the nine account-scoped models** — `Item`, `Tag`,
-`TagType`, `Vendor`, `Recipe`, `InventoryLog`, `Cart`, `CartItem` and `Shelf`. One generic
+**`ownedRowFake` is the shared double for the account-scoped models** — `Item`, `Tag`,
+`TagType`, `Vendor`, `Recipe`, `InventoryLog` and `Shelf` (and it was for `Cart` and
+`CartItem` until households H3b; see `cartFake` below). One generic
 stateful store, `createOwnedRowFake<Row extends { id: string; userId: string }>`. Use it;
 do not write a per-model double beside it. What it models, each for a failure listed above:
 
@@ -1482,32 +2029,79 @@ fail its test. Decided in task 2 of that branch and confirmed by mutation in tas
 from the resolvers and an unreachable guard invites deletion as dead code — the reasoning
 `stockFake.test.ts` records.
 
+**`cartFake` is the shared double for `Cart` and `CartItem`** — since households H3b task B.2
+(`apps/server/src/test/cartFake.ts`, pinned by `cartFake.test.ts`). Use it for any cart test;
+do not put carts back on `ownedRowFake`. Its header says why `ownedRowFake` does not fit:
+`Cart` has no scope column any more, and `CartItem` needs a relation filter, a compound
+unique key and `{ increment }`. What it models:
+
+| It does | Because |
+|---|---|
+| raises `P2002` on a second `(cartId, itemId)` row, in `create`, `createMany`, `upsert`, `update` and `updateMany` | without it, a test of "two adds make one row with the sum" passes against code that never merges |
+| `upsert` on `{ cartId_itemId }`, with `quantity: { increment }` or a plain number | `addToCart` and the two cart item imports write this way |
+| **throws** on a `userId` `where` key, on both models | `CartItem.userId` means "added by" and is never a scope (H3b rule 13). `cartItemFake.ts`'s `filterCartItems` refuses it too |
+| keeps both stores in one state object, registered with `runInTransaction` | a rollback restores carts and rows together |
+
 **The Prisma fake models `$transaction` rollback, and only one of its two forms.**
 `src/test/stockFake.ts` exports `runInTransaction`, which snapshots every registered store
 with `structuredClone`, keeps the writes when the callback returns, and restores the
 snapshot when it throws. Import it; do not write a second copy, because a second copy that
 silently does nothing would leave every atomicity test reporting as covered.
 
+**Every shared fake returns a COPY of the stored row, never the row itself** — since
+2026-11-15 (commit "test(server): make the shared Prisma fakes return copies"). Prisma
+returns a new object for every call. Before that date `stockFake`, `inventoryLogFake`,
+`shoppingFake` and `ownedRowFake` returned the LIVE row, so "the row read before a write"
+and "the row after it" could be one object, and a value computed from the wrong one still
+came out right (found in households H3b task B.6). They now use `structuredClone`, so `Date`
+fields are copied too. `cartFake`, `userFake` and `householdFake` already returned copies.
+Pinned in `stockFake.test.ts`, `ownedRowFake.test.ts` and `fakeCopies.test.ts`. A test that
+changes a returned row changes nothing in the store; to change the store, write to
+`fake.state` directly.
+
 Only the **interactive callback** form is modelled — `$transaction(async (tx) => …)`. The
 array form, `$transaction([p1, p2])`, throws a clear error on purpose: JavaScript evaluates
 the array before `$transaction` is called, so the fake's writes have already landed, and a
-snapshot taken then would report a rollback that never happened. Four resolvers use the
-array form today (import, purge, location, `index.ts`); none is tested through this fake.
+snapshot taken then would report a rollback that never happened. **No source file uses the
+array form today.** The last user was the `/e2e/cleanup` route
+(`apps/server/src/lib/e2eCleanup.ts`); since E2E speed plan task S.2 (2026-11-22) it makes
+one `$queryRaw` call to a SQL function instead. Check with
+`git grep -n '\$transaction(\[' -- apps/server/src`: measured 2026-11-23, it finds only
+`src/test/stockFake.ts` and `src/test/stockFake.test.ts`, the fake's own refusal and its
+test. (This said "one place: `/e2e/cleanup`" from 2026-11-04, households H3a task 3.10, and
+"four resolvers: import, purge, location, `index.ts`" before that.)
 
 Note also that **no *unit* test executes the resolvers against real SQL** — every server
 test runs against a hand-written stateful Prisma fake. Cloud **E2E** does hit real
-Postgres (`E2E_TEST_MODE=true` routes `prisma.ts` at `TEST_DATABASE_URL`, a dedicated Neon
-branch), but only for the spec files listed in the `cloud` project's `testMatch` in
-`e2e/playwright.config.ts` — that list is opt-in and covers **26 of the 30 spec files in
-`e2e/tests/`** (measured 2026-10-31, after households H2 added `cloud-user-row.spec.ts`).
+Postgres (`E2E_TEST_MODE=true` routes `prisma.ts` at the local E2E database, or at
+`TEST_DATABASE_URL`, a dedicated Neon branch, with `E2E_DATABASE=neon`; see `e2e/CLAUDE.md`,
+*The local E2E database*), but only for the spec files in `CLOUD_SPECS` in
+`e2e/playwright.config.ts` (the `cloud` project's `testMatch`) — that list is opt-in and covers **40 of the 44 spec files in
+`e2e/tests/`** (measured 2026-11-22, after households H7b task M.5 added
+`location-sort.spec.ts`; 39 of 43 on 2026-11-21, after households H7a task L.6 added
+`household-switch.spec.ts`; 38 of 42 on 2026-11-20, after households H6b task K.8 added
+`household-ownership.spec.ts`; 37 of 41 earlier that day, after households H6a task J.8 added
+`household-activity-purges.spec.ts`; 36 of 40 on 2026-11-19, after households H5c task H.8 added
+`location-people.spec.ts`; 35 of 39 on 2026-11-18, after households H5b task G.10 added
+`household-invites.spec.ts`; 34 of 38 on 2026-11-17, after households H5 task F.8 added
+`shared-household.spec.ts`; 33 of 37 earlier that day, after households H4 task E.6 added
+`settings/import-households.spec.ts`; 32 of 36 on 2026-11-16, after households H3c-2 task D.5 added
+`live-pantry.spec.ts`; 31 of 35 after H3c-1 task C.6 added `live-cart.spec.ts`; 30 of 34 on 2026-11-15, after households H3b task B.9 added
+`shared-cart.spec.ts`; it was 29 of 33 on 2026-11-04, after households H3a task 3.11 added
+`cloud-roles.spec.ts` and `household-member-cleanup.spec.ts`).
 **Count it rather than quote it.** This line said "20 files today (of 27 spec files)" until
 2026-10-12, by which point both numbers were wrong by 3:
 
 ```bash
-awk "/name: 'cloud'/,/name: 'pwa'/" e2e/playwright.config.ts \
-  | grep -c "spec\.ts'"                                 # cloud's testMatch
+awk '/^const CLOUD_SPECS = \[/,/^\]/' e2e/playwright.config.ts \
+  | grep -c "spec\.ts'"                                 # the cloud list
 find e2e/tests -name '*.spec.ts' | wc -l              # every spec file
 ```
+
+Measured 2026-11-23: **40** and **44**. **The `awk` range changed on 2026-11-23** (E2E speed
+plan task S.8). The cloud list moved out of the `cloud` project into `const CLOUD_SPECS`, so
+the `cloud` and `cloud-neon` projects can share it. The command this block gave before,
+`awk "/name: 'cloud'/,/name: 'pwa'/" … | grep -c "spec\.ts'"`, prints 0 since then.
 
 **The command this block used to give printed 0, and had done so since 2026-10-30.** It
 was `awk "/name: 'cloud'/,0" … | grep -m1 testMatch | grep -o "'\*\*/[^']*\.spec\.ts'" | wc -l`.
@@ -1515,8 +2109,8 @@ It only worked while the whole `testMatch` array sat on one line. The Biome swee
 (issue #346, commit `e015378d`) put one entry per line, so the line holding `testMatch`
 holds no spec name. Measured: the old command gives 25 on the commit before the sweep and 0
 on the sweep itself.
-The new command counts every spec name between the `cloud` and `pwa` project headers. Today
-that range holds only `cloud`'s `testMatch`, because `cloud` has no `testIgnore`.
+The command after it counted every spec name between the `cloud` and `pwa` project headers.
+That worked until the list moved into `CLOUD_SPECS` (see above).
 
 The 4 files outside the `cloud` project today are `a11y.spec.ts`, `pwa-offline.spec.ts`,
 `settings/import-export-local.spec.ts` and `onboarding.spec.ts`. The first three cannot run
@@ -1527,12 +2121,13 @@ would reach zero resolvers and still pass its URL assertion.
 **A resolver exercised by no cloud spec has never touched SQL at all**, and a manual smoke
 test is owed for anything transactional.
 
-Nine of those 26 cover location or stock surfaces. Three were added 2026-09-14 (issue #284):
+Nine of the 26 counted on 2026-10-31 cover location or stock surfaces. Three were added 2026-09-14 (issue #284):
 `settings/locations.spec.ts`, `location-switcher.spec.ts` and
 `location-not-stocked-here.spec.ts` — 22 cloud test cases. They give the first real-SQL
 coverage of `createLocation`, `updateLocation`, `deleteLocation`, `reorderLocations`, the
-`locations` query with `ensureDefaultLocation`, `upsertItemStock`, `addItemToLocation` and
-the `itemStocks` / `PantryData` read.
+`locations` query with `ensureDefaultLocation` (replaced by `requireHousehold` and first
+sign-in, `apps/server/src/lib/household.ts`, in households H3a task 3.5), `upsertItemStock`,
+`addItemToLocation` and the `itemStocks` / `PantryData` read.
 
 The fourth is `location-scoped-writes.spec.ts`, added 2026-09-23 — 4 cloud test cases, and
 the first real-SQL coverage of the four location-scoped WRITE resolvers PRs 3b and 3c
@@ -1562,12 +2157,15 @@ same answer. `item-stock-pager.spec.ts` seeds several and is.
 `cleanup-endpoint.spec.ts` joined on 2026-09-25 (issue #319) — 1 cloud test case, no
 browser, like `location-scoped-writes.spec.ts`. It is not resolver coverage: its subject is
 the `DELETE /e2e/cleanup` route, whose handler is in `apps/server/src/lib/e2eCleanup.ts`
-(`index.ts` only mounts it). It seeds one row of all 15 models that route deletes (14
-before households task 2.6 added the `User` row), calls it, and asserts every returned deleted count is at least
-1. `purge-coverage.test.ts` guards the same route but only as SOURCE TEXT — it checks that
-the string `prisma.<model>.deleteMany(` appears, never what `where` clause the call
-carries, so a filter matching nothing passes it. See `e2e/CLAUDE.md` for the measured
-before/after.
+(`index.ts` only mounts it). It seeds one row of all 21 models that route deletes (14
+before households task 2.6 added the `User` row, 15 before households H3a task 3.10 added
+the three household tables, 18 before households H5b task G.6 added `HouseholdInvite`, 19
+before households H6 task J.1 added `HouseholdActivity`, 20 before households H6b task K.1
+added `OwnershipOffer`; the offer is seeded by a real `offerOwnership` since task K.8), calls it, and asserts every returned deleted count is at least
+1. `purge-coverage.test.ts` guards the same route but only as SOURCE TEXT. Since issue #320
+it checks the filter's TEXT against one allowed form per model, but it still cannot see a
+value, so a filter whose variable is wrong or `undefined` passes it. See `e2e/CLAUDE.md`
+for the measured before/after.
 
 `cart-id-cross-user-leak.spec.ts` joined on 2026-10-03 (cloud locations PR 4b task 1) — 1
 cloud test case, no browser, like the two above. **It is a labelled negative control, not
@@ -1578,6 +2176,11 @@ and the spec is green either way — the proof of 4b's client-side fix is a unit
 `apps/web/src/lib/importData.test.ts`. It is the **first cloud spec to use two users**:
 `makeGql(request, userId)` and `cleanupCloudData(request, userId)` now take an optional user
 id, defaulting to `E2E_USER_ID`, so the 18 existing call sites are untouched.
+**That paragraph is history.** The import ownership guard (#327) made the spec real coverage,
+and since households H4 task E.6 it holds 3 tests: a bare cart id is refused with
+`BAD_USER_INPUT` for both households (#361), another household's location-prefixed cart id
+is refused with `FORBIDDEN` and its cart items are skipped, and each household's own
+prefixed id is written. See the header of the spec.
 
 `settings/import-export-cloud.spec.ts` grew from **2 to 6** cloud test cases in PR 4b task
 8, and `settings/import-export-local.spec.ts` from 3 to 4. Before that, **neither
@@ -1592,9 +2195,9 @@ coverage of the four bulk mutations 4a added — `bulkCreate`/`bulkUpsertLocatio
 `locationId` field.
 
 Three more joined on 2026-10-12 (issue #323) — `settings/shelves.spec.ts` (1 cloud test
-case), `settings-global-pages.spec.ts` (2 collected, 1 run — its second test carries a
-`test.skip` for cloud, because `Sidebar.tsx` has no data-mode branch and a cloud run would
-measure the same markup twice) and `unified-item-search.spec.ts` (10). The `cloud` project
+case), `settings-global-pages.spec.ts` (2 collected, 1 run until households H3a task 3.15 —
+its second test skipped cloud because the sidebar was the same markup in both modes; since
+task 3.13 the 🏠 label shows the household name in cloud, so both run there now) and `unified-item-search.spec.ts` (10). The `cloud` project
 went 108 → **121** collected and 22 → **25** files. They give the first real-SQL coverage of
 four resolvers in `apps/server/src/resolvers/shelf.resolver.ts`: `shelf(id:)` (line 17),
 `updateShelf(itemIds:)` (38), `deleteShelf` (50) and **`applyShelfFilterPicks`** (85).
@@ -1633,6 +2236,101 @@ the user deleted BEFORE the first request, on purpose:** in the order request, d
 request, the second request makes 0 queries and could not clear `deletedAt` even if the
 code tried. The test checks `lastSeenAt` went from `null` to set, which proves the request
 reached the row.
+
+`purge-two-households.spec.ts` joined on 2026-11-04 (households H3a, task 3.10, decision
+H10) — 1 cloud test case, no browser. The `cloud` project went 124 → **125** collected and
+26 → **27** files; `local` stayed at 183 in 23 files. It is the first real-SQL coverage of
+`clearAllData` (`import.resolver.ts`): two users each get their own household and one row
+of every model it deletes, one clears, and every row of the other's must survive, read
+back through the other's GraphQL. Proved by mutation: `tx.shelf.deleteMany({})` makes it
+fail. Both users are alone in their household, so it says nothing about a shared one.
+Households H6a task J.8 added 2 tests to it: `deleteAllLocations` and
+`removeAllLocationItems`, each with two households of two locations each, and a tag with
+a tag type. The other household, and the other location for `removeAllLocationItems`,
+must keep every row. These are the first real-SQL runs of the two purges and of
+`deleteHouseholdData`'s `tag` before `tagType` order. The mutation table is in the H6
+plan, task J.8.
+
+**A second E2E-only route puts two people in one household:** `POST /e2e/household-members`
+(`apps/server/src/lib/e2eHouseholds.ts`, households H3a task 3.11, decision H9). Invites
+are H5, so until then it is the only way a cloud spec can share a household. Like
+`GET /e2e/users/:id`, `index.ts` mounts it inside `if (E2E_TEST_MODE)`, and
+`apps/server/src/webhookRouteOrder.test.ts` fails if it is moved outside that block. **It
+checks no signature and no session: it adds anybody to anybody's household, with no check
+of who asks.** That is why it must only exist in E2E mode. It refuses a member who is
+already in a household, so a spec must add the member BEFORE the member sends any GraphQL
+request (otherwise it answers 409). The helper is `addHouseholdMember` in
+`e2e/helpers/cloudUsers.ts`.
+
+Two specs use it, both joined on 2026-11-04 (task 3.11), both cloud only with no browser.
+The `cloud` project went 125 → **130** collected and 27 → **29** files; `local` stayed at
+183 in 23 files.
+
+- `cloud-roles.spec.ts`, 3 tests: the first real-SQL check of roles with two people. A
+  household `member` cannot create a tag and a `manager` can; a location `viewer` can read
+  stock but not change it and a `participant` can; a location with no role is refused for
+  both read and write. Proved by mutation: `requireLocationRole` ignoring `role` turns the
+  viewer test red.
+- `household-member-cleanup.spec.ts`, 2 tests: `/e2e/cleanup` run by the owner and by the
+  member, in both orders. The member's cleanup leaves the owner's household alone; the
+  owner's cleanup removes the member's role rows too. After that the member gets
+  `NO_HOUSEHOLD`, the first real-SQL test that reaches it.
+
+`live-cart.spec.ts` joined on 2026-11-16 (households H3c-1, task C.6) — 3 cloud test
+cases, with a browser, a real WebSocket and real Postgres. The `cloud` project now collects
+**146** tests in **31** files; `local` **184** in 23, `pwa` **73** in 2 (measured with
+`--list` on 2026-11-16). It is the first E2E test of a socket: a member's `addToCart`
+reaches the open cart page without a reload, another household's change never reaches the
+tab, and a change made while the socket is closed shows after the reconnect. It is in the
+`local` project's `testIgnore`. It does **not** use a real Clerk token on the socket; that
+is a manual check in the H3c-1 deploy runbook. See *Live updates (cloud)* above.
+
+`live-pantry.spec.ts` joined on 2026-11-16 (households H3c-2, task D.5) — 5 cloud test
+cases, with a browser, a real WebSocket and real Postgres. The `cloud` project now collects
+**151** tests in **32** files; `local` **184** in 23, `pwa` **73** in 2 (measured with
+`--list` on 2026-11-16). It checks that the pantry shows a change to stock, an item name, the
+location list, a checkout and an item delete without a reload. Test 5 is the first real-SQL
+run of `deleteItem`'s `inventoryLog.findMany({ distinct: ['locationId'] })` read, which finds
+the locations to send `LOG` to before the cascade deletes the rows. See *Live updates
+(cloud)* above.
+
+`settings/import-households.spec.ts` joined on 2026-11-16 (households H4 task E.6) — cloud
+only, with a browser. The `cloud` project now collects **160** tests in **33** files; `local`
+**184** in 23, `pwa` **73** in 2 (measured with `--list` on 2026-11-17). It is the first real-SQL
+coverage of `importCheck`, the import role gate, "Import into which location?" and the
+skipped-location message, and the first spec where the BROWSER is a second person in someone
+else's household. One person in TWO households is still impossible there, so issue #381 has no
+real-SQL test until H5. See `e2e/CLAUDE.md` for its tests.
+
+`shared-household.spec.ts` joined on 2026-11-17 (households H5 task F.8) — 3 cloud test
+cases, with a browser, cloud only (in `local`'s `testIgnore`). The `cloud` project now
+collects **168** tests in **34** files; `local` **189** in 23, `pwa` **73** in 2 (measured
+with `--list` on 2026-11-17, task F.9). **It is the first spec with two BROWSERS that are
+two different people.** The project's own `page` is still `E2E_USER_ID`, because
+`VITE_E2E_TEST_USER_ID` is one value in the web build. Since F.8 the E2E build also reads
+`localStorage['e2e-user-id']` (`getE2ETestUserId` in `apps/web/src/lib/e2eUser.ts`; a
+production build never reads it), and `newUserContext(browser, userId, extraLocalStorage?)`
+in `e2e/helpers/userContext.ts` makes a context that sets it. Its three tests: a household
+`member` sees the catalog read-only; a location `viewer` sees a cart row the owner adds in the
+owner's browser, live, and gets no Done; a location a member creates shows to the owner as
+**No access** and never in the switcher. The 409 order of `addHouseholdMember` still
+applies: add a person to the household BEFORE their context opens a page. See
+`e2e/CLAUDE.md` for the mutation table.
+
+`household-invites.spec.ts` joined on 2026-11-18 (households H5b task G.10) — 8 cloud test
+cases, with up to three browsers, cloud only (in `local`'s `testIgnore`). The `cloud` project
+now collects **177** tests in **35** files; `local` **189** in 23, `pwa` **73** in 2 (measured
+with `--list` on 2026-11-18, task G.11). It is the first real-SQL run of `createInvite`,
+`revokeInvite`, `invitePreview`, `joinHousehold`, `setHouseholdRole`, `removeMember`,
+`leaveHousehold` and `createHousehold`, and the first real-SQL test of one person in two
+households (the issue #381 test H4 owed). A person joins through the real flow, starting
+as a brand-new visitor in LOCAL mode (`newUserContext(…, { cloudMode: false,
+skipOnboarding: false })`). Nothing failed on real SQL that the fakes had accepted. Tests
+7 and 8 are the axe scans of the join page, the Members page, its dialogs and the
+no-household screen, light and dark: `a11y.spec.ts` does not run in cloud. Dialog scans
+use `checkDialogA11y` (`e2e/helpers/axe.ts`), which leaves out only filled buttons, only
+from `color-contrast`, because of the known `opacity-90` defect of `buttonVariants`. See
+`e2e/CLAUDE.md` for the test table and the twelve mutation checks.
 
 The warning above still holds for everything else — most resolvers are named by no cloud
 spec.
@@ -1768,7 +2466,7 @@ so naming `wcag22aa` turns it on. It passed all 130 scans. A comment in the spec
 `target-size` "still polices" the known-bad destructive confirm button; that was false until
 this fix, because the rule was not running at all.
 
-**To widen the gate again, add `'best-practice'` to `WCAG_AA_TAGS` in the spec file.**
+**To widen the gate again, add `'best-practice'` to `WCAG_AA_TAGS` in `e2e/helpers/axe.ts`.** (It sat in `a11y.spec.ts` until households H5 task F.4 moved it into that helper, so the cloud-only scans of the View only switcher in `location-switcher.spec.ts` use the same rules. `a11y.spec.ts` does not run in the `cloud` project.)
 Nothing else needs to change. That is the one line to edit, recorded here so the narrowing
 is reversible rather than forgotten.
 
@@ -1818,7 +2516,7 @@ await new Promise<void>((resolve, reject) => {
 })
 ```
 
-**`afterEach` teardown** — always clear IndexedDB, localStorage, and sessionStorage. See the root `e2e/tests/shopping.spec.ts` or `e2e/tests/cooking.spec.ts` for the canonical teardown block.
+**`afterEach` teardown** — always clear IndexedDB, localStorage, and sessionStorage. See the root `e2e/tests/shopping.spec.ts` or `e2e/tests/cooking.spec.ts` for the canonical teardown block. **The cloud cleanup is NOT in `afterEach`** (since E2E speed plan task S.3): each cloud test calls `cleanupCloudData` once, in `beforeEach`, with every user it uses. See `e2e/CLAUDE.md`, *Every cloud spec uses `cleanupCloudData`*.
 
 **Test naming** — same "user can ..." convention with Given-When-Then comments as unit tests.
 

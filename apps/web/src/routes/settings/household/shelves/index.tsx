@@ -28,8 +28,10 @@ import {
   Trash2,
 } from 'lucide-react'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { DeleteButton } from '@/components/shared/DeleteButton'
 import { EmptyState } from '@/components/shared/EmptyState'
+import { ReadOnlyNote } from '@/components/shared/ReadOnlyNote'
 import { Toolbar } from '@/components/shared/Toolbar'
 import {
   AddShelfDialog,
@@ -39,6 +41,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardMetadata, CardTitle } from '@/components/ui/card'
 import { useItems } from '@/hooks'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
+import { usePermissions } from '@/hooks/usePermissions'
 import { useRecipes } from '@/hooks/useRecipes'
 import {
   useCreateShelfMutation,
@@ -47,6 +50,7 @@ import {
   useShelvesQuery,
 } from '@/hooks/useShelves'
 import { useTags } from '@/hooks/useTags'
+import { showSaveError } from '@/lib/saveError'
 import { countSelectedFilters, matchesFilterConfig } from '@/lib/shelfUtils'
 import type { Shelf } from '@/types'
 
@@ -59,7 +63,11 @@ export const Route = createFileRoute('/settings/household/shelves/')({
 interface SortableShelfRowProps {
   shelf: Shelf
   itemCount: number
-  onDelete: () => void
+  /**
+   * Left out for a household member (households H5 task F.5): the row then
+   * has no drag handle and no Delete button.
+   */
+  onDelete?: () => Promise<void>
 }
 
 function SortableShelfRow({
@@ -74,7 +82,7 @@ function SortableShelfRow({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: shelf.id })
+  } = useSortable({ id: shelf.id, disabled: !onDelete })
 
   // Only filter shelves have filters at all — a selection shelf omits the count
   // entirely rather than reporting a meaningless "0 filters".
@@ -92,15 +100,20 @@ function SortableShelfRow({
     <div ref={setNodeRef} style={style}>
       <Card className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-4 py-1">
         {/* Left side: drag handle + icon + name + count */}
-        <button
-          type="button"
-          className="cursor-grab active:cursor-grabbing text-foreground-muted hover:text-foreground"
-          aria-label={`Drag to reorder ${shelf.name}`}
-          {...attributes}
-          {...listeners}
-        >
-          <GripVertical className="h-4 w-4" />
-        </button>
+        {onDelete ? (
+          <button
+            type="button"
+            className="cursor-grab active:cursor-grabbing text-foreground-muted hover:text-foreground"
+            aria-label={`Drag to reorder ${shelf.name}`}
+            {...attributes}
+            {...listeners}
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
+        ) : (
+          // Keeps the first grid column, so the rows line up the same way
+          <span aria-hidden="true" className="w-4" />
+        )}
 
         <CardTitle className="truncate">
           <Link
@@ -132,15 +145,17 @@ function SortableShelfRow({
           </span>
         </CardMetadata>
         {/* Right side: delete */}
-        <DeleteButton
-          trigger={<Trash2 className="h-4 w-4" />}
-          buttonVariant="destructive-ghost"
-          buttonSize="icon"
-          buttonAriaLabel={`Delete ${shelf.name}`}
-          dialogTitle={`Delete "${shelf.name}"?`}
-          dialogDescription="Items will move to Unsorted."
-          onDelete={onDelete}
-        />
+        {onDelete && (
+          <DeleteButton
+            trigger={<Trash2 className="h-4 w-4" />}
+            buttonVariant="destructive-ghost"
+            buttonSize="icon"
+            buttonAriaLabel={`Delete ${shelf.name}`}
+            dialogTitle={`Delete "${shelf.name}"?`}
+            dialogDescription="Items will move to Unsorted."
+            onDelete={onDelete}
+          />
+        )}
       </Card>
     </div>
   )
@@ -149,7 +164,14 @@ function SortableShelfRow({
 // ----- Main page -----
 
 export function ShelfSettingsPage() {
+  const { t } = useTranslation()
   const { goBack } = useAppNavigation('/settings')
+  // A household member sees the shelves read-only (households H5 task F.5).
+  const { canEditCatalog, roleKnown } = usePermissions()
+  // Only once the role is known (`roleKnown`): while it loads, or when
+  // `GetHousehold` failed, `canEditCatalog` is false for every role, and the
+  // note would tell an owner they cannot edit.
+  const showReadOnlyNote = roleKnown && !canEditCatalog
   const { data: shelves = [] } = useShelvesQuery()
   const { data: items = [] } = useItems()
   const { data: recipes = [] } = useRecipes()
@@ -189,20 +211,34 @@ export function ShelfSettingsPage() {
     if (oldIndex === -1 || newIndex === -1) return
 
     const reordered = arrayMove(userShelves, oldIndex, newIndex)
-    reorderShelves.mutate(reordered.map((s) => s.id))
+    // Before, a failed reorder showed nothing
+    reorderShelves.mutate(
+      reordered.map((s) => s.id),
+      {
+        onError: (err) => showSaveError(err),
+      },
+    )
   }
 
   const handleDragCancel = () => {
     setActiveId(null)
   }
 
-  const handleAddShelf = (data: CreateShelfInput) => {
-    createShelf.mutate({
-      name: data.name,
-      type: data.type,
-      order: shelves.length,
-      ...(data.filterConfig ? { filterConfig: data.filterConfig } : {}),
-    })
+  // A failed create shows a toast and is passed on, so `AddShelfDialog`
+  // stays open with what the user typed. Before, the dialog closed at once
+  // and a failure showed nothing.
+  const handleAddShelf = async (data: CreateShelfInput) => {
+    try {
+      await createShelf.mutateAsync({
+        name: data.name,
+        type: data.type,
+        order: shelves.length,
+        ...(data.filterConfig ? { filterConfig: data.filterConfig } : {}),
+      })
+    } catch (err) {
+      showSaveError(err)
+      throw err
+    }
   }
 
   const getItemCount = (shelf: Shelf): number => {
@@ -275,22 +311,32 @@ export function ShelfSettingsPage() {
             </Button>
             <h1>Shelves</h1>
           </div>
-          <Button
-            size="icon"
-            className="lg:w-auto lg:px-3"
-            aria-label="Add shelf"
-            onClick={() => setDialogOpen(true)}
-          >
-            <Plus />
-            <span className="hidden lg:inline">Add</span>
-          </Button>
+          {canEditCatalog && (
+            <Button
+              size="icon"
+              className="lg:w-auto lg:px-3"
+              aria-label="Add shelf"
+              onClick={() => setDialogOpen(true)}
+            >
+              <Plus />
+              <span className="hidden lg:inline">Add</span>
+            </Button>
+          )}
         </Toolbar>
 
         <div className="overflow-y-auto [container-type:size] space-y-px pb-4">
+          {/* Why there is no add, edit or delete (H5 task F.5) */}
+          {showReadOnlyNote && (userShelves.length > 0 || hasUnsorted) && (
+            <ReadOnlyNote />
+          )}
           {userShelves.length === 0 && !hasUnsorted ? (
             <EmptyState
               title="No shelves yet"
-              description="Add a shelf using the button above."
+              description={
+                !showReadOnlyNote
+                  ? 'Add a shelf using the button above.'
+                  : t('settings.catalogReadOnly')
+              }
             />
           ) : (
             <SortableContext
@@ -306,7 +352,11 @@ export function ShelfSettingsPage() {
                   key={shelf.id}
                   shelf={shelf}
                   itemCount={getItemCount(shelf)}
-                  onDelete={() => deleteShelf.mutate(shelf.id)}
+                  {...(canEditCatalog && {
+                    onDelete: async () => {
+                      await deleteShelf.mutateAsync(shelf.id)
+                    },
+                  })}
                 />
               ))}
             </SortableContext>

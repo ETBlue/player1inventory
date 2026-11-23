@@ -5,6 +5,18 @@ import * as useTagsModule from '@/hooks/useTags'
 import { TagColor } from '@/types'
 
 // Mock modules that require router/db context not available in unit tests
+// This file renders the page with no QueryClient and a mocked
+// `@/db/operations`, so the real `usePermissions` (which reads the location
+// list) cannot run here. Local mode allows everything; the role rules are
+// tested in `routes/settings/household/catalogReadOnly.test.tsx`.
+vi.mock('@/hooks/usePermissions', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/hooks/usePermissions')>()
+  return {
+    ...real,
+    usePermissions: () => real.permissionsFor({ mode: 'local' }),
+  }
+})
+
 vi.mock('@/hooks/useAppNavigation', () => ({
   useAppNavigation: () => ({ goBack: vi.fn() }),
 }))
@@ -235,13 +247,15 @@ describe('TagSettings — tag creation dialog (cloud mode bug)', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 
-  it('user can submit the Add Tag form and mutate is called with name and typeId', async () => {
-    // Given the tags page with one existing tag type
+  it('user can submit the Add Tag form and the create is called with name and typeId', async () => {
+    // Given the tags page with one existing tag type. The dialog awaits
+    // `mutateAsync`, so it knows whether the save worked (a failed save keeps
+    // the dialog open; see tags.test.tsx, "a failed save").
     setupDefaultMocks()
-    const mutateSpy = vi.fn()
+    const mutateSpy = vi.fn().mockResolvedValue(undefined)
     vi.spyOn(useTagsModule, 'useCreateTag').mockReturnValue({
-      mutate: mutateSpy,
-      mutateAsync: vi.fn(),
+      mutate: vi.fn(),
+      mutateAsync: mutateSpy,
       isPending: false,
     })
 
@@ -259,16 +273,21 @@ describe('TagSettings — tag creation dialog (cloud mode bug)', () => {
     await user.type(within(dialog).getByLabelText(/name/i), 'Apples')
     await user.click(within(dialog).getByRole('button', { name: /^save$/i }))
 
-    // Then mutate was called with the correct input
+    // Then the create was called with the correct input
     expect(mutateSpy).toHaveBeenCalledOnce()
     expect(mutateSpy).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'Apples', typeId: existingTagType.id }),
     )
   })
 
-  it('user dialog closes immediately after Save is clicked (onSave closes dialog synchronously)', async () => {
-    // Given the tags page — TagInfoForm's onSave calls setAddTagDialog(null) synchronously
+  it('user sees the dialog close after the tag is saved', async () => {
+    // Given the tags page, and a create that succeeds
     setupDefaultMocks()
+    vi.spyOn(useTagsModule, 'useCreateTag').mockReturnValue({
+      mutate: vi.fn(),
+      mutateAsync: vi.fn().mockResolvedValue(undefined),
+      isPending: false,
+    })
 
     const user = userEvent.setup()
     const { TagSettings } = await import(
@@ -282,7 +301,7 @@ describe('TagSettings — tag creation dialog (cloud mode bug)', () => {
     await user.type(within(dialog).getByLabelText(/name/i), 'Apples')
     await user.click(within(dialog).getByRole('button', { name: /^save$/i }))
 
-    // Then the dialog closes immediately
+    // Then the dialog closes
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     })

@@ -10,6 +10,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
+import { saveNavigationHistory } from '@/lib/sessionStorage'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
 import { mockScreen } from '@/test/viewport'
@@ -70,12 +71,56 @@ describe('Settings page (/settings)', () => {
         expect(router.state.location.pathname).toBe('/settings/household')
       })
       expect(
-        await screen.findByRole('heading', { level: 1, name: 'My data' }),
+        await screen.findByRole('heading', { level: 1, name: 'General' }),
       ).toBeInTheDocument()
     })
   })
 
   describe('on mobile', () => {
+    it('user sees no bottom bar on the settings page, and a Back icon in the top bar', async () => {
+      // Given the mobile /settings page
+      mockScreen({ desktop: false })
+      renderSettings()
+      const title = await screen.findByRole('heading', {
+        level: 1,
+        name: 'Settings',
+      })
+
+      // Then the bottom bar is gone (owner request, 2026-11-23)
+      expect(
+        screen.queryByRole('navigation', { name: 'Bottom navigation' }),
+      ).toBeNull()
+
+      // And Back sits before the title, as an icon with the name "Back"
+      const back = screen.getByRole('button', { name: 'Back' })
+      expect(back).toHaveTextContent(/^$/)
+      expect(
+        back.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy()
+    })
+
+    it('user goes Back from the settings page to the last cart they saw', async () => {
+      // Given the user saw a cart, then an item, then settings
+      sessionStorage.clear()
+      saveNavigationHistory([
+        '/cooking',
+        '/shopping/v1?q=milk',
+        '/items/i1',
+        '/settings',
+      ])
+      mockScreen({ desktop: false })
+      const router = renderSettings()
+
+      // When the user presses Back
+      await userEvent.click(await screen.findByRole('button', { name: 'Back' }))
+
+      // Then they are on that cart again, with its search string, the same
+      // place the desktop household sidebar's Back goes
+      await waitFor(() => {
+        expect(router.state.location.href).toBe('/shopping/v1?q=milk')
+      })
+    })
+
     it('user stays on /settings and sees the two accordion items', async () => {
       // Given a mobile screen
       mockScreen({ desktop: false })
@@ -129,6 +174,36 @@ describe('Settings page (/settings)', () => {
         ['Recipes', '/settings/household/recipes'],
         ['Tags', '/settings/household/tags'],
       ])
+    })
+
+    it('user in cloud mode sees Members second among the household links', async () => {
+      // Given a mobile screen in cloud mode (households H5b task G.9)
+      mockScreen({ desktop: false })
+      localStorage.setItem('data-mode', 'cloud')
+      vi.stubEnv('VITE_E2E_TEST_USER_ID', '')
+
+      // When the user opens /settings
+      renderSettings()
+
+      // Then the household item holds seven links, Members second
+      const main = await screen.findByRole('main')
+      const general = await within(main).findByRole('link', { name: /General/ })
+      const region = general.closest('[role="region"]') as HTMLElement
+      const hrefs = within(region)
+        .getAllByRole('link')
+        .map((link) => link.getAttribute('href'))
+      expect(hrefs).toEqual([
+        '/settings/household',
+        '/settings/household/members',
+        '/settings/household/locations',
+        '/settings/household/shelves',
+        '/settings/household/vendors',
+        '/settings/household/recipes',
+        '/settings/household/tags',
+      ])
+      expect(
+        within(region).getByRole('link', { name: /Members/ }),
+      ).toHaveTextContent('People in this household, and invites')
     })
 
     it('user can open the preferences item to see theme, language and data mode', async () => {

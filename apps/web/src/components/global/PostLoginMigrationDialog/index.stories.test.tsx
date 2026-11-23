@@ -1,15 +1,82 @@
 import { composeStories } from '@storybook/react'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as stories from './index.stories'
 
 // Freeze fetchLocalPayload on a never-resolving promise so the 'auto-importing'
-// state stays mounted long enough to assert. Without this, the hook's async
+// state stays mounted long enough to assert (after Copy here in AskBeforeCopy). Without this, the hook's async
 // chain (fetchLocalPayload → importCloudData → 'done') settles in a single tick
 // — fetchLocalPayload rejects against the empty test DB and the .catch jumps the
 // hook straight to 'done', closing the progress dialog before findByText can
-// observe it. Idle returns early (migration-prompted set) and Prompting calls
-// getAllItems (not fetchLocalPayload), so neither is affected.
+// observe it. Idle returns early (migration-prompted set) and the two Prompting
+// stories call getAllItems (not fetchLocalPayload), so none is affected.
+// The three cloud stories need a household and a location list. `setup.ts`
+// stubs both Apollo hooks with no data, and `MockedProvider` takes effect only
+// in real Storybook, so this file answers them. Each test sets the role.
+type Role = 'owner' | 'manager' | 'member'
+// `households` is what `MyHouseholds` answers (households H7 task L.5). It
+// repeats the story's `MockedProvider` list, which only real Storybook reads.
+const { state } = vi.hoisted(() => ({
+  state: {
+    role: 'owner' as Role,
+    households: [] as Array<{ id: string; name: string; role: Role }>,
+  },
+}))
+vi.mock('@/generated/graphql', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@/generated/graphql')>()
+  return {
+    ...original,
+    useGetHouseholdQuery: (options?: { skip?: boolean }) => ({
+      data: options?.skip
+        ? undefined
+        : {
+            household: {
+              __typename: 'Household',
+              id: 'household-1',
+              name: 'Our Home',
+              role: state.role,
+              hasOwner: true,
+              pendingTransfer: null,
+            },
+          },
+      loading: false,
+      error: undefined,
+    }),
+    useMyHouseholdsQuery: (options?: { skip?: boolean }) => ({
+      data: options?.skip
+        ? undefined
+        : {
+            myHouseholds: state.households.map((h) => ({
+              __typename: 'HouseholdChoice',
+              ...h,
+              isActive: h.id === 'household-1',
+            })),
+          },
+      loading: false,
+      error: undefined,
+    }),
+    useGetLocationsQuery: (options?: { skip?: boolean }) => ({
+      data: options?.skip
+        ? undefined
+        : {
+            locations: [
+              {
+                __typename: 'Location',
+                id: 'location-1',
+                name: 'Kitchen',
+                order: 0,
+                createdAt: '2026-11-01T00:00:00.000Z',
+                updatedAt: '2026-11-01T00:00:00.000Z',
+                myRole: 'organizer',
+              },
+            ],
+          },
+      loading: false,
+      error: undefined,
+    }),
+  }
+})
+
 vi.mock('@/lib/exportData', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/exportData')>()
   return {
@@ -18,7 +85,25 @@ vi.mock('@/lib/exportData', async (importOriginal) => {
   }
 })
 
-const { Idle, Prompting, AutoImporting } = composeStories(stories)
+const {
+  Idle,
+  Prompting,
+  PromptingMember,
+  AskBeforeCopy,
+  AskBeforeClear,
+  AskBeforeCopyShared,
+  MemberCannotCopy,
+  ChooseHouseholdTwo,
+  ChooseHouseholdOne,
+} = composeStories(stories)
+
+// composeStories does not run a story's `beforeEach`, so each test sets the
+// keys itself.
+function storedCopy() {
+  localStorage.setItem('data-mode', 'cloud')
+  localStorage.setItem('migration-strategy', 'skip')
+  localStorage.removeItem('migration-prompted')
+}
 
 describe('PostLoginMigrationDialog stories smoke tests', () => {
   describe('Idle', () => {
@@ -33,31 +118,134 @@ describe('PostLoginMigrationDialog stories smoke tests', () => {
   })
 
   describe('Prompting', () => {
-    afterEach(() => localStorage.removeItem('migration-prompted'))
+    beforeEach(() => localStorage.setItem('data-mode', 'cloud'))
+    afterEach(() => {
+      localStorage.clear()
+      state.role = 'owner'
+    })
 
-    it('renders without error — dialog title visible once db is ready', async () => {
+    it('Prompting names the household and offers the copy', async () => {
+      state.role = 'owner'
       render(<Prompting />)
       expect(
-        await screen.findByText('Import local data to cloud?'),
+        await screen.findByRole('heading', {
+          name: 'Copy your offline data into Our Home?',
+        }),
       ).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Copy here' }),
+      ).toBeInTheDocument()
+    })
+
+    it('PromptingMember names the household and offers no copy', async () => {
+      state.role = 'member'
+      render(<PromptingMember />)
+      expect(
+        await screen.findByRole('heading', {
+          name: 'Copy your offline data into Our Home?',
+        }),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByText(/Only the owner or a manager of this household/),
+      ).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Copy here' })).toBeNull()
     })
   })
 
-  describe('AutoImporting', () => {
-    beforeEach(() => {
-      localStorage.setItem('migration-strategy', 'skip')
-      localStorage.removeItem('migration-prompted')
-    })
+  describe('the cloud stories', () => {
+    beforeEach(storedCopy)
     afterEach(() => {
-      localStorage.removeItem('migration-strategy')
-      localStorage.removeItem('migration-prompted')
+      localStorage.clear()
+      state.role = 'owner'
     })
 
-    it('renders without error — auto-import progress dialog shown', async () => {
-      render(<AutoImporting />)
+    it('AskBeforeCopy asks by name, and Copy here starts the copy', async () => {
+      state.role = 'owner'
+      render(<AskBeforeCopy />)
+      expect(
+        await screen.findByRole('heading', {
+          name: 'Copy your offline data into Our Home?',
+        }),
+      ).toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Copy here' }))
       expect(
         await screen.findByText('Copying local data to cloud…'),
       ).toBeInTheDocument()
+    })
+
+    it('AskBeforeClear asks for the household name before a clear copy', async () => {
+      state.role = 'owner'
+      localStorage.setItem('migration-strategy', 'clear')
+      render(<AskBeforeClear />)
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Copy here' }))
+      expect(
+        await screen.findByLabelText('Type Our Home to confirm'),
+      ).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Copy here' })).toBeDisabled()
+    })
+
+    it('AskBeforeCopyShared says the household is shared', async () => {
+      state.role = 'manager'
+      render(<AskBeforeCopyShared />)
+      expect(
+        await screen.findByText(/This household is shared/),
+      ).toBeInTheDocument()
+    })
+
+    it('MemberCannotCopy offers no copy', async () => {
+      state.role = 'member'
+      render(<MemberCannotCopy />)
+      expect(
+        await screen.findByText(/Only the owner or a manager/),
+      ).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Copy here' })).toBeNull()
+    })
+  })
+
+  describe('the household choice', () => {
+    beforeEach(storedCopy)
+    afterEach(() => {
+      localStorage.clear()
+      state.role = 'owner'
+      state.households = []
+    })
+
+    it('ChooseHouseholdTwo lists the two households the copy may go into, not the member one', async () => {
+      state.households = [
+        { id: 'household-1', name: 'Our Home', role: 'owner' },
+        { id: 'household-chen', name: 'Chen flat', role: 'manager' },
+        { id: 'household-lee', name: 'Lee house', role: 'member' },
+      ]
+      render(<ChooseHouseholdTwo />)
+      const group = await screen.findByRole('radiogroup', {
+        name: 'Copy into',
+      })
+      expect(group).toBeInTheDocument()
+      expect(
+        screen.getByRole('radio', { name: 'Our Home (Owner)' }),
+      ).toBeChecked()
+      expect(
+        screen.getByRole('radio', { name: 'Chen flat (Manager)' }),
+      ).not.toBeChecked()
+      expect(
+        screen.getByRole('radio', { name: 'A new household' }),
+      ).toBeInTheDocument()
+      expect(screen.queryByRole('radio', { name: /Lee house/ })).toBeNull()
+    })
+
+    it('ChooseHouseholdOne lists the one household and a new one', async () => {
+      state.households = [
+        { id: 'household-1', name: 'Our Home', role: 'owner' },
+      ]
+      render(<ChooseHouseholdOne />)
+      await screen.findByRole('radiogroup', { name: 'Copy into' })
+      expect(screen.getAllByRole('radio')).toHaveLength(2)
+      expect(
+        screen.getByRole('radio', { name: 'Our Home (Owner)' }),
+      ).toBeChecked()
+      expect(screen.getByRole('button', { name: 'Copy here' })).toBeEnabled()
     })
   })
 })

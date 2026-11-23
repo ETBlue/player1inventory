@@ -51,6 +51,20 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
     ],
+    // Households H7b task M.4: the switcher's sort and the visit.
+    useMyLocationSortQuery: () => ({
+      data: undefined,
+      loading: false,
+      error: undefined,
+    }),
+    useSetLocationSortMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
+    useMarkLocationVisitedMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
     useItemLogsQuery: (options?: Record<string, unknown>) => {
       capturedItemLogsQueryOptions = options
       return mockItemLogsQuery()

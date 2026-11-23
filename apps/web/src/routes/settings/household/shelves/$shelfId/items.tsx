@@ -7,6 +7,7 @@ import { EmptyState } from '@/components/shared/EmptyState'
 import { useInnerPageScrollRef } from '@/components/shared/LayoutInnerPages'
 import { useCreateItem, useItems, useTagTypes } from '@/hooks'
 import { useItemSortData } from '@/hooks/useItemSortData'
+import { usePermissions } from '@/hooks/usePermissions'
 import { useRecipes } from '@/hooks/useRecipes'
 import { useScrollRestoration } from '@/hooks/useScrollRestoration'
 import { useShelfQuery, useUpdateShelfMutation } from '@/hooks/useShelves'
@@ -19,6 +20,7 @@ import {
   filterItemsByRecipes,
   filterItemsByVendors,
 } from '@/lib/filterUtils'
+import { showSaveError } from '@/lib/saveError'
 import { sortItems } from '@/lib/sortUtils'
 import type { Recipe, Vendor } from '@/types'
 
@@ -37,6 +39,10 @@ function ShelfItemsTab() {
   // goes into the catalog and is stocked in no location (D3). This tab
   // bypasses NewItemDialog and creates directly, so it opts in here instead.
   const createItem = useCreateItem({ catalogOnly: true })
+  // A household member sees the assignments read only (households H5 task
+  // F.5): the checkboxes show what is assigned but are disabled, and there
+  // is no "Create item" from search.
+  const { canEditCatalog, roleKnown } = usePermissions()
   const { data: items = [], isLoading } = useItems()
   const { data: tags = [] } = useTags()
   const { data: tagTypes = [] } = useTagTypes()
@@ -118,6 +124,9 @@ function ShelfItemsTab() {
     setSavingItemIds((prev) => new Set(prev).add(itemId))
     try {
       await updateShelf.mutateAsync({ id: shelf.id, data: { itemIds: newIds } })
+    } catch (err) {
+      // Shown, not left unhandled: this runs straight off a click
+      showSaveError(err)
     } finally {
       setSavingItemIds((prev) => {
         const next = new Set(prev)
@@ -175,8 +184,10 @@ function ShelfItemsTab() {
         id: shelf.id,
         data: { itemIds: [...currentIds, newItem.id] },
       })
-    } catch {
-      // input stays populated for retry
+    } catch (err) {
+      // The typed name stays in the search box, so the user can try again.
+      // Before, this catch showed nothing.
+      showSaveError(err)
     }
   }
 
@@ -239,7 +250,10 @@ function ShelfItemsTab() {
         items={items}
         vendors={vendors}
         recipes={recipes}
-        onCreateFromSearch={handleCreateFromSearch}
+        onCreateFromSearch={canEditCatalog ? handleCreateFromSearch : undefined}
+        createReadOnlyNote={
+          roleKnown && !canEditCatalog ? t('items.createReadOnly') : undefined
+        }
         hasExactMatch={hasExactMatch}
         isCreating={createItem.isPending || updateShelf.isPending}
         className="bg-transparent border-none"
@@ -300,7 +314,7 @@ function ShelfItemsTab() {
                     activeRecipeIds={selectedRecipeIds}
                     isChecked={isAssigned(item.id)}
                     onCheckboxToggle={() => handleToggle(item.id)}
-                    disabled={savingItemIds.has(item.id)}
+                    disabled={!canEditCatalog || savingItemIds.has(item.id)}
                   />
                 </div>
               )

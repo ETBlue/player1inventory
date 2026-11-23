@@ -155,6 +155,11 @@ export interface ShoppingCart {
 }
 
 // Build the location-scoped cart id. vendorId === null means the no-vendor cart.
+//
+// Both `apps/web` and `apps/server` import this function. The server's cart
+// re-key migration also builds the no-vendor id in SQL as
+// `l."id" || ':no-vendor'`, so changing the format here makes that SQL wrong.
+// `apps/server/src/lib/cartIdRules.test.ts` pins the exact ids.
 export function cartIdFor(locationId: string, vendorId: string | null): string {
   return `${locationId}:${vendorId ?? 'no-vendor'}`
 }
@@ -162,6 +167,11 @@ export function cartIdFor(locationId: string, vendorId: string | null): string {
 // Parse a location-scoped cart id back into its parts. Returns vendorId === null
 // for the no-vendor cart. Handles vendor ids that themselves contain ':' by
 // splitting only on the first colon.
+//
+// A cart id with no colon at all is a pre-migration id. It parses as
+// `{ locationId: <the whole id>, vendorId: null }`. No real location has that
+// id, so the server's `requireLocationRole` rejects it. That is on purpose: an
+// old client must fail loudly rather than read another location's cart.
 export function parseCartId(cartId: string): {
   locationId: string
   vendorId: string | null
@@ -186,30 +196,25 @@ export interface CartItem {
  * A row at quantity 0 is PINNED. It stays in the permanent cart, is not bought,
  * and gets no inventory log. Anything above 0 is being bought.
  *
- * This is the canonical copy. Two sides must give the same answer:
+ * This is the only JavaScript copy. Two places must give the same answer:
  *
- * | Side | Where |
- * |---|---|
- * | web | `apps/web/src/lib/checkoutQuantities.ts` imports this function |
- * | server | `apps/server/src/lib/checkout.ts` keeps a SECOND COPY |
+ * | Side | Where | Form |
+ * |---|---|---|
+ * | web | the cloud shopping page, `checkoutRows` in `apps/web/src/routes/shopping/$vendorId.tsx` | this function |
+ * | server | `checkout` in `apps/server/src/resolvers/cart.resolver.ts` | the SQL filter `quantity: { gt: 0 }` |
  *
- * `apps/server` cannot import this file at runtime. `@p1i/types` has no build
- * step, so `node dist/index.js` fails with `ERR_UNKNOWN_FILE_EXTENSION` while
- * every check in the verification gate passes. `apps/server/src/lib/checkout.ts`
- * carries the full measurement, and `apps/server/src/lib/checkout.test.ts`
- * imports both copies and asserts they agree.
+ * ── WHY THEY MUST AGREE ──
  *
- * ── WHY A DRIFT HERE BREAKS A REAL CHECKOUT ──
+ * Since households H3b task B.5 the cloud `checkout` mutation takes the rows
+ * the screen showed as being bought (`{ cartItemId, quantity }`), and refuses
+ * the whole checkout with `CART_CHANGED` when that list is not exactly the
+ * cart's rows with `quantity > 0`. So if the web rule and the SQL filter ever
+ * disagreed, every checkout of a cart holding the row they disagree about
+ * would be refused. Change the SQL filter in the same commit if this rule
+ * changes. (Until task B.5 the server also called this function, and a
+ * mismatch failed with `BAD_USER_INPUT`.)
  *
- * The cloud `checkout` mutation takes a required `items` argument: one entry per
- * bought cart row, carrying the on-hand total the client computed. The resolver
- * throws `BAD_USER_INPUT` when a bought row has no entry, with no raw-sum
- * fallback, on purpose (issue #336). So if the web filter became narrower than
- * the server filter, the server would be buying a row the client sent no
- * quantity for, and the user's whole checkout would fail.
- *
- * Do not change the rule here without changing `apps/server/src/lib/checkout.ts`
- * in the same commit.
+ * `apps/server/src/lib/isBeingBought.test.ts` pins its answers.
  */
 export function isBeingBought(cartItem: { quantity: number }): boolean {
   return cartItem.quantity > 0
@@ -260,13 +265,29 @@ export interface Location {
   id: string
   name: string
   order: number
-  // The user's single undeletable location. Exactly one row carries `true`.
+  // LOCAL MODE ONLY. The local user's single undeletable location ("My Home").
+  // Exactly one local row carries `true`, and its id is DEFAULT_LOCATION_ID.
   // Not derivable from `order`: LocationList disables dragging *of* the default
   // row, but another row dragged above it still displaces it, so the default's
-  // order is not stable. In local mode this is always DEFAULT_LOCATION_ID; in
-  // cloud mode the default's id is a server-generated cuid, which is why the
-  // flag exists rather than an id comparison.
-  isDefault: boolean
+  // order is not stable.
+  //
+  // Cloud rows never carry it (households H3a, task 3.12). A household has no
+  // default location: any location can be deleted, the last one too since
+  // households H5 task F.7 (before, the server refused it with
+  // `LAST_LOCATION`). Where cloud code needs "the
+  // fallback location", it uses the FIRST location (the server returns them
+  // by `order`). So code must test `isDefault === true`, never just read it.
+  isDefault?: boolean
   createdAt: Date
   updatedAt: Date
 }
+
+// The quantity rules shared by the web and the server (households H3b, task
+// B.1). `quantity.ts` imports two types back from this file. That import is
+// type-only, so it is erased at build time and makes no runtime cycle.
+export * from './quantity'
+
+// The location role rules shared by the web and the server (households H5c,
+// decision T33): the rank map, `locationRoleAtLeast` and
+// `canChangeLocationRole`.
+export * from './locationRoles'

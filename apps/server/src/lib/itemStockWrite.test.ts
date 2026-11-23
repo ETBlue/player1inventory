@@ -39,8 +39,8 @@ const GARAGE = 'loc-garage'
 function reset() {
   stockFake.reset(
     [
-      { id: HOME, userId: 'user-a', isDefault: true },
-      { id: GARAGE, userId: 'user-a', isDefault: false },
+      { id: HOME, householdId: 'hh-a' },
+      { id: GARAGE, householdId: 'hh-a' },
     ],
     [
       makeStock({

@@ -5,12 +5,16 @@
     "positiveNumber": "Must be greater than 0."
   },
   "common": {
+    "locationViewOnly": "You can view this location, but not change it.",
+    "lostLocationAccess": "You no longer have access to {{location}}.",
     "cancel": "Cancel",
     "delete": "Delete",
     "deleting": "Deleting...",
+    "deleteFailed": "Could not delete. Please try again.",
     "nameLabel": "Name",
     "save": "Save",
     "saving": "Saving...",
+    "saveFailed": "Could not save the change. Please try again.",
     "discard": "Discard",
     "goBack": "Go back",
     "edit": "Edit",
@@ -71,6 +75,7 @@
       "title": "Abandon this shopping trip?",
       "description": "All items will be removed from the cart."
     },
+    "cartChanged": "This cart changed. Please check and try again.",
     "checkoutDialog": {
       "title": "Complete shopping trip?",
       "description": "Quantities will be updated based on your cart."
@@ -119,12 +124,14 @@
       "requested": "requested",
       "available": "available"
     },
+    "consumeFailed": "Could not finish cooking. Please try again.",
     "cancelDialog": {
       "title": "Discard all selections?",
       "description": "All recipe selections and amount adjustments will be reset."
     }
   },
   "cookingControlBar": {
+    "createReadOnly": "Only a household owner or manager can create a new recipe.",
     "sort": {
       "name": "Name",
       "recent": "Last Cooked",
@@ -229,6 +236,7 @@
     "back": "Back"
   },
   "items": {
+    "createReadOnly": "Only a household owner or manager can create a new item.",
     "newButton": "New Item",
     "addDialog": {
       "title": "Add Item",
@@ -239,7 +247,8 @@
       "alreadyStocked": "Already here",
       "alreadyStockedHere": "{{name}} is already in {{location}}.",
       "packageUnitLabel": "Package unit",
-      "packageUnitPlaceholder": "e.g. bottle, kg"
+      "packageUnitPlaceholder": "e.g. bottle, kg",
+      "createFailed": "Could not create {{name}}. Please try again."
     },
     "searchTail": {
       "rowAction": "{{action}}: {{name}}",
@@ -249,6 +258,7 @@
       "addToRecipe": "Add to recipe",
       "inRecipes": "In {{recipes}}",
       "addToShelf": "Add to shelf",
+      "catalogReadOnly": "Only an owner or manager can add it here.",
       "notMatchingShelf": "Doesn't match this shelf's filters",
       "filterPicks": {
         "title": "Add {{name}} to {{shelf}}",
@@ -430,7 +440,9 @@
         "notStockedDescription": "{{name}} has no stock in {{location}} yet.",
         "addToLocation": "Add to location",
         "addFailed": "Could not add {{name}} to {{location}}. Please try again.",
-        "removeFromLocation": "Remove from location"
+        "removeFromLocation": "Remove from location",
+        "removeForbidden": "Only an organizer of {{location}} can remove {{name}} from it.",
+        "removeFailed": "Could not remove {{name}} from {{location}}. Please try again."
       },
       "removeLocationDialog": {
         "title": "Remove {{name}} from {{location}}?",
@@ -467,12 +479,120 @@
     "createItem": "Create item"
   },
   "settings": {
+    "catalogReadOnly": "Only a household owner or manager can add or change these.",
+    "catalogReadOnlyItem": "Only a household owner or manager can change this.",
     "title": "Settings",
     "household": {
       "title": "My data",
       "general": {
         "label": "General",
         "description": "Export and import your data"
+      },
+      "name": {
+        "label": "Household name",
+        "ownerOnly": "Only the household owner can change the name.",
+        "saved": "Household name saved",
+        "forbiddenError": "Only the household owner can rename the household.",
+        "invalidError": "Enter a name of 1 to {{max}} characters.",
+        "saveError": "Could not save the household name. Please try again."
+      },
+      "members": {
+        "title": "Members",
+        "description": "People in this household, and invites",
+        "you": "(you)",
+        "roleLabel": "Household role of {{name}}",
+        "invite": "Invite someone",
+        "inviteRole": "Household role",
+        "inviteLocations": "Location roles",
+        "createLink": "Create invite link",
+        "linkLabel": "Invite link",
+        "copyLink": "Copy link",
+        "copied": "Link copied",
+        "copyFailed": "Could not copy. Select the link and copy it yourself.",
+        "linkNote": "Anyone with this link can join once, until {{date}}.",
+        "openInvites": "Open invites",
+        "noInvites": "No open invites.",
+        "createdBy": "Created by {{name}}",
+        "expires": "Valid until {{date}}",
+        "noLocationRoles": "No location roles",
+        "giveLocationRole": "Give a location role",
+        "revoke": "Revoke",
+        "revokeConfirm": "Revoke this invite? The link will stop working.",
+        "revoked": "Invite revoked",
+        "remove": "Remove",
+        "removeLabel": "Remove {{name}}",
+        "removeConfirm": "Remove {{name}} from this household? They lose access to all its locations.",
+        "removeConfirmManager": "Open invites made by others stay open. If this person may have copied one, revoke it.",
+        "leave": "Leave household",
+        "leaveConfirm": "Leave this household? You lose access to all its locations.",
+        "ownerCannotLeave": "The owner cannot leave. Transfer ownership first.",
+        "alone": "You are the only person in this household. If you join another household with an invite while this one holds no data, this one is deleted.",
+        "loadError": "Could not load the members. Try again.",
+        "error": "Could not save the change. Try again.",
+        "leaving": "Leaving…",
+        "removing": "Removing…",
+        "invitesLoadError": "Could not load the open invites. Try again.",
+        "locationsLoadError": "Could not load the locations. Try again.",
+        "noLocations": "This household has no locations yet.",
+        "transfer": "Transfer ownership",
+        "transferLabel": "Transfer ownership to {{name}}",
+        "transferConfirm": "Offer {{household}} to {{name}}? You become a manager when they accept.",
+        "waiting": "Waiting for {{name}} to accept",
+        "cancelOffer": "Cancel",
+        "cancelOfferLabel": "Cancel the offer to {{name}}",
+        "becomeOwner": "Become the owner",
+        "noOwner": "This household has no owner.",
+        "lastLeaveWarning": "You are the last person here. Leaving deletes the household and everything in it."
+      },
+      "activity": {
+        "title": "Activity",
+        "description": "Who changed what in this household",
+        "empty": "Nothing has happened here yet.",
+        "loadMore": "Load more",
+        "noAccess": "Only the owner and managers can see the activity.",
+        "back": "Back to the household",
+        "loadError": "Could not load the activity. Try again.",
+        "loadMoreError": "Could not load more. Try again.",
+        "retry": "Retry",
+        "you": "You",
+        "youTarget": "you",
+        "someone": "Someone",
+        "someoneTarget": "someone",
+        "unknownLocation": "a location",
+        "unknownRole": "(unknown role)",
+        "deletedAccount": "{{name}} (deleted account)",
+        "unknownAction": "{{actor}} made a change",
+        "locationRoleSet": "{{actor}} gave {{target}} the {{role}} role on {{location}}",
+        "locationRoleRemoved": "{{actor}} removed {{target}} from {{location}}",
+        "locationLeft": "{{actor}} left {{location}}",
+        "householdRoleChanged": "{{actor}} made {{target}} {{role}}",
+        "inviteCreated": "{{actor}} created an invite for a {{role}}",
+        "inviteRevoked": "{{actor}} revoked an invite",
+        "memberJoined": "{{actor}} joined the household",
+        "memberLeft": "{{actor}} left the household",
+        "memberRemoved": "{{actor}} removed {{target}} from the household",
+        "householdCleared": "{{actor}} cleared the household",
+        "locationsDeleted_one": "{{actor}} deleted the only location",
+        "locationsDeleted_other": "{{actor}} deleted all {{count}} locations",
+        "locationsDeletedNoCount": "{{actor}} deleted all locations",
+        "locationItemsRemoved": "{{actor}} removed all items from {{location}}",
+        "import": "{{actor}} imported data",
+        "ownershipOffered": "{{actor}} offered the household to {{target}}",
+        "ownershipOfferCancelled": "{{actor}} took back the offer to {{target}}",
+        "ownershipDeclined": "{{actor}} declined to become the owner",
+        "ownershipAccepted": "{{actor}} became the owner",
+        "handoverStarted": "{{actor}}'s account was deleted. The household needs a new owner",
+        "accountDeleted": "{{actor}}'s account was deleted"
+      },
+      "danger": {
+        "title": "Danger zone",
+        "clear": "Clear household",
+        "clearDescription": "Deletes the catalog and every location with everything in it. A new \"Home\" is made. People and their household roles stay.",
+        "deleteLocations": "Delete all locations",
+        "deleteLocationsDescription": "Deletes every location with its stock, carts, logs and roles. The catalog stays. No new location is made.",
+        "deleteHousehold": "Delete household",
+        "deleteHouseholdDescription": "Deletes the household and everything in it. Everyone loses access.",
+        "typeName": "Type {{name}} to confirm"
       }
     },
     "user": {
@@ -566,7 +686,9 @@
           "title": "No items yet",
           "description": "Use search to add items from this vendor"
         }
-      }
+      },
+      "createForbidden": "Only a household owner or manager can add a vendor.",
+      "createFailed": "Could not add {{name}}. Please try again."
     },
     "locations": {
       "label": "Locations",
@@ -580,11 +702,57 @@
       "deleteLabel": "Delete {{name}}",
       "deleteTitle": "Delete \"{{name}}\"?",
       "deleteDescription": "This location will be removed.",
+      "deleteError": "Could not delete this location. Please try again.",
+      "reorderError": "The location list changed. Reloading it now. Try again.",
+      "reorderFailed": "Could not save the new order. Please try again.",
       "defaultHint": "Default",
       "dragToReorder": "Drag to reorder {{name}}",
       "dragInstructions": "Press Space or Enter to pick up a location, use arrow keys to move it, and press Space or Enter again to drop it.",
       "emptyTitle": "No locations yet",
-      "emptyDescription": "Add a location using the button above."
+      "emptyDescription": "Add a location using the button above.",
+      "noAccess": "No access",
+      "noOrganizer": "No organizer",
+      "yourRole": "Your role:",
+      "open": "Open {{name}}",
+      "sortBy": "Sort by",
+      "sort": {
+        "custom": "Custom",
+        "name": "Name",
+        "lastUpdated": "Last updated",
+        "lastVisited": "Last visited"
+      },
+      "people": {
+        "title": "People",
+        "description": "People who have a role on this location",
+        "roleLabel": "Location role of {{name}}",
+        "add": "Add person",
+        "addPerson": "Person",
+        "addRole": "Role",
+        "noOneToAdd": "Everyone in this household already has a role here.",
+        "nobody": "Nobody has a role here yet.",
+        "removeLabel": "Remove {{name}} from this location",
+        "removeConfirm": "Remove {{name}} from {{location}}? They can no longer see its stock, carts or logs.",
+        "leave": "Leave location",
+        "leaveConfirm": "Leave {{location}}? You can no longer see its stock, carts or logs.",
+        "leaveOnlyOrganizer": "You are its only organizer. After you leave, only a household owner or manager can rename it or add people.",
+        "noOrganizerNote": "This location has no organizer. Only a household owner or manager can rename it or add people.",
+        "noOrganizerAction": "Give someone the Organizer role.",
+        "noAccess": "You do not have access to this location.",
+        "back": "Back to locations",
+        "leaving": "Leaving…",
+        "removing": "Removing…",
+        "loadError": "Could not load the people. Try again.",
+        "error": "Could not save the change. Try again.",
+        "retry": "Retry",
+        "unnamed": "Location",
+        "choosePerson": "Choose a person",
+        "membersLoadError": "Could not load the household members. Try again."
+      },
+      "danger": {
+        "title": "Danger zone",
+        "removeAll": "Remove all items",
+        "removeAllDescription": "Deletes this location's stock and the items in its carts. The location, its people, its logs and the catalog stay."
+      }
     },
     "shelves": {
       "label": "Shelves",
@@ -681,14 +849,28 @@
       }
     },
     "postLoginMigration": {
-      "title": "Import local data to cloud?",
-      "description": "You have local data on this device. Would you like to import it to your cloud account?",
-      "import": "Import",
-      "skip": "Skip",
       "autoImporting": "Copying local data to cloud…",
       "errorTitle": "Copy failed",
-      "errorForbidden": "Some rows in your local data belong to another cloud account, so the copy was refused. Nothing was copied. Your local data is unchanged.",
-      "errorOther": "The copy failed: {{message}}"
+      "errorForbidden": "Some rows in your local data belong to another household, so the copy was refused. Nothing was copied. Your local data is unchanged.",
+      "errorRole": "Only the owner or a manager of your household can copy data into it, so the copy was refused. Nothing was copied. Your local data is unchanged.",
+      "errorOther": "The copy failed: {{message}}",
+      "confirmTitle": "Copy your offline data into {{household}}?",
+      "confirmDescription": "A copy of the data on this device goes into this household. The data on this device stays as it is.",
+      "confirmShared": "This household is shared, and you are not its owner. Other people in it will see this data.",
+      "copyHere": "Copy here",
+      "dontCopy": "Don't copy",
+      "cannotCopyMember": "Only the owner or a manager of this household can copy data into it. The data on this device stays as it is.",
+      "cannotCopyClear": "Only the owner of this household can clear it and copy data into it. The data on this device stays as it is.",
+      "clearConfirmTitle": "Clear {{household}} first?",
+      "clearConfirmDescription": "Copy here first deletes the catalog and every location of {{household}}, with everything in them. Then it copies your offline data. People and their household roles stay.",
+      "chooseLabel": "Copy into",
+      "newHousehold": "A new household",
+      "newHouseholdName": "Name of the new household",
+      "newHouseholdTitle": "Copy your offline data into a new household?",
+      "newHouseholdNote": "A new household is made, and you are its owner. This page moves to it first, then the copy starts. The data on this device stays as it is.",
+      "moveNote": "This page moves to {{household}} first, then the copy starts.",
+      "moveAndCopy": "Move there and copy",
+      "moveError": "Could not move to that household. Nothing was copied. Try again."
     },
     "export": {
       "label": "Download my data",
@@ -702,8 +884,24 @@
       "importing": "Importing {{entity}}…",
       "batchProgress": "{{completed}} / {{total}} batches",
       "importError": "Import failed during {{entity}}.",
-      "importErrorForbidden": "Some rows in this file belong to another account, so the import was refused. Nothing was imported.",
-      "importErrorForbiddenAfterClear": "Some rows in this file belong to another account, so the import was refused. Your cloud data was already cleared before that happened. Your backup file is unchanged.",
+      "importErrorForbidden": "Some rows in this file belong to another household, so the import was refused. Nothing was imported.",
+      "importErrorForbiddenAfterClear": "Some rows in this file belong to another household, so the import was refused. Your cloud data was already cleared before that happened. Your backup file is unchanged.",
+      "importErrorRole": "Only the owner or a manager can import data, so the import was refused. Nothing was imported.",
+      "memberNotice": "Only the owner or a manager can import data.",
+      "skippedLocations": "Skipped, because you cannot edit them: {{names}}.",
+      "skippedRows_one": "{{count}} row was skipped, because it points at a location or an item you cannot use.",
+      "skippedRows_other": "{{count}} rows were skipped, because they point at locations or items you cannot use.",
+      "locationDialog": {
+        "title": "Import into which location?",
+        "description": "The rows of the file's default location go into the location you pick.",
+        "newLocation": "New location",
+        "newLocationName": "Name of the new location",
+        "loading": "Loading locations…",
+        "loadError": "The locations could not be loaded. Please try again.",
+        "noLocations": "You cannot edit any location. Pick New location.",
+        "cancel": "Cancel",
+        "confirm": "Import"
+      },
       "retry": "Retry",
       "importDone": "Import complete.",
       "success": "Data imported successfully",
@@ -726,6 +924,7 @@
         "skip": "Skip conflicts",
         "replace": "Replace matches",
         "clear": "Clear & import",
+        "clearConfirmDescription": "This deletes the household's catalog and every location, with everything in them. Then it imports the file. People and their household roles stay.",
         "idMatch": "ID",
         "nameMatch": "name",
         "bothMatch": "ID + name",
@@ -857,7 +1056,21 @@
   },
   "locationSwitcher": {
     "triggerLabel": "Switch location (current: {{name}})",
-    "manage": "Manage locations"
+    "manage": "Manage locations",
+    "triggerLabelViewOnly": "Switch location (current: {{name}} View only)",
+    "viewOnly": "View only"
+  },
+  "roles": {
+    "location": {
+      "organizer": "Organizer",
+      "participant": "Participant",
+      "viewer": "Viewer"
+    },
+    "household": {
+      "owner": "Owner",
+      "manager": "Manager",
+      "member": "Member"
+    }
   },
   "pwa": {
     "updateAvailable": "A new version is available.",
@@ -866,5 +1079,67 @@
     "offlineSyncedAt": "Showing data from {{time}}",
     "offlineNeverSynced": "Showing no data. Connect to load your items.",
     "writeBlocked": "You are offline. Changes cannot be saved right now."
+  },
+  "householdChanged": {
+    "notice": "You are now in {{household}}. This page still showed {{oldHousehold}}, so it was reloaded. If you were saving a change, it was not saved.",
+    "noticeNoOldName": "You are now in {{household}}. This page still showed another household, so it was reloaded. If you were saving a change, it was not saved.",
+    "close": "Close"
+  },
+  "noLocations": {
+    "title": "You have no locations in this household yet.",
+    "create": "Create a location"
+  },
+  "join": {
+    "heading": "Join a household",
+    "title": "Join {{household}}",
+    "invitedBy": "{{name}} invited you.",
+    "yourRoles": "Your roles",
+    "join": "Join",
+    "alreadyMember": "You are already in this household.",
+    "invalid": "This invite is no longer valid. Ask for a new one.",
+    "needsCloud": "Joining a household uses cloud sync. Your data on this device stays here and is not copied.",
+    "signIn": "Sign in to join",
+    "error": "Could not join. Try again.",
+    "loadError": "Could not load this invite. Try again."
+  },
+  "noHousehold": {
+    "title": "You are not in any household.",
+    "create": "Create a household",
+    "nameLabel": "Household name",
+    "nameHint": "Leave it empty to use the default name.",
+    "error": "Could not create the household. Try again.",
+    "useLocalMode": "Switch to offline mode",
+    "useLocalModeHint": "Data is stored on this device only. You stay signed in.",
+    "signInToAnotherAccount": "Sign in to another account",
+    "signOutError": "Could not sign out. Try again."
+  },
+  "householdSwitcher": {
+    "trigger": "Switch to…",
+    "description": "Move to another household, or create one",
+    "createNew": "Create new",
+    "loading": "Loading households…",
+    "loadError": "Could not load your households.",
+    "switchError": "Could not switch the household. Try again."
+  },
+  "createHouseholdDialog": {
+    "title": "Create a new household",
+    "nameLabel": "Household name",
+    "nameHint": "Leave it empty to use the default name. You become its owner and move into it.",
+    "create": "Create",
+    "error": "Could not create the household. Try again."
+  },
+  "ownership": {
+    "banner": {
+      "label": "Ownership offers",
+      "handover": "The owner of {{household}} deleted their account. Do you want to become the owner?",
+      "transfer": "{{name}} wants to make you the owner of {{household}}."
+    },
+    "accept": "Accept",
+    "notNow": "Not now",
+    "decline": "Decline",
+    "accepted": "You are now the owner of {{household}}.",
+    "gone": "This offer is no longer open.",
+    "failed": "Could not send your answer. Please try again.",
+    "close": "Close"
   }
 }

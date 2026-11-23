@@ -58,6 +58,10 @@ interface ItemCardProps {
   onAmountChange?: (delta: number) => void
   onQuickUpdate?: () => void
   disabled?: boolean // disables checkbox and amount buttons (e.g. while saving)
+  // The id of an element that says why the checkbox and amount buttons are
+  // disabled. It goes on all three as `aria-describedby`. A location viewer's
+  // cart and cooking pages pass their view-only note (households H5).
+  controlsDescribedBy?: string | undefined
   isPending?: boolean // shows spinner on the last-clicked +/- button while a mutation is in flight
   vendors?: Vendor[]
   recipes?: Recipe[]
@@ -93,6 +97,7 @@ export function ItemCard({
   onAmountChange,
   onQuickUpdate,
   disabled,
+  controlsDescribedBy,
   isPending = false,
   vendors = [],
   recipes = [],
@@ -169,6 +174,7 @@ export function ItemCard({
             checked={!!isChecked}
             onCheckedChange={() => onCheckboxToggle()}
             disabled={disabled}
+            aria-describedby={controlsDescribedBy}
             aria-label={isChecked ? `Remove ${item.name}` : `Add ${item.name}`}
             className="absolute -ml-10"
           />
@@ -185,6 +191,7 @@ export function ItemCard({
               onAmountChange?.(-1)
             }}
             aria-label={`Decrease quantity of ${item.name}`}
+            aria-describedby={controlsDescribedBy}
             disabled={
               disabled || isPending || (controlAmount ?? 0) <= minControlAmount
             }
@@ -208,6 +215,7 @@ export function ItemCard({
               onAmountChange?.(1)
             }}
             aria-label={`Increase quantity of ${item.name}`}
+            aria-describedby={controlsDescribedBy}
             disabled={disabled || isPending}
           >
             {isPending && pendingDirection === 1 ? (

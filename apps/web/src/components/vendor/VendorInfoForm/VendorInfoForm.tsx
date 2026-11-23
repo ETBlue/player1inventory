@@ -10,6 +10,12 @@ interface VendorInfoFormProps {
   onSave: (data: { name: string }) => void
   isPending?: boolean
   onDirtyChange?: (isDirty: boolean) => void
+  /**
+   * For a household member (households H5 task F.5): the inputs are
+   * `readOnly` (the text can still be selected), selects are disabled, and
+   * there is no Save button.
+   */
+  readOnly?: boolean
 }
 
 export function VendorInfoForm({
@@ -17,6 +23,7 @@ export function VendorInfoForm({
   onSave,
   isPending,
   onDirtyChange,
+  readOnly = false,
 }: VendorInfoFormProps) {
   const { t } = useTranslation()
   const [name, setName] = useState(vendor.name)
@@ -34,6 +41,7 @@ export function VendorInfoForm({
       className="space-y-4 max-w-2xl"
       onSubmit={(e) => {
         e.preventDefault()
+        if (readOnly) return
         onSave({ name: name.trim() })
       }}
     >
@@ -42,19 +50,22 @@ export function VendorInfoForm({
         <Input
           id="vendor-name"
           value={name}
-          autoFocus
+          autoFocus={!readOnly}
+          readOnly={readOnly}
           onChange={(e) => setName(e.target.value)}
           error={nameError}
         />
       </div>
-      <Button
-        type="submit"
-        disabled={!!nameError || !isDirty || !!isPending}
-        isLoading={!!isPending}
-        className="w-full"
-      >
-        {t('common.save')}
-      </Button>
+      {!readOnly && (
+        <Button
+          type="submit"
+          disabled={!!nameError || !isDirty || !!isPending}
+          isLoading={!!isPending}
+          className="w-full"
+        >
+          {t('common.save')}
+        </Button>
+      )}
     </form>
   )
 }

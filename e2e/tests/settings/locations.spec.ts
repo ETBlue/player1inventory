@@ -1,6 +1,10 @@
-import { expect, test } from '@playwright/test'
-import { CLOUD_WEB_URL } from '../../constants'
+import { expect, type Page, test } from '@playwright/test'
+import { checkA11y, injectAxe } from 'axe-playwright'
+import { CLOUD_WEB_URL, homeLocationName } from '../../constants'
+import { AXE_OPTIONS } from '../../helpers/axe'
 import { cleanupCloudData } from '../../helpers/cloudTeardown'
+import { LocationsPage } from '../../pages/settings/LocationsPage'
+import { makeGql } from '../../utils/cloud'
 
 // Runs in BOTH projects, local and cloud.
 //
@@ -12,11 +16,19 @@ import { cleanupCloudData } from '../../helpers/cloudTeardown'
 // the file is therefore local-only. That was false — the file never seeded
 // anything.
 //
-// Cloud isolation is by row ownership, not by database: every write is owned by
-// E2E_USER_ID, and `/e2e/cleanup` deletes that user's rows. As of this branch
-// that endpoint also deletes `Location`. Without it, `ensureDefaultLocation`
-// (lib/defaultLocation.ts) returns early whenever the user already has a
-// default, so run 2 would see run 1's "Office" and fail.
+// Cloud isolation is by row ownership, not by database: `/e2e/cleanup` deletes
+// the household E2E_USER_ID owns, its locations included. The next request
+// then runs first sign-in, which makes a new household with one location,
+// "Home". Without that cleanup run 2 would see run 1's "Office" and fail.
+//
+// THE STARTING LOCATION HAS A DIFFERENT NAME IN EACH MODE: "My Home" in local
+// (Dexie's `on('populate')`), "Home" in cloud (first sign-in,
+// `firstLocationName` in apps/server/src/lib/household.ts). `homeLocationName`
+// in e2e/constants.ts picks the right one. They also follow different delete
+// rules: local's "My Home" is the default and cannot be deleted; cloud has no
+// default location, and since households H5 task F.7 any location may go,
+// the last one too (before, the server refused it with `LAST_LOCATION`). The
+// two delete tests at the end of this file cover one mode each.
 //
 // Name lookups are scoped to <main>: /settings/household/locations is not a fullscreen
 // page, so at Playwright's default (desktop) viewport the sidebar's
@@ -28,17 +40,15 @@ test.beforeEach(async ({ page, request, baseURL }) => {
     localStorage.setItem('e2e-skip-onboarding', 'true')
   })
   if (baseURL === CLOUD_WEB_URL) {
-    // Guards against a previous run that crashed before its teardown.
+    // The only cleanup of each test: it starts clean whatever ran before it (E2E speed plan, D7).
     await cleanupCloudData(request)
   }
 })
 
-test.afterEach(async ({ page, request, baseURL }) => {
-  if (baseURL === CLOUD_WEB_URL) {
-    // Cloud mode: delete this user's rows through the E2E cleanup endpoint.
-    await cleanupCloudData(request)
-    return
-  }
+test.afterEach(async ({ page, baseURL }) => {
+  // Cloud mode: nothing to clean here. Each test cleans up in its own
+  // beforeEach (E2E speed plan, decision D7).
+  if (baseURL === CLOUD_WEB_URL) return
   // Local mode: clear IndexedDB, localStorage, and sessionStorage.
   await page.goto('/')
   await page.evaluate(async () => {
@@ -67,11 +77,14 @@ test.afterEach(async ({ page, request, baseURL }) => {
   })
 })
 
-test('user can create a location', async ({ page }) => {
-  // Given the locations settings page is open (default "My Home" seeded on first open)
+test('user can create a location', async ({ page, baseURL }) => {
+  // Given the locations settings page is open, showing the starting location
   await page.goto('/settings/household/locations')
-  // Default location is undeletable and visible
-  await expect(page.getByRole('main').getByText('My Home')).toBeVisible()
+  await expect(
+    page
+      .getByRole('main')
+      .getByText(homeLocationName(baseURL), { exact: true }),
+  ).toBeVisible()
 
   // When the user adds a location named "Office"
   // Add button aria-label: settings.locations.addLabel = "Add location" (src/routes/settings/household/locations/index.tsx)
@@ -85,9 +98,13 @@ test('user can create a location', async ({ page }) => {
   await expect(page.getByText('Office')).toBeVisible()
 })
 
-test('user can rename a location', async ({ page }) => {
+test('user can rename a location', async ({ page, baseURL }) => {
   await page.goto('/settings/household/locations')
-  await expect(page.getByRole('main').getByText('My Home')).toBeVisible()
+  await expect(
+    page
+      .getByRole('main')
+      .getByText(homeLocationName(baseURL), { exact: true }),
+  ).toBeVisible()
 
   // Given a location "Office" exists
   await page.getByRole('button', { name: 'Add location' }).click()
@@ -108,9 +125,13 @@ test('user can rename a location', async ({ page }) => {
   await expect(page.getByText('Office')).not.toBeVisible()
 })
 
-test('user can delete a non-default location', async ({ page }) => {
+test('user can delete a non-default location', async ({ page, baseURL }) => {
   await page.goto('/settings/household/locations')
-  await expect(page.getByRole('main').getByText('My Home')).toBeVisible()
+  await expect(
+    page
+      .getByRole('main')
+      .getByText(homeLocationName(baseURL), { exact: true }),
+  ).toBeVisible()
 
   // Given a location "Office" exists
   await page.getByRole('button', { name: 'Add location' }).click()
@@ -131,7 +152,13 @@ test('user can delete a non-default location', async ({ page }) => {
   await expect(page.getByText('Office')).not.toBeVisible()
 })
 
-test('the default location cannot be deleted', async ({ page }) => {
+test('the default location cannot be deleted', async ({ page, baseURL }) => {
+  // LOCAL ONLY. Cloud has no default location; its rule is the test below.
+  test.skip(
+    baseURL === CLOUD_WEB_URL,
+    'cloud has no default location; see the last-location test',
+  )
+
   // Given the locations page with only the default location
   await page.goto('/settings/household/locations')
   await expect(page.getByRole('main').getByText('My Home')).toBeVisible()
@@ -142,9 +169,70 @@ test('the default location cannot be deleted', async ({ page }) => {
   ).toHaveCount(0)
 })
 
-test('user can reorder locations', async ({ page }) => {
+test('user can delete the last location and sees the empty pantry', async ({
+  page,
+  baseURL,
+}) => {
+  // CLOUD ONLY. Local keeps a default location that is never deletable; see
+  // the test above. Households H5 task F.7 (owner answer O8): until then the
+  // server refused this delete with LAST_LOCATION.
+  test.skip(
+    baseURL !== CLOUD_WEB_URL,
+    'local has a default location; see the test above',
+  )
+  const main = page.getByRole('main')
+
+  // Given the household has one location, "Home" (made by first sign-in)
   await page.goto('/settings/household/locations')
-  await expect(page.getByRole('main').getByText('My Home')).toBeVisible()
+  await expect(main.getByText('Home', { exact: true })).toBeVisible()
+
+  // When the user deletes it and confirms
+  // Delete button aria-label: settings.locations.deleteLabel = "Delete {{name}}"
+  await main.getByRole('button', { name: 'Delete Home' }).click()
+  await page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: /^delete$/i })
+    .click()
+
+  // Then the list is empty. The empty-state text is asserted first, so a list
+  // that has not rendered yet cannot satisfy the absence check. It is checked
+  // before the reload too: a click resolves when it is dispatched, not when
+  // the delete has landed, so a reload right after it could abort it.
+  // t('settings.locations.emptyTitle')
+  await expect(main.getByText('No locations yet')).toBeVisible()
+  await expect(main.getByText('Home', { exact: true })).toHaveCount(0)
+  await page.reload()
+  await expect(main.getByText('No locations yet')).toBeVisible()
+  await expect(main.getByText('Home', { exact: true })).toHaveCount(0)
+
+  // And the pantry shows the empty screen, not a spinner
+  // t('noLocations.title') / t('noLocations.create')
+  await page.goto('/')
+  await expect(
+    main.getByText('You have no locations in this household yet.'),
+  ).toBeVisible()
+
+  // When the user creates a location from there
+  await main.getByRole('button', { name: 'Create a location' }).click()
+  await page.getByRole('dialog').getByLabel('Name').fill('Office')
+  await page.getByRole('dialog').getByRole('button', { name: /^add$/i }).click()
+
+  // Then the pantry is back, on the new location
+  await expect(
+    page.getByRole('button', { name: /current: Office/ }).first(),
+  ).toBeVisible()
+  await expect(
+    main.getByText('You have no locations in this household yet.'),
+  ).toHaveCount(0)
+})
+
+test('user can reorder locations', async ({ page, baseURL }) => {
+  await page.goto('/settings/household/locations')
+  await expect(
+    page
+      .getByRole('main')
+      .getByText(homeLocationName(baseURL), { exact: true }),
+  ).toBeVisible()
 
   // Given two extra locations exist: "Office" then "Cabin"
   await page.getByRole('button', { name: 'Add location' }).click()
@@ -205,4 +293,106 @@ test('user can reorder locations', async ({ page }) => {
   await expect(page.getByText('Cabin')).toBeVisible()
   const names = await page.locator('text=/^(Office|Cabin)$/').allTextContents()
   expect(names.indexOf('Cabin')).toBeLessThan(names.indexOf('Office'))
+})
+
+// The empty locations screen (households H5 task F.7). `a11y.spec.ts` runs in
+// `local` and `pwa` only, and there a location list is never empty (local
+// mode keeps its default location). So its scans, light and dark, live here
+// in cloud, with the same axe rules (`e2e/helpers/axe.ts`), the way task F.4
+// put the View only scans in `location-switcher.spec.ts`.
+test.describe('cloud: the empty locations screen is accessible', () => {
+  test.beforeEach(async ({ request, baseURL }) => {
+    test.skip(baseURL !== CLOUD_WEB_URL, 'an empty list exists in cloud only')
+    // The household's only location, "Home", is deleted through GraphQL.
+    // The first request runs first sign-in, which makes it.
+    const gql = makeGql(request)
+    const { locations } = await gql<{ locations: { id: string }[] }>(
+      `query { locations { id } }`,
+    )
+    const home = locations[0]
+    if (!home) throw new Error('no Home after first sign-in')
+    await gql(`mutation ($id: ID!) { deleteLocation(id: $id) }`, {
+      id: home.id,
+    })
+  })
+
+  async function scanEmptyPantry(page: Page) {
+    await page.goto('/')
+    await expect(
+      page
+        .getByRole('main')
+        .getByText('You have no locations in this household yet.'),
+    ).toBeVisible()
+    await page.waitForLoadState('networkidle')
+    await injectAxe(page)
+    await checkA11y(page, undefined, AXE_OPTIONS)
+  }
+
+  test('user can view the empty locations screen without accessibility violations', async ({
+    page,
+  }) => {
+    await scanEmptyPantry(page)
+  })
+
+  test('user can view the empty locations screen without accessibility violations in dark mode', async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('theme-preference', 'dark')
+    })
+    await scanEmptyPantry(page)
+  })
+})
+
+// Local mode's Sort by (households H7b task M.5, owner decision O54-B): Name
+// and Custom only, saved on the device in `localStorage['location-sort']`.
+// The cloud sorts, with four choices saved per person, are tested in
+// `location-sort.spec.ts`.
+test('user can sort locations by name in local mode', async ({
+  page,
+  baseURL,
+}) => {
+  test.skip(
+    baseURL === CLOUD_WEB_URL,
+    'cloud sorts are tested in location-sort.spec.ts',
+  )
+  const locationsPage = new LocationsPage(page)
+
+  // Given three more locations, added in the order Cellar, Attic, Dock. The
+  // list is in that order, after the default "My Home", which is not the
+  // order by name
+  await locationsPage.navigateTo()
+  await expect(
+    locationsPage.main().getByText('My Home', { exact: true }),
+  ).toBeVisible()
+  for (const name of ['Cellar', 'Attic', 'Dock']) {
+    await page.getByRole('button', { name: 'Add location' }).click()
+    await page.getByRole('dialog').getByLabel('Name').fill(name)
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: /^add$/i })
+      .click()
+    await expect(
+      locationsPage.main().getByText(name, { exact: true }),
+    ).toBeVisible()
+  }
+  const names = ['My Home', 'Cellar', 'Attic', 'Dock']
+  await locationsPage.expectOrder(names)
+
+  // When the user sorts by Name, which offers only two choices here
+  await locationsPage.openSortSelect()
+  await expect(locationsPage.sortOptions().getByRole('option')).toHaveCount(2)
+  await page.keyboard.press('Escape')
+  await locationsPage.chooseSort('Name')
+
+  // Then the list is by name, and it still is after a reload
+  const byName = ['Attic', 'Cellar', 'Dock', 'My Home']
+  await locationsPage.expectOrder(byName)
+  await page.reload()
+  await expect(locationsPage.sortSelect()).toHaveText('Name')
+  await locationsPage.expectOrder(byName)
+
+  // And the switcher on the pantry uses the same order (owner decision O53-A)
+  await locationsPage.openPantry()
+  expect(await locationsPage.switcherNames(names)).toEqual(byName)
 })

@@ -14,20 +14,28 @@ import {
 } from '@/components/ui/card'
 import { useActiveLocation } from '@/hooks/useActiveLocation'
 import { useDataMode } from '@/hooks/useDataMode'
+import { useHousehold } from '@/hooks/useHousehold'
+import { useImportTargetLocations } from '@/hooks/useImportTargetLocations'
 import type { ExportPayload } from '@/lib/exportData'
 import {
   type ConflictSummary,
+  defaultImportLocationName,
   detectConflicts,
   fetchExistingData,
   hasConflicts,
+  type ImportErrorKind,
   type ImportProgress,
   type ImportSession,
+  type ImportSkipped,
   type ImportStrategy,
+  type ImportTarget,
   importCloudData,
+  importErrorKind,
   importLocalData,
-  isForbiddenImportError,
+  needsImportLocation,
 } from '@/lib/importData'
 import { ConflictDialog } from '../ConflictDialog'
+import { ImportLocationDialog } from '../ImportLocationDialog'
 
 const REQUIRED_FIELDS: (keyof ExportPayload)[] = [
   'version',
@@ -48,47 +56,52 @@ function validateExportPayload(data: unknown): data is ExportPayload {
   return REQUIRED_FIELDS.every((field) => field in obj)
 }
 
-// WHICH of the three error sentences the error phase shows.
+// WHICH error sentence the error phase shows (households H4 decision T17).
 //
-// The `clear` strategy needs its own sentence because `clearAllData` runs
-// FIRST (`importData.ts`, the `clear` branch of `importCloudData`), so a
-// refusal arrives after the account has been emptied. The user has to be told
-// that both things happened — design decision 6 of
-// docs/features/settings/2026-10-28-design-import-ownership-guard.md.
+// - `role`: `importCheck` refused the caller's household role. Nothing was
+//   written.
+// - `forbidden`: the file holds a row of another household. Usually
+//   `importCheck` found it before anything was written. Rarely a bulk
+//   mutation refused it after earlier batches (a race), and the sentence is
+//   then not quite true; see the known gaps of the H4 plan.
+// - `forbiddenAfterClear`: a bulk mutation refused a row on the `clear`
+//   strategy, so `clearAllData` had already run. The user has to be told
+//   both things happened (design decision 6 of
+//   docs/features/settings/2026-10-28-design-import-ownership-guard.md).
+//   Since H4 the check runs before the clear, so this needs a race too.
 //
-// `errorKind` is read here and not recomputed: the thrown error is gone by
-// render time, and only it carried the `FORBIDDEN` extension.
-function importErrorKeyFor(status: {
-  errorKind: 'forbidden' | 'other'
-  session: ImportSession
-}): string {
-  if (status.errorKind !== 'forbidden') return 'settings.import.importError'
-  return status.session.strategy === 'clear'
-    ? 'settings.import.importErrorForbiddenAfterClear'
-    : 'settings.import.importErrorForbidden'
+// `errorKind` is computed in the `catch`, not here: the thrown error is gone
+// by render time, and only it carried the `FORBIDDEN` extension.
+const IMPORT_ERROR_KEYS: Record<ImportErrorKind, string> = {
+  role: 'settings.import.importErrorRole',
+  forbidden: 'settings.import.importErrorForbidden',
+  forbiddenAfterClear: 'settings.import.importErrorForbiddenAfterClear',
+  other: 'settings.import.importError',
 }
 
 type ImportStatus =
   | { phase: 'idle' }
   | { phase: 'conflict'; conflicts: ConflictSummary; payload: ExportPayload }
+  // "Import into which location?" (households H4 task E.4). Cloud only, and
+  // never for `clear` (decision O2).
+  | { phase: 'location'; payload: ExportPayload; strategy: ImportStrategy }
   | {
       phase: 'importing'
       progress: ImportProgress
       session: ImportSession
     }
-  // `errorKind` decides WHICH sentence the error phase renders, and it is
-  // computed in the `catch` rather than in the render, because only the thrown
-  // error carries the `FORBIDDEN` extension. `errorEntity` is the raw message
-  // and is interpolated by the `'other'` sentence alone — for a cross-account
-  // refusal it is the bare word `Forbidden`, which is not an entity name and
-  // tells the user nothing.
+  // `errorEntity` is the raw message and is interpolated by the `'other'`
+  // sentence alone. For a refusal it is the bare word `Forbidden`, which is
+  // not an entity name and tells the user nothing.
   | {
       phase: 'error'
       errorEntity: string
-      errorKind: 'forbidden' | 'other'
+      errorKind: ImportErrorKind
       session: ImportSession
     }
   | { phase: 'done' }
+
+const NOTHING_SKIPPED: ImportSkipped = { locationNames: [], rowCount: 0 }
 
 export function ImportCard() {
   const { t } = useTranslation()
@@ -98,10 +111,35 @@ export function ImportCard() {
   // Where a restored backup's stock lands on the way DOWN (local branch of
   // `runImport`). The cloud branch needs a local-format id instead — see
   // `handleCloudImport`.
-  const { activeLocationId } = useActiveLocation()
+  //
+  // In cloud mode the same hook gives the CLOUD active location. The cloud
+  // import reads it to decide whether to show the backup's first location
+  // after a `skip` or `replace` restore (owner decision of 2026-11-17,
+  // option B), and `setActiveLocationId` makes that switch.
+  const { activeLocationId, setActiveLocationId } = useActiveLocation()
+  // The active location as of the LATEST render. `handleCloudImport` reads
+  // `activeLocationId` from the render it started in; after the import it
+  // compares that with this ref, so a location the user picked in the
+  // sidebar while the import ran is not overwritten by the switch.
+  const latestActiveLocationId = useRef(activeLocationId)
+  latestActiveLocationId.current = activeLocationId
+  // The caller's household role, cloud only (households H4 task E.4). Only an
+  // owner or a manager may import (decision O1); only the owner may `clear`
+  // (decision O7 and the design's Decision 27). `undefined` while it loads,
+  // and always in local mode, where nobody has a role.
+  const { data: household } = useHousehold()
+  const role = household?.role
+  const canImport = mode === 'local' || role === 'owner' || role === 'manager'
+  const allowClear = mode === 'local' || role === 'owner'
   const [importStatus, setImportStatus] = useState<ImportStatus>({
     phase: 'idle',
   })
+  // What the last cloud import left out (decision O5). Stays until the next
+  // file is picked, so the user has time to read it.
+  const [skipped, setSkipped] = useState<ImportSkipped>(NOTHING_SKIPPED)
+  const targetLocations = useImportTargetLocations(
+    importStatus.phase === 'location',
+  )
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   function handleButtonClick() {
@@ -114,6 +152,7 @@ export function ImportCard() {
 
     // Reset file input so the same file can be re-selected if needed
     event.target.value = ''
+    setSkipped(NOTHING_SKIPPED)
 
     try {
       const text = await file.text()
@@ -149,13 +188,20 @@ export function ImportCard() {
 
   async function runImport(payload: ExportPayload, strategy: ImportStrategy) {
     if (mode === 'cloud') {
+      // A file whose default location is the local `'local'`, or that has no
+      // locations, asks where its rows go first (households design rule 3).
+      // `clear` does not ask: they go to the new "Home" (decision O2).
+      if (strategy !== 'clear' && needsImportLocation(payload)) {
+        setImportStatus({ phase: 'location', payload, strategy })
+        return
+      }
       await handleCloudImport(strategy, payload)
     } else {
       try {
         // A legacy/cloud payload's stock is synthesised into the location the
         // user is in — mirroring the outbound rule. Landing it in the default
         // location while they are elsewhere shows an empty pantry.
-        await importLocalData(payload, strategy, activeLocationId)
+        await importLocalData(payload, strategy, { activeLocationId })
         await queryClient.invalidateQueries()
         toast.success(t('settings.import.success'))
         setImportStatus({ phase: 'idle' })
@@ -170,6 +216,7 @@ export function ImportCard() {
     strategy: ImportStrategy,
     payloadArg?: ExportPayload,
     existingSession?: ImportSession,
+    target?: ImportTarget,
   ) {
     // Resolve payload: from arg (new import), from existing session (retry), or from current conflict state
     const payload =
@@ -179,16 +226,14 @@ export function ImportCard() {
 
     if (!payload) return
 
-    // No location has to be chosen any more. Until PR 4b this call picked ONE
-    // of the backup's locations to upload, because the cloud import surface was
-    // flat — and it refused the import outright when the backup's locations
-    // were several and none of them this device's. `importCloudData` now
-    // carries every location through the remap rule (PR 4 design §1), so there
-    // is nothing to choose and nothing to refuse.
+    // Every location of the file is kept (the new id rule). Only the file's
+    // local default location needs a choice, and `target` is it, from
+    // `ImportLocationDialog`. A retry passes the session, which holds it.
     const session: ImportSession = existingSession ?? {
       payload,
       strategy,
       completedBatchKeys: new Set(),
+      ...(target !== undefined ? { target } : {}),
     }
 
     setImportStatus({
@@ -198,7 +243,7 @@ export function ImportCard() {
     })
 
     try {
-      await importCloudData(payload, strategy, client, {
+      const result = await importCloudData(payload, strategy, client, {
         onProgress: (p) => {
           setImportStatus((prev) =>
             prev.phase === 'importing'
@@ -207,21 +252,36 @@ export function ImportCard() {
           )
         },
         session,
+        activeLocationId,
       })
       await client.resetStore()
+      // The switch runs after this `resetStore`, on purpose, so the location
+      // list is refetched before the provider sees the new id. Whether the
+      // other order would break anything is NOT known: `importCloudData` has
+      // already reset the store once (`resetStoreAfterImport`), so the list
+      // may well hold the new location by then. This order is kept because it
+      // is the safe one. `index.test.tsx` pins the order, not its reason.
+      //
+      // No switch when the user picked another location while the import ran
+      // (the ref differs from the id this import started with): their choice
+      // wins.
+      if (
+        result.switchToLocationId !== undefined &&
+        latestActiveLocationId.current === activeLocationId
+      ) {
+        setActiveLocationId(result.switchToLocationId)
+      }
+      setSkipped(result.skipped)
       setImportStatus({ phase: 'done' })
       setTimeout(() => setImportStatus({ phase: 'idle' }), 2000)
     } catch (err) {
-      const importSession = (err as Error & { session?: ImportSession }).session
+      const importSession =
+        (err as Error & { session?: ImportSession }).session ?? session
       setImportStatus({
         phase: 'error',
         errorEntity: (err as Error).message,
-        errorKind: isForbiddenImportError(err) ? 'forbidden' : 'other',
-        session: importSession ?? {
-          payload,
-          strategy,
-          completedBatchKeys: new Set(),
-        },
+        errorKind: importErrorKind(err, importSession.strategy),
+        session: importSession,
       })
     }
   }
@@ -246,6 +306,16 @@ export function ImportCard() {
 
   function closeConflictDialog() {
     setImportStatus({ phase: 'idle' })
+  }
+
+  function handleLocationChosen(chosen: ImportTarget) {
+    if (importStatus.phase !== 'location') return
+    handleCloudImport(
+      importStatus.strategy,
+      importStatus.payload,
+      undefined,
+      chosen,
+    )
   }
 
   const isIdle = importStatus.phase === 'idle'
@@ -310,7 +380,7 @@ export function ImportCard() {
           {importStatus.phase === 'error' && (
             <div className="space-y-1">
               <p className="text-xs text-importance-destructive-foreground">
-                {t(importErrorKeyFor(importStatus), {
+                {t(IMPORT_ERROR_KEYS[importStatus.errorKind], {
                   entity: importStatus.errorEntity,
                 })}
               </p>
@@ -336,11 +406,39 @@ export function ImportCard() {
             </p>
           )}
 
-          {(isIdle || isImporting) && (
+          {!isImporting &&
+            (skipped.locationNames.length > 0 || skipped.rowCount > 0) && (
+              <div className="space-y-1 text-xs text-foreground-muted">
+                {skipped.locationNames.length > 0 && (
+                  <p>
+                    {t('settings.import.skippedLocations', {
+                      names: skipped.locationNames.join(', '),
+                    })}
+                  </p>
+                )}
+                {skipped.rowCount > 0 && (
+                  <p>
+                    {t('settings.import.skippedRows', {
+                      count: skipped.rowCount,
+                    })}
+                  </p>
+                )}
+              </div>
+            )}
+
+          {/* A household member cannot import (decision O1): a line instead
+              of the button. */}
+          {mode === 'cloud' && role === 'member' && (
+            <p className="text-xs text-foreground-muted">
+              {t('settings.import.memberNotice')}
+            </p>
+          )}
+
+          {(isIdle || isImporting) && role !== 'member' && (
             <Button
               variant="neutral-outline"
               onClick={handleButtonClick}
-              disabled={isImporting}
+              disabled={isImporting || !canImport}
             >
               {t('settings.import.button')}
             </Button>
@@ -356,6 +454,24 @@ export function ImportCard() {
           onReplace={handleReplace}
           onClear={handleClear}
           onClose={closeConflictDialog}
+          allowClear={allowClear}
+          // Cloud: "Clear & import" asks for the household name, typed
+          // exactly, like every other purge (owner decision O40). Local mode
+          // has no household, so it keeps the one-press button.
+          {...(mode === 'cloud' && household !== undefined
+            ? { clearConfirmName: household.name }
+            : {})}
+        />
+      )}
+
+      {importStatus.phase === 'location' && (
+        <ImportLocationDialog
+          open={true}
+          locations={targetLocations.data}
+          loadError={targetLocations.isError}
+          defaultNewName={defaultImportLocationName(importStatus.payload)}
+          onConfirm={handleLocationChosen}
+          onCancel={closeConflictDialog}
         />
       )}
     </>

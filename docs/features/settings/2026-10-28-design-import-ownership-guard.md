@@ -707,3 +707,20 @@ Two-user cloud testing works through `e2e/utils/cloud.ts:17-36`,
    other 18 bulk creates") and the `bulkCreateLocations` doc block at 290-302,
    whose `bulkCreateShelves` example of an unscoped closing `findMany` is now
    fixed. Only the second was corrected in task 12; line 1325 is still stale.
+
+**Update 2026-11-04, households H3a task 3.9** (`docs/global/permissions/2026-11-04-households-plan-h3a.md`):
+
+- Gap 7 is closed: the "SCOPED to the caller, unlike the other 18 bulk
+  creates" read is gone. `bulkCreateLocations` now skips an existing id from
+  the set `requireOwnLocationIdsOrUnclaimed` returns.
+- Three more mutations check the ids they attach, with the same skip:
+  `bulkUpsertTags` (`typeId`, `parentId`; the tag is skipped) and both shelf
+  mutations (`itemIds` and the `filterConfig` ids; only the id is dropped, and
+  only when it is a row of another household. An id no row holds is kept,
+  since the review fix `03e32094`, because on `replace` it may be written
+  later in the same import).
+  So decision 8's "13 lookups across 9 mutations" is now 12 mutations.
+- The cart item imports check the item against the household of the cart's
+  location, not the caller's household.
+- Imported locations get `householdId` and an `organizer` row. See the plan's
+  task 3.9 Done note.

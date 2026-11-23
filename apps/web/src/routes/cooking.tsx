@@ -1,12 +1,15 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { Check, ChevronDown, ChevronLeft, Minus, Plus, X } from 'lucide-react'
-import React, { useMemo, useState } from 'react'
+import React, { useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import { ItemCard } from '@/components/item/ItemCard'
+import { NoLocationsGate } from '@/components/location/NoLocationsGate'
 import { CookingControlBar } from '@/components/recipe/CookingControlBar'
 import { NewRecipeDialog } from '@/components/recipe/NewRecipeDialog'
 import { ListSectionDivider } from '@/components/shared/ListSectionDivider'
 import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
+import { ReadOnlyNote } from '@/components/shared/ReadOnlyNote'
 import { Toolbar } from '@/components/shared/Toolbar'
 import {
   AlertDialog,
@@ -27,12 +30,12 @@ import {
 } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useItems, useTags, useTagTypes } from '@/hooks'
+import { useActiveLocationRights } from '@/hooks/useActiveLocationRights'
 import { useItemSortData } from '@/hooks/useItemSortData'
+import { usePermissions } from '@/hooks/usePermissions'
 import { useConsumeRecipes, useRecipes } from '@/hooks/useRecipes'
 import {
-  consumeItem,
   getCurrentQuantity,
-  getPackedTotal,
   isEmptyStock,
   isLowStock,
   isStockedHere,
@@ -55,7 +58,7 @@ function highlight(text: string, query: string): React.ReactNode {
 }
 
 export const Route = createFileRoute('/cooking')({
-  component: CookingPage,
+  component: CookingRoute,
   validateSearch: (search: Record<string, unknown>) => ({
     sort:
       search.sort === 'name' || search.sort === 'count'
@@ -67,8 +70,26 @@ export const Route = createFileRoute('/cooking')({
   }),
 })
 
+// Households H5 task F.7: with no location, the page is not rendered at all
+// (`NoLocationsGate`), so none of its location-scoped reads run.
+function CookingRoute() {
+  return (
+    <NoLocationsGate>
+      <CookingPage />
+    </NoLocationsGate>
+  )
+}
+
 function CookingPage() {
   const { t } = useTranslation()
+  // Creating a recipe is a catalog write: not for a household member
+  // (households H5 task F.5). Cooking itself is a location right (F.6).
+  const { canEditCatalog, roleKnown } = usePermissions()
+  // Cooking writes this location's stock: `participant` or higher
+  const { canEditHere, isViewerHere } = useActiveLocationRights()
+  // The disabled checkboxes name the view-only note in `aria-describedby`.
+  // Only for a KNOWN viewer: the note renders only then.
+  const viewOnlyNoteId = useId()
   const navigate = useNavigate()
   const { sort, dir, q, expanded } = Route.useSearch()
   const { data: recipes = [] } = useRecipes()
@@ -400,12 +421,15 @@ function CookingPage() {
       .filter(([, itemSet]) => itemSet.size > 0)
       .map(([recipeId]) => recipeId)
 
+    // Households H3b task B.6: the page sends the amount used (`delta` is
+    // minus it, the inventory log's signed change) and no final numbers.
+    // Cloud: the server computes them in one transaction. Local:
+    // `useConsumeRecipes` computes them from `localStock`, as this page did
+    // before.
     const itemInputs = Array.from(totalByItemId.entries()).flatMap(
       ([itemId, totalAmount]) => {
         const item = items.find((i) => i.id === itemId)
         if (!item) return []
-        const updatedItem = { ...item }
-        consumeItem(updatedItem, totalAmount)
         const recipeNames = recipeNamesByItemId.get(itemId) ?? []
         const logKey =
           recipeNames.length > 0
@@ -419,10 +443,7 @@ function CookingPage() {
         return [
           {
             itemId,
-            packedQuantity: updatedItem.packedQuantity,
-            unpackedQuantity: updatedItem.unpackedQuantity,
             delta: -totalAmount,
-            quantity: getPackedTotal(updatedItem),
             note,
             logKey,
             ...(logParams ? { logParams } : {}),
@@ -435,6 +456,7 @@ function CookingPage() {
       occurredAt: now,
       recipeIds: cookedRecipeIds,
       items: itemInputs,
+      localStock: items,
     })
 
     // Reset session state (expand/collapse is preserved)
@@ -523,14 +545,21 @@ function CookingPage() {
                 <Checkbox
                   id={`recipe-${recipe.id}`}
                   checked={recipeCheckState}
-                  disabled={isRecipeUnavailable}
-                  // Points at the Row 3 status line so a screen
-                  // reader announces WHY a disabled recipe is
-                  // disabled ("0 / 2 here") instead of just
-                  // "checkbox, disabled" — the association a sighted
-                  // user makes spatially. No axe or Biome rule covers
-                  // this, so it has to be wired by hand.
-                  aria-describedby={`recipe-status-${recipe.id}`}
+                  // A location viewer cannot cook (households H5 task F.6,
+                  // decision O10): nothing can be checked
+                  disabled={isRecipeUnavailable || !canEditHere}
+                  // Points at the Row 3 status line ("0 / 2 here"), so
+                  // a screen reader announces the stock status, which
+                  // is WHY a recipe with nothing stocked here is
+                  // disabled. For a location viewer the checkbox is
+                  // disabled for another reason, so it also points at
+                  // the view-only note (households H5). No axe or
+                  // Biome rule covers this, so it is wired by hand.
+                  aria-describedby={
+                    isViewerHere
+                      ? `recipe-status-${recipe.id} ${viewOnlyNoteId}`
+                      : `recipe-status-${recipe.id}`
+                  }
                   onCheckedChange={() => handleToggleRecipeCheckbox(recipe.id)}
                   aria-label={recipe.name}
                 />
@@ -677,7 +706,10 @@ function CookingPage() {
                         showTags={false}
                         showTagSummary={false}
                         isChecked={isItemChecked}
-                        disabled={!available}
+                        disabled={!available || !canEditHere}
+                        controlsDescribedBy={
+                          isViewerHere ? viewOnlyNoteId : undefined
+                        }
                         onCheckboxToggle={() =>
                           handleToggleItem(recipe.id, ri.itemId)
                         }
@@ -712,7 +744,8 @@ function CookingPage() {
           <span className="flex-1">
             {t('cooking.toolbar.servingCount', { count: totalServings })}
           </span>
-          {anyChecked && (
+          {/* No cook button for a location viewer (H5 decision O10) */}
+          {canEditHere && anyChecked && (
             <Button
               variant="destructive-ghost"
               onClick={() => setShowCancelDialog(true)}
@@ -720,13 +753,21 @@ function CookingPage() {
               <X /> {t('common.cancel')}
             </Button>
           )}
-          <Button
-            disabled={!anyChecked}
-            onClick={() => setShowDoneDialog(true)}
-          >
-            <Check /> {t('common.done')}
-          </Button>
+          {canEditHere && (
+            <Button
+              disabled={!anyChecked}
+              onClick={() => setShowDoneDialog(true)}
+            >
+              <Check /> {t('common.done')}
+            </Button>
+          )}
         </Toolbar>
+        {isViewerHere && (
+          <ReadOnlyNote
+            id={viewOnlyNoteId}
+            text={t('common.locationViewOnly')}
+          />
+        )}
 
         <CookingControlBar
           allExpanded={
@@ -756,10 +797,19 @@ function CookingPage() {
               replace: true,
             })
           }
-          onCreateRecipe={(name) => {
-            setNewRecipeInitialName(name)
-            setNewRecipeDialogOpen(true)
-          }}
+          createReadOnlyNote={
+            roleKnown && !canEditCatalog
+              ? t('cookingControlBar.createReadOnly')
+              : undefined
+          }
+          onCreateRecipe={
+            canEditCatalog
+              ? (name) => {
+                  setNewRecipeInitialName(name)
+                  setNewRecipeDialogOpen(true)
+                }
+              : undefined
+          }
         />
         <div className="h-px bg-accessory-default" />
       </div>
@@ -768,16 +818,22 @@ function CookingPage() {
           <div className="text-center py-16 text-foreground-muted flex flex-col items-center gap-6">
             <div>
               <p>{t('cooking.empty.title')}</p>
-              <p className="text-sm mt-1">{t('cooking.empty.description')}</p>
+              <p className="text-sm mt-1">
+                {roleKnown && !canEditCatalog
+                  ? t('settings.catalogReadOnly')
+                  : t('cooking.empty.description')}
+              </p>
             </div>
-            <Button
-              size="lg"
-              className="px-8"
-              onClick={() => setNewRecipeDialogOpen(true)}
-            >
-              <Plus />
-              {t('cooking.empty.createButton')}
-            </Button>
+            {canEditCatalog && (
+              <Button
+                size="lg"
+                className="px-8"
+                onClick={() => setNewRecipeDialogOpen(true)}
+              >
+                <Plus />
+                {t('cooking.empty.createButton')}
+              </Button>
+            )}
           </div>
         ) : (
           <div className="space-y-px mb-4">
@@ -834,7 +890,11 @@ function CookingPage() {
                   await handleConfirmDone()
                   setShowDoneDialog(false)
                 } catch {
-                  // mutation failed; dialog stays open so user can retry
+                  // The cook failed. In cloud mode nothing was written: the
+                  // server runs the whole cook in one transaction (households
+                  // H3b task B.6). One message for every cause; the dialog
+                  // stays open so the user can retry.
+                  toast.error(t('cooking.consumeFailed'))
                 } finally {
                   setIsConfirmingDone(false)
                 }

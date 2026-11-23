@@ -7,7 +7,7 @@ import * as stories from './Navigation.stories'
 // router mounts and both the bottom <nav> and sidebar <nav> appear. Smoke tests
 // use findByRole (async) to assert the bottom navigation element is present
 // once the router finishes mounting.
-const { PantryActive, CartActive, CookingActive, SettingsActive } =
+const { PantryActive, CartActive, CookingActive, HiddenOnFullscreen } =
   composeStories(stories)
 
 describe('Navigation stories smoke tests', () => {
@@ -43,10 +43,14 @@ describe('Navigation stories smoke tests', () => {
     ).toBeInTheDocument()
   })
 
-  it('SettingsActive renders without error', async () => {
-    render(<SettingsActive />)
+  it('HiddenOnFullscreen shows no bottom bar on the mobile /settings page', async () => {
+    render(<HiddenOnFullscreen />)
+    // Present first: the settings page has rendered
     expect(
-      await screen.findByRole('navigation', { name: 'Bottom navigation' }),
+      await screen.findByRole('heading', { level: 1, name: 'Settings' }),
     ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('navigation', { name: 'Bottom navigation' }),
+    ).toBeNull()
   })
 })

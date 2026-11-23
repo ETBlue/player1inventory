@@ -1,6 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 import {
   CLOUD_GRAPHQL_URL,
+  CLOUD_GRAPHQL_WS_URL,
   CLOUD_SERVER_PORT,
   CLOUD_WEB_PORT,
   CLOUD_WEB_URL,
@@ -10,67 +11,36 @@ import {
   PWA_WEB_PORT,
   PWA_WEB_URL,
 } from './constants'
+import { cloudProjectFor, e2eDatabaseKind } from './helpers/e2eDatabase'
+import {
+  type ProjectName,
+  requestedProjects,
+  selectedProjects,
+} from './helpers/selectedProjects'
+import { assertNeonSpecsInCloud, NEON_SPECS, neonPattern } from './neonSpecs'
 
-const PROJECT_NAMES = ['local', 'cloud', 'pwa'] as const
-type ProjectName = (typeof PROJECT_NAMES)[number]
+// Which database the cloud specs use (E2E speed plan, task S.8, decisions D9
+// and D11). `E2E_DATABASE=neon` runs them on the Neon TEST branch, in the
+// `cloud-neon` project; unset or `local` runs them on the local E2E database,
+// in the `cloud` project (owner answer P7-A). `e2e/run-all.sh` sets it per row.
+// An unknown value throws here, before any server starts.
+const E2E_DATABASE = e2eDatabaseKind()
+const CLOUD_PROJECT = cloudProjectFor(E2E_DATABASE)
 
-/**
- * Which projects did the CLI ask for? Returns all three when it cannot tell.
- *
- * WHY THIS EXISTS: Playwright starts EVERY `webServer` entry, whatever
- * `--project` says. There is no per-project `webServer`. Measured 2026-09-24 at
- * `c36e18a2`, running `pnpm test:e2e --project=local e2e/tests/onboarding.spec.ts`
- * (three local-mode tests that never leave IndexedDB) left all four ports
- * listening:
- *
- *   5174  cloud web app
- *   5175  local web app
- *   5176  pwa preview   <- and a full `pnpm --filter web build` ran first
- *   4001  API server
- *
- * So a filtered run paid the same startup cost as the full one. The gate in root
- * `CLAUDE.md` runs the three projects as three commands, which meant three
- * production builds per gate run. `webServer` below is built from this list so
- * each command starts only what it needs.
- *
- * FALLBACK RULE: when the selection cannot be read with confidence, return all
- * three. A parsing mistake then costs a slow run, never a missing server. That
- * happens when no `--project` is passed, when `--ui` or `--debug` is passed (the
- * user picks projects inside the UI, after this config has already been read),
- * or when a `--project` value is not exactly `local`, `cloud` or `pwa` — a glob
- * counts as unrecognised.
- */
-function selectedProjects(): ProjectName[] {
-  const argv: string[] = process.argv.slice(2)
-  const selected = new Set<ProjectName>()
-
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i]
-
-    // The UI and debug runners let the user pick projects after startup.
-    if (arg === '--debug' || arg.startsWith('--ui')) return [...PROJECT_NAMES]
-
-    let values: string[] = []
-    if (arg.startsWith('--project=')) {
-      values = [arg.slice('--project='.length)]
-    } else if (arg === '--project') {
-      // Playwright's `--project` is variadic: `--project local cloud` is valid,
-      // so consume every following argument up to the next flag.
-      while (i + 1 < argv.length && !argv[i + 1].startsWith('-')) {
-        values.push(argv[++i])
-      }
-    } else {
-      continue
-    }
-
-    for (const value of values) {
-      if (!(PROJECT_NAMES as readonly string[]).includes(value))
-        return [...PROJECT_NAMES]
-      selected.add(value as ProjectName)
-    }
-  }
-
-  return selected.size > 0 ? [...selected] : [...PROJECT_NAMES]
+// A project named on the command line that this database does not build would
+// fail with Playwright's own "Project(s) not found". This says what to change.
+const requested = requestedProjects()
+if (requested?.includes('cloud-neon') && CLOUD_PROJECT !== 'cloud-neon') {
+  throw new Error(
+    'The cloud-neon project runs only with E2E_DATABASE=neon. ' +
+      'Run: E2E_DATABASE=neon pnpm test:e2e --project=cloud-neon',
+  )
+}
+if (requested?.includes('cloud') && CLOUD_PROJECT !== 'cloud') {
+  throw new Error(
+    'With E2E_DATABASE=neon the cloud specs run in the cloud-neon project. ' +
+      'Use --project=cloud-neon, or unset E2E_DATABASE to use the local database.',
+  )
 }
 
 const LOCAL_WEB_SERVER = {
@@ -86,9 +56,13 @@ const CLOUD_WEB_SERVER = {
   // Cloud-mode web app — always start fresh with E2E env vars:
   //   VITE_E2E_TEST_USER_ID: skips Clerk, renders with a static userId
   //   VITE_GRAPHQL_HTTP_URL: points Apollo at the E2E backend (not the dev server)
+  //   VITE_GRAPHQL_WS_URL: the live-updates socket on the same E2E backend.
+  //     Without it the socket would go to the default ws://localhost:4000,
+  //     the normal dev server, and no live update would ever arrive
   command: [
     `VITE_E2E_TEST_USER_ID=${E2E_USER_ID}`,
     `VITE_GRAPHQL_HTTP_URL=${CLOUD_GRAPHQL_URL}`,
+    `VITE_GRAPHQL_WS_URL=${CLOUD_GRAPHQL_WS_URL}`,
     `pnpm --filter web dev --port ${CLOUD_WEB_PORT}`,
   ].join(' '),
   url: CLOUD_WEB_URL,
@@ -98,17 +72,20 @@ const CLOUD_WEB_SERVER = {
 
 const CLOUD_API_SERVER = {
   // Cloud-mode backend — dedicated port avoids conflicts with the normal dev
-  // server. E2E_TEST_MODE bypasses Clerk auth and mounts the /e2e/cleanup route.
+  // server. E2E_TEST_MODE bypasses Clerk auth and mounts the /e2e/* routes.
   //
-  // Isolation note: E2E_TEST_MODE=true is read inside apps/server/src/lib/prisma.ts
-  // (not here — TEST_DATABASE_URL lives in apps/server/.env, which dotenv loads
-  // inside the server process, never in this shell) to route Prisma at
-  // TEST_DATABASE_URL, a dedicated Neon branch — it throws rather than falling back
-  // to DATABASE_URL if that var is unset. Row ownership under E2E_USER_ID still
-  // applies on top of that for /e2e/cleanup, which only deletes rows owned by that
-  // user.
+  // Which database: `E2E_DATABASE` (above) is passed on the command, so the
+  // server and this config read the same value. apps/server/src/lib/prisma.ts
+  // then picks the URL from apps/server/.env, which dotenv loads inside the
+  // server process, never in this shell: `local` reads E2E_LOCAL_DATABASE_URL
+  // (refused unless it is a loopback host and no other *_URL names the same
+  // database), `neon` reads TEST_DATABASE_URL, a dedicated Neon branch. Each
+  // throws rather than fall back to another database. `e2e/global-setup.ts`
+  // asks `GET /e2e/database` which one the server really uses, and stops the
+  // run when it is not the expected one or is behind the migrations.
   command: [
     'E2E_TEST_MODE=true',
+    `E2E_DATABASE=${E2E_DATABASE}`,
     `PORT=${CLOUD_SERVER_PORT}`,
     `CLIENT_ORIGIN=${CLOUD_WEB_URL}`,
     'pnpm --filter server dev',
@@ -127,11 +104,11 @@ const PWA_WEB_SERVER = {
   timeout: 180_000,
 }
 
-// Which servers each project needs. The cloud project is the only one that needs
+// Which servers each project needs. The cloud projects are the only ones that need
 // two: its web app talks to the API server over GraphQL. No spec in `local` or
 // `pwa` reaches the API server — every spec that names CLOUD_SERVER_URL,
 // CLOUD_GRAPHQL_URL, makeGql, cleanupCloudData, seedCloudFixture or
-// ensureCloudDefaultLocation is either cloud-only or guarded on
+// ensureCloudHomeLocation is either cloud-only or guarded on
 // `baseURL === CLOUD_WEB_URL`.
 //
 // One spec crosses projects: a11y.spec.ts runs in BOTH `local` and `pwa`, and its
@@ -143,12 +120,81 @@ const PWA_WEB_SERVER = {
 const SERVERS_BY_PROJECT: Record<ProjectName, (typeof LOCAL_WEB_SERVER)[]> = {
   local: [LOCAL_WEB_SERVER],
   cloud: [CLOUD_WEB_SERVER, CLOUD_API_SERVER],
+  'cloud-neon': [CLOUD_WEB_SERVER, CLOUD_API_SERVER],
   pwa: [PWA_WEB_SERVER],
 }
+
+// Every spec file the cloud projects run. `cloud` runs all of them on the
+// local database; `cloud-neon` runs the `NEON_SPECS` subset on Neon, or all of
+// them when `E2E_NEON_FULL=1` (`pnpm test:e2e:all:neon`, owner answer P10-A).
+const CLOUD_SPECS = [
+  '**/item-management.spec.ts',
+  '**/settings/tags.spec.ts',
+  '**/settings/vendors.spec.ts',
+  '**/settings/recipes.spec.ts',
+  '**/cooking.spec.ts',
+  '**/item-list-state-restore.spec.ts',
+  '**/tests/shopping.spec.ts',
+  '**/tests/item-logs.spec.ts',
+  '**/settings/import-export-cloud.spec.ts',
+  '**/settings/import-strategies.spec.ts',
+  '**/settings/data-mode-migration.spec.ts',
+  '**/settings/locations.spec.ts',
+  '**/location-switcher.spec.ts',
+  '**/location-not-stocked-here.spec.ts',
+  '**/location-scoped-writes.spec.ts',
+  '**/recipes-group.spec.ts',
+  '**/vendors-group.spec.ts',
+  '**/tests/shelves.spec.ts',
+  '**/settings/shelves.spec.ts',
+  '**/settings-global-pages.spec.ts',
+  '**/item-stock-input.spec.ts',
+  '**/item-stock-pager.spec.ts',
+  '**/cleanup-endpoint.spec.ts',
+  '**/cart-id-cross-user-leak.spec.ts',
+  '**/unified-item-search.spec.ts',
+  '**/cloud-user-row.spec.ts',
+  '**/purge-two-households.spec.ts',
+  '**/cloud-roles.spec.ts',
+  '**/household-member-cleanup.spec.ts',
+  '**/shared-cart.spec.ts',
+  '**/live-cart.spec.ts',
+  '**/live-pantry.spec.ts',
+  '**/settings/import-households.spec.ts',
+  '**/shared-household.spec.ts',
+  '**/household-invites.spec.ts',
+  '**/location-people.spec.ts',
+  '**/household-activity-purges.spec.ts',
+  '**/household-ownership.spec.ts',
+  '**/household-switch.spec.ts',
+  '**/location-sort.spec.ts',
+]
+
+// A `NEON_SPECS` entry that is not in the list above throws here, at load, so
+// a typo cannot select zero tests and pass (decision D13).
+assertNeonSpecsInCloud(CLOUD_SPECS)
+
+const cloudTestMatch =
+  CLOUD_PROJECT === 'cloud-neon' && process.env.E2E_NEON_FULL !== '1'
+    ? NEON_SPECS.map(({ spec }) => neonPattern(spec))
+    : CLOUD_SPECS
 
 const webServer = [
   ...new Set(selectedProjects().flatMap((name) => SERVERS_BY_PROJECT[name])),
 ]
+
+// A JSON report next to the HTML one, only when `PLAYWRIGHT_JSON_OUTPUT_FILE` is
+// set. `e2e/run-all.sh` sets it to `e2e-results/<project>.json`, and
+// `scripts/spec/e2e-times.mjs` prints the time of every test from it.
+//
+// The console summary ("170 passed (3.8m)") that run-all.sh reads still
+// prints: neither `html` nor `json` with an output file writes to the terminal,
+// so Playwright adds its `line` reporter in front of them (`createReporters` in
+// playwright/lib/runner/reporters.js, Playwright 1.58). The JSON reporter
+// reads the file name from the variable itself.
+const reporter: 'html' | [string][] = process.env.PLAYWRIGHT_JSON_OUTPUT_FILE
+  ? [['html'], ['json']]
+  : 'html'
 
 export default defineConfig({
   testDir: './tests',
@@ -156,7 +202,11 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: 1,
-  reporter: 'html',
+  reporter,
+  // Once per invocation, after the `webServer` entries are up: when the
+  // `cloud` project is selected, it deletes every E2E user and household that
+  // a killed run left behind (E2E speed plan, task S.3; see the file).
+  globalSetup: './global-setup.ts',
   // Shared by all three projects. Playwright 1.58 merges this top-level `use`
   // with each project's own `use` key by key (`mergeObjects` in
   // playwright/lib/util.js), and a project key wins. No project sets
@@ -175,11 +225,33 @@ export default defineConfig({
       // server this project runs against does not have — it only runs
       // under the 'pwa' project, against the built preview output.
       // location-scoped-writes.spec.ts, cleanup-endpoint.spec.ts,
-      // cart-id-cross-user-leak.spec.ts and cloud-user-row.spec.ts drive the
+      // cart-id-cross-user-leak.spec.ts, cloud-user-row.spec.ts,
+      // purge-two-households.spec.ts, cloud-roles.spec.ts,
+      // household-member-cleanup.spec.ts and shared-cart.spec.ts drive the
       // cloud backend directly and never open a page — none has a local-mode
-      // counterpart. The last two also act as users other than E2E_USER_ID,
-      // which the web build cannot be (VITE_E2E_TEST_USER_ID below is one
-      // value).
+      // counterpart. live-cart.spec.ts and live-pantry.spec.ts open a page but need a second
+      // (and live-cart a third) user and the live socket, which only the cloud project has. The last six also act as users other than E2E_USER_ID
+      // through the API. settings/import-households.spec.ts tests the
+      // household import roles, which local mode does not have (households H4
+      // decision T18). shared-household.spec.ts opens two browser contexts as
+      // two different users (households H5 task F.8): the E2E web build reads
+      // `localStorage['e2e-user-id']` (e2e/helpers/userContext.ts). Local mode
+      // has no users and no roles. household-invites.spec.ts tests invites,
+      // joins and the Members page (households H5b task G.10), which exist in
+      // cloud mode only. location-people.spec.ts tests the people page of a
+      // location (households H5c task H.8), which is cloud only: local mode
+      // has one person and no roles, and the page redirects there.
+      // household-activity-purges.spec.ts tests the Activity page and the
+      // danger zones (households H6 task J.8), which are cloud only too.
+      // household-ownership.spec.ts tests the ownership transfer and the
+      // hand-over (households H6b task K.8): local mode has no owner.
+      // household-switch.spec.ts tests Switch to…, Create new, the stale-tab
+      // refusal and the copy into a chosen household (households H7 task
+      // L.6): local mode has no households. location-sort.spec.ts tests the
+      // personal location order and the four sorts (households H7b task
+      // M.5): local mode has no second person, no "last updated" date and no
+      // visits. Local mode's Name and Custom are tested in
+      // settings/locations.spec.ts.
       testIgnore: [
         '**/settings/import-export-cloud.spec.ts',
         '**/pwa-offline.spec.ts',
@@ -188,13 +260,30 @@ export default defineConfig({
         '**/cart-id-cross-user-leak.spec.ts',
         '**/settings/data-mode-migration.spec.ts',
         '**/cloud-user-row.spec.ts',
+        '**/purge-two-households.spec.ts',
+        '**/cloud-roles.spec.ts',
+        '**/household-member-cleanup.spec.ts',
+        '**/shared-cart.spec.ts',
+        '**/live-cart.spec.ts',
+        '**/live-pantry.spec.ts',
+        '**/settings/import-households.spec.ts',
+        '**/shared-household.spec.ts',
+        '**/household-invites.spec.ts',
+        '**/location-people.spec.ts',
+        '**/household-activity-purges.spec.ts',
+        '**/household-ownership.spec.ts',
+        '**/household-switch.spec.ts',
+        '**/location-sort.spec.ts',
       ],
       use: { ...devices['Desktop Chrome'], baseURL: LOCAL_WEB_URL },
     },
     {
-      // Cloud mode: app reads from Postgres via GraphQL. Scoped to item tests for now;
-      // expand testMatch as each feature is migrated to the cloud backend.
-      name: 'cloud',
+      // Cloud mode: app reads from Postgres via GraphQL. Named `cloud` on the
+      // local database and `cloud-neon` on the Neon TEST branch; only one of
+      // the two exists in one invocation (decision D11). Both use the same
+      // web port, so every spec's `baseURL === CLOUD_WEB_URL` check holds,
+      // and the same API server, which can use only one database at a time.
+      name: CLOUD_PROJECT,
       use: {
         ...devices['Desktop Chrome'],
         baseURL: CLOUD_WEB_URL,
@@ -210,34 +299,7 @@ export default defineConfig({
           ],
         },
       },
-      testMatch: [
-        '**/item-management.spec.ts',
-        '**/settings/tags.spec.ts',
-        '**/settings/vendors.spec.ts',
-        '**/settings/recipes.spec.ts',
-        '**/cooking.spec.ts',
-        '**/item-list-state-restore.spec.ts',
-        '**/tests/shopping.spec.ts',
-        '**/tests/item-logs.spec.ts',
-        '**/settings/import-export-cloud.spec.ts',
-        '**/settings/import-strategies.spec.ts',
-        '**/settings/data-mode-migration.spec.ts',
-        '**/settings/locations.spec.ts',
-        '**/location-switcher.spec.ts',
-        '**/location-not-stocked-here.spec.ts',
-        '**/location-scoped-writes.spec.ts',
-        '**/recipes-group.spec.ts',
-        '**/vendors-group.spec.ts',
-        '**/tests/shelves.spec.ts',
-        '**/settings/shelves.spec.ts',
-        '**/settings-global-pages.spec.ts',
-        '**/item-stock-input.spec.ts',
-        '**/item-stock-pager.spec.ts',
-        '**/cleanup-endpoint.spec.ts',
-        '**/cart-id-cross-user-leak.spec.ts',
-        '**/unified-item-search.spec.ts',
-        '**/cloud-user-row.spec.ts',
-      ],
+      testMatch: cloudTestMatch,
     },
     {
       // The dev server has no service worker. It only exists in a real build,

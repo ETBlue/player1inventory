@@ -19,7 +19,18 @@ export type FixtureLocation = {
   /** Symbolic name used by `stocks[].location`. Not an id in either mode. */
   key: string
   name: string
-  /** Exactly one location must set this. */
+  /**
+   * Exactly one location must set this. It marks the HOME location.
+   *
+   * LOCAL: the row is written with `isDefault: true` and the `'local'` id,
+   * which is what Dexie's own default looks like.
+   *
+   * CLOUD: the server has no default location any more (households H3a task
+   * 3.14 dropped the column). `seedCloudFixture` maps this entry onto the
+   * location first sign-in creates ("Home", `order` 0) and renames it to
+   * `name` when the two differ. So a fixture that calls it "My Home" shows
+   * "My Home" in both projects.
+   */
   isDefault?: boolean
 }
 

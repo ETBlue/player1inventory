@@ -13,6 +13,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useCreateVendor } from '@/hooks/useVendors'
+import { showVendorCreateError } from '@/lib/vendorCreateError'
 import type { Vendor } from '@/types'
 
 interface NewVendorDialogProps {
@@ -42,7 +43,15 @@ export function NewVendorDialog({
 
   const handleSubmit = async () => {
     if (nameError || createVendor.isPending) return
-    const vendor = await createVendor.mutateAsync(name.trim())
+    const trimmed = name.trim()
+    let vendor: Awaited<ReturnType<typeof createVendor.mutateAsync>>
+    try {
+      vendor = await createVendor.mutateAsync(trimmed)
+    } catch (err) {
+      // The dialog stays open, so the user can try again.
+      showVendorCreateError(err, trimmed)
+      return
+    }
     if (!vendor) return
     handleClose()
     if (onSuccess) {

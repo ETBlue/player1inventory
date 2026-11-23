@@ -6,9 +6,13 @@ import {
   useRouterState,
 } from '@tanstack/react-router'
 import { useEffect } from 'react'
+import { HouseholdChangeGuard } from '@/apollo/HouseholdChangeGuard'
+import { HouseholdChangedNotice } from '@/components/global/HouseholdChangedNotice'
 import { Layout } from '@/components/global/Layout'
 import { OfflineBanner } from '@/components/global/OfflineBanner'
 import { PostLoginMigrationDialog } from '@/components/global/PostLoginMigrationDialog'
+import { NoHouseholdGate } from '@/components/household/NoHouseholdGate'
+import { OwnershipOfferBanner } from '@/components/household/OwnershipOfferBanner'
 import { Toaster } from '@/components/ui/sonner'
 import { ActiveLocationProvider } from '@/hooks/useActiveLocation'
 import { useDataMode } from '@/hooks/useDataMode'
@@ -16,9 +20,11 @@ import { useIsOffline } from '@/hooks/useIsOffline'
 import { useItems } from '@/hooks/useItems'
 import { useLanguage } from '@/hooks/useLanguage'
 import { useNavigationTracker } from '@/hooks/useNavigationTracker'
+import { isCopyPromptPausedPath } from '@/hooks/usePostLoginMigration'
 import { useServiceWorkerUpdate } from '@/hooks/useServiceWorkerUpdate'
 import { useTags } from '@/hooks/useTags'
 import { useVendors } from '@/hooks/useVendors'
+import { isAuthPage } from '@/lib/authPages'
 import { shouldRedirectToOnboarding } from './shouldRedirectToOnboarding'
 
 // E2E test mode: VITE_E2E_TEST_USER_ID bypasses Clerk, so CloudAuthGuard
@@ -31,6 +37,8 @@ export function CloudAuthGuard() {
   const { isSignedIn, isLoaded } = useAuth()
   const navigate = useNavigate()
   const offline = useIsOffline()
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const searchStr = useRouterState({ select: (s) => s.location.searchStr })
 
   useEffect(() => {
     // Do not redirect while offline. Clerk cannot confirm the session
@@ -38,9 +46,21 @@ export function CloudAuthGuard() {
     // The user's cached data is on the device and should stay reachable.
     if (offline) return
     if (isLoaded && !isSignedIn) {
-      navigate({ to: '/sign-in' })
+      // Already on the sign-in or the sign-up page. Navigating again would
+      // replace the return path with the page's own URL, and on `/sign-up`
+      // it would also take the person away from the form they asked for.
+      if (isAuthPage(pathname)) return
+      // Come back to this page after sign-in (households H5b, decision
+      // T24). A person who opens an invite link must land on it again, also
+      // after signing UP. `/sign-in` checks the value with
+      // `safeRedirectPath`, because anyone can write it into a URL.
+      const redirect = pathname + searchStr
+      navigate({
+        to: '/sign-in',
+        search: redirect === '/' ? {} : { redirect },
+      })
     }
-  }, [isLoaded, isSignedIn, navigate, offline])
+  }, [isLoaded, isSignedIn, navigate, offline, pathname, searchStr])
 
   return null
 }
@@ -110,10 +130,43 @@ function RootComponent() {
         records why mounting a destructive path in every cloud spec is
         contained.
       */}
-      {mode === 'cloud' && <PostLoginMigrationDialog />}
+      {mode === 'cloud' && (
+        <PostLoginMigrationDialog paused={isCopyPromptPausedPath(pathname)} />
+      )}
+      {/*
+        HouseholdChangeGuard mounts in E2E test mode too, beside the dialog
+        above: it calls no Clerk hook. When the server answers a different
+        household (a join, a leave, a removal), it clears the cache and
+        reloads (households H5b, decision T23).
+      */}
+      {mode === 'cloud' && <HouseholdChangeGuard />}
       <Layout>
         {mode === 'cloud' && <OfflineBanner />}
-        <Outlet />
+        {/*
+          The one-time message after this tab was moved to another household
+          because the server refused it with HOUSEHOLD_CHANGED (households H7
+          task L.3, owner decision O51-A). It shows nothing on every other
+          load.
+        */}
+        {mode === 'cloud' && <HouseholdChangedNotice />}
+        {/*
+          Asks the person to become the owner of a household: an owner's
+          transfer offer, or a hand-over after the owner's account was
+          deleted (households H6b, task K.6). Outside `NoHouseholdGate`, like
+          the offline banner: an offer may be for the person's OTHER
+          household. It shows nothing when there is no open offer.
+        */}
+        {mode === 'cloud' && <OwnershipOfferBanner />}
+        {/*
+          In cloud mode, a person in NO household (after a leave or a
+          removal) sees the no-household screen instead of the page
+          (households H5b, task G.8). Not on `/join/…`, `/sign-in` or
+          `/sign-up`. The
+          gate does nothing in local mode.
+        */}
+        <NoHouseholdGate>
+          <Outlet />
+        </NoHouseholdGate>
       </Layout>
       <Toaster />
       {/* <TanStackRouterDevtools /> */}

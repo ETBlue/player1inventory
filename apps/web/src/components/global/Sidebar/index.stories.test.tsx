@@ -1,6 +1,7 @@
 import { composeStories } from '@storybook/react'
 import { render, screen, waitFor, within } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
+import { mockScreen } from '@/test/viewport'
 import * as stories from './index.stories'
 
 // Stories use the db-init wrapper: "Loading..." shows synchronously, then the
@@ -49,10 +50,19 @@ describe('Sidebar stories smoke tests', () => {
     ).toBeInTheDocument()
   })
 
-  it('SettingsActive renders without error', async () => {
+  it('SettingsActive renders the household view on desktop', async () => {
+    // Settings pages are full-screen on mobile (no sidebar), and the tests
+    // render the mobile layout unless told otherwise
+    mockScreen({ desktop: true })
+    onTestFinished(() => {
+      vi.restoreAllMocks()
+    })
     render(<SettingsActive />)
+    const nav = await screen.findByRole('navigation', {
+      name: 'Sidebar navigation',
+    })
     expect(
-      await screen.findByRole('navigation', { name: 'Sidebar navigation' }),
+      await within(nav).findByRole('link', { name: 'General' }),
     ).toBeInTheDocument()
   })
 })

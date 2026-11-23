@@ -1,10 +1,15 @@
 import { composeStories } from '@storybook/react'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './index.stories'
 
-const { FewConflicts, ManyConflicts, MixedMatchReasons } =
-  composeStories(stories)
+const {
+  FewConflicts,
+  ManyConflicts,
+  MixedMatchReasons,
+  WithoutClear,
+  ClearAsksHouseholdName,
+} = composeStories(stories)
 
 describe('ConflictDialog stories smoke tests', () => {
   it('FewConflicts renders dialog title', () => {
@@ -32,5 +37,40 @@ describe('ConflictDialog stories smoke tests', () => {
   it('MixedMatchReasons renders match reason labels', () => {
     render(<MixedMatchReasons />)
     expect(screen.getAllByText(/ID \+ name/).length).toBeGreaterThan(0)
+  })
+
+  it('FewConflicts offers all three strategies', () => {
+    render(<FewConflicts />)
+    expect(
+      screen.getByRole('button', { name: 'Replace matches' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Clear & import' }),
+    ).toBeInTheDocument()
+  })
+
+  it('WithoutClear offers skip and replace but no Clear button', () => {
+    render(<WithoutClear />)
+    // Something present first, so the absence below is not the empty state
+    expect(
+      screen.getByRole('button', { name: 'Skip conflicts' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Replace matches' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Clear & import' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('ClearAsksHouseholdName asks for the name before Clear & import', async () => {
+    render(<ClearAsksHouseholdName />)
+    fireEvent.click(screen.getByRole('button', { name: 'Clear & import' }))
+    expect(
+      await screen.findByLabelText('Type The Lins to confirm'),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Clear & import' }),
+    ).toBeDisabled()
   })
 })

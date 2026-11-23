@@ -22,7 +22,10 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { resolveLocalActiveLocationId } from '@/hooks/useActiveLocation'
+import {
+  resolveLocalActiveLocationId,
+  useActiveLocation,
+} from '@/hooks/useActiveLocation'
 import { useDataMode } from '@/hooks/useDataMode'
 import {
   MIGRATION_PROMPTED_KEY,
@@ -65,27 +68,58 @@ function CloudModeSectionE2E() {
 
 // ─── CloudModeSection ─────────────────────────────────────────────────────────
 
-function CloudModeSection() {
-  const apolloClient = useApolloClient()
+// Clerk's `signOut`, given only where a `ClerkProvider` exists. In E2E test
+// mode there is none (main.tsx), and `useClerk()` throws without one. So the
+// E2E build renders this section with NO `signOut`: the Switch button and its
+// copy flow work, and the Sign Out button and its dialogs are left out.
+//
+// A PRODUCTION CHANGE MADE FOR A TEST (households H4 task E.6). Until then the
+// whole section was left out in E2E mode, so no spec could drive the cloud →
+// local copy. The Switch flow calls nothing from Clerk: it keeps the Clerk
+// session alive on purpose. So only the Sign Out part needed Clerk. Same
+// shape as `PostLoginMigrationDialogWithClerk` / `PostLoginMigrationDialogE2E`
+// (e2e/CLAUDE.md, "PostLoginMigrationDialog mounts in E2E test mode").
+interface CloudModeSectionProps {
+  signOut?: () => Promise<void>
+}
+
+function CloudModeSectionWithClerk() {
   const clerk = useClerk()
+  return <CloudModeSection signOut={() => clerk.signOut()} />
+}
+
+function CloudModeSection({ signOut }: CloudModeSectionProps) {
+  const apolloClient = useApolloClient()
   const { t } = useTranslation()
+  // This section only renders in cloud mode, so this is the CLOUD active
+  // location.
+  const { activeLocationId: cloudActiveLocationId } = useActiveLocation()
 
   const [switchFlow, setSwitchFlow] = useState<SwitchFlow>('idle')
   const [signOutFlow, setSignOutFlow] = useState<SignOutFlow>('idle')
 
   // ── Switch cloud→local ──────────────────────────────────────────────────────
 
-  // A cloud EXPORT still carries stock inline on the item — `fetchCloudPayload`
-  // sends no `itemStocks` — so the copy down has to synthesise `ItemStock` rows
-  // and place them in ONE location. That location must exist in the LOCAL
-  // `locations` table the rows are written to, which rules out
-  // `useActiveLocation().activeLocationId`: in cloud mode it is a
-  // server-generated cuid, and stock stored under it is unreachable from the
-  // local pantry — the user would land on an empty one.
+  // Two location ids go to `importLocalData`, one per id space:
   //
-  // `resolveLocalActiveLocationId` reads the `active-location-id:local` slot the
-  // provider will itself read after the reload below, so the restored data is in
-  // the pantry the user is returned to.
+  // - `homeLocationId`: the CLOUD active location (households H4 task E.5,
+  //   decision T18). The copy puts it into local "My Home" (`'local'`), and
+  //   every other cloud location keeps its id (design, "Copying between local
+  //   and cloud"). Before E.5 the payload's first location by `order` went
+  //   there, whichever location the user was on.
+  // - `activeLocationId`: a LOCAL location id, from
+  //   `resolveLocalActiveLocationId`, which reads the `active-location-id:local`
+  //   slot the provider reads after the reload below. It is used only for a
+  //   payload with no `itemStocks` key, whose inline stock has to go into one
+  //   local location. A cloud export has carried `locations` and `itemStocks`
+  //   since PR 4b, so for the copy it is a safety net. (This comment said until
+  //   E.5 that a cloud export "still carries stock inline". That stopped being
+  //   true in PR 4b.)
+  //
+  // `cloudActiveLocationId` is the provider's value in cloud mode. It is
+  // validated against the cloud location list once that list loads. If it
+  // still names no location of the payload, `importLocalData` falls back to
+  // the first location by `order`.
   async function doSwitch(
     copyChoice: 'copy' | 'skip',
     conflictRes?: 'append' | 'replace',
@@ -98,7 +132,10 @@ function CloudModeSection() {
       await importLocalData(
         payload,
         conflictRes === 'replace' ? 'replace' : 'skip',
-        localLocationId,
+        {
+          activeLocationId: localLocationId,
+          homeLocationId: cloudActiveLocationId,
+        },
       )
     }
     // Clerk session stays alive — seamless re-enable
@@ -111,17 +148,20 @@ function CloudModeSection() {
   async function doSignOut(switchToOffline: boolean, copyData = false) {
     if (copyData && switchToOffline) {
       setSignOutFlow('migrating')
-      // Same rule as `doSwitch`: a LOCAL location id, not the cloud one.
+      // Same two ids as `doSwitch`.
       const [payload, localLocationId] = await Promise.all([
         fetchCloudPayload(apolloClient),
         resolveLocalActiveLocationId(),
       ])
-      await importLocalData(payload, 'skip', localLocationId)
+      await importLocalData(payload, 'skip', {
+        activeLocationId: localLocationId,
+        homeLocationId: cloudActiveLocationId,
+      })
     }
     // Remove the cached cloud data before signing out. On a shared device the
     // next person must not be able to see this account's pantry.
     await clearCache()
-    await clerk.signOut()
+    await signOut?.()
     if (switchToOffline) {
       localStorage.setItem('data-mode', 'local')
       window.location.reload()
@@ -134,12 +174,14 @@ function CloudModeSection() {
       <Button variant="neutral-outline" onClick={() => setSwitchFlow('copy')}>
         {t('settings.dataMode.cloud.switchButton')}
       </Button>
-      <Button
-        variant="neutral-outline"
-        onClick={() => setSignOutFlow('askOffline')}
-      >
-        {t('settings.dataMode.cloud.signOutButton')}
-      </Button>
+      {signOut && (
+        <Button
+          variant="neutral-outline"
+          onClick={() => setSignOutFlow('askOffline')}
+        >
+          {t('settings.dataMode.cloud.signOutButton')}
+        </Button>
+      )}
 
       {/* ── Switch flow dialogs ─────────────────────────────────────────── */}
 
@@ -335,12 +377,15 @@ export function DataModeCard({ compact = false }: DataModeCardProps) {
               {t('settings.dataMode.local.enableButton')}
             </Button>
           )}
-          {/* CloudModeSection calls useClerk(); in E2E test mode there is no
-              ClerkProvider (see main.tsx), so guard it like the header above and
-              the cloud guards in __root.tsx / settings/index.tsx. */}
-          {mode === 'cloud' && !import.meta.env.VITE_E2E_TEST_USER_ID && (
-            <CloudModeSection />
-          )}
+          {/* Sign Out calls useClerk(); in E2E test mode there is no
+              ClerkProvider (see main.tsx), so the E2E build gets the section
+              without it: Switch only. */}
+          {mode === 'cloud' &&
+            (import.meta.env.VITE_E2E_TEST_USER_ID ? (
+              <CloudModeSection />
+            ) : (
+              <CloudModeSectionWithClerk />
+            ))}
         </CardContent>
       </Card>
 

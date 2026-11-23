@@ -104,3 +104,33 @@ export const MixedMatchReasons: Story = {
     },
   },
 }
+
+/**
+ * What a household `manager` sees: no "Clear & import", because `clear` is
+ * for the owner only (households H4 task E.4).
+ */
+export const WithoutClear: Story = {
+  args: {
+    allowClear: false,
+    conflicts: {
+      ...emptyConflicts,
+      items: [{ id: 'item-1', name: 'Milk', matchReasons: ['id'] }],
+    },
+  },
+}
+
+/**
+ * What the household owner sees in cloud mode: "Clear & import" opens a
+ * second confirm that asks for the household name, typed exactly (owner
+ * decision O40, households H6 task K.0). Local mode passes no name and keeps
+ * the one-press button.
+ */
+export const ClearAsksHouseholdName: Story = {
+  args: {
+    clearConfirmName: 'The Lins',
+    conflicts: {
+      ...emptyConflicts,
+      items: [{ id: 'item-1', name: 'Milk', matchReasons: ['id'] }],
+    },
+  },
+}

@@ -1,4 +1,8 @@
-import { InMemoryCache } from '@apollo/client'
+import {
+  type FieldMergeFunction,
+  InMemoryCache,
+  type Reference,
+} from '@apollo/client'
 
 // One cache configuration, shared by the production client and the E2E client, so
 // cloud E2E exercises the same cache semantics production does. A policy added to
@@ -31,6 +35,48 @@ import { InMemoryCache } from '@apollo/client'
 // `allCarts` and `allCartItems` are absent on purpose — no arguments,
 // whole-account; `cartItems(cartId:)` too, because a cart id already names its
 // location (`${locationId}:${vendorId | 'no-vendor'}`).
+/**
+ * How one page of `householdActivity` joins the cached list (households H6,
+ * task J.5). The server gives rows newest first, ordered by `createdAt`, then
+ * by `id` (decision T54), and log rows are never deleted on their own (T48).
+ * So every page is a run of that one order, and the cached list is always
+ * the top of it.
+ *
+ * | The page | What happens |
+ * |---|---|
+ * | `before: <id>` ("Load more") | the list up to that row, then the page. A row the list already holds is not added again |
+ * | `before: <id>`, and the list no longer holds that row | the page is dropped. It came late, after a refetch replaced the list, and the rows between are not known. "Load more" asks again |
+ * | no `before` (the first load, or a refetch after a live event or a write) | the page, then the rows the list holds AFTER the page's last row. So new rows go on top, and the pages already loaded stay |
+ * | no `before`, and the list does not hold the page's last row | the page alone. Either every row of the page is new, so the rows between the page and the list are not known, or the list is empty |
+ *
+ * Rows are matched by `id`, never by `createdAt`: two rows can have the same
+ * time.
+ *
+ * A refetch is always a first page: a watched query keeps the variables it
+ * was mounted with, and `fetchMore` does not change them.
+ */
+export const mergeActivityPage: FieldMergeFunction<Reference[]> = (
+  existing,
+  incoming,
+  { args, readField },
+) => {
+  const list = existing ?? []
+  const idOf = (row: Reference) => readField<string>('id', row)
+  const before = (args?.before as string | null | undefined) ?? null
+  if (before !== null) {
+    const at = list.findIndex((row) => idOf(row) === before)
+    if (at === -1) return list
+    const kept = list.slice(0, at + 1)
+    const keptIds = new Set(kept.map(idOf))
+    return [...kept, ...incoming.filter((row) => !keptIds.has(idOf(row)))]
+  }
+  const last = incoming[incoming.length - 1]
+  if (last === undefined) return incoming
+  const at = list.findIndex((row) => idOf(row) === idOf(last))
+  if (at === -1) return incoming
+  return [...incoming, ...list.slice(at + 1)]
+}
+
 export function createCache() {
   return new InMemoryCache({
     typePolicies: {
@@ -41,6 +87,22 @@ export function createCache() {
           inventoryLogCountByItem: { keyArgs: ['itemId', 'locationId'] },
           lastPurchaseDates: { keyArgs: ['itemIds', 'locationId'] },
           vendorCart: { keyArgs: ['vendorId', 'locationId'] },
+          // `HouseholdPerson` has no `id`, so its rows are not normalised.
+          // A refetch after a removal brings a SHORTER list, and without a
+          // policy Apollo warns that cache data may be lost. The new list is
+          // always the whole answer, so it simply replaces the old one
+          // (households H5b, task G.9).
+          householdMembers: { merge: false },
+          // The same for `LocationPerson` (households H5c, task H.4): a
+          // removal or a leave brings a shorter list. One list per location:
+          // `keyArgs` keeps the `locationId` in the cache key.
+          locationPeople: { keyArgs: ['locationId'], merge: false },
+          // The activity log comes in pages (households H6, task J.5). One
+          // list per household: `before` and `first` are not in the key, so
+          // every page lands in the same list. A household switch clears the
+          // whole cache (`HouseholdChangeGuard`), so a list never mixes two
+          // households. `mergeActivityPage` says how a page joins the list.
+          householdActivity: { keyArgs: false, merge: mergeActivityPage },
         },
       },
     },

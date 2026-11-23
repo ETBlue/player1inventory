@@ -197,6 +197,34 @@ describe('LocationSwitcher', () => {
   })
 })
 
+describe('LocationSwitcher in local mode — no View only', () => {
+  beforeEach(async () => {
+    await seedLocations()
+    clearStoredActiveLocationIds()
+  })
+
+  it('user in local mode sees no View only badge, because every location is organizer there', async () => {
+    // A NEGATIVE CONTROL, not evidence about roles. In local mode
+    // `usePermissions().roleAt` is hard-coded to `organizer`, so no role
+    // change can turn this test red. It goes red only when the switcher
+    // badges a location that is NOT a viewer one (measured in task F.4: "badge
+    // for every role" made it fail). The role rules are tested in
+    // LocationSwitcher.cloud.test.tsx.
+    const user = userEvent.setup()
+    renderSwitcher({ variant: 'full' })
+    const button = await screen.findByRole('button', {
+      name: 'Switch location (current: My Home)',
+    })
+    expect(button).not.toHaveTextContent('View only')
+
+    await user.click(button)
+    expect(
+      await screen.findByRole('menuitem', { name: 'Office' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('View only')).not.toBeInTheDocument()
+  })
+})
+
 describe('LocationSwitcher variant="full"', () => {
   beforeEach(async () => {
     await seedLocations()
@@ -266,5 +294,55 @@ describe('LocationSwitcher variant="full"', () => {
     })
     expect(trigger).toHaveClass('mt-4')
     expect(trigger).toHaveClass('w-full')
+  })
+})
+
+// ── Households H7b task M.4: the switcher uses the chosen sort (owner
+// decisions O53-A and O54-B) ──
+//
+// The order is My Home, Office, Attic. By name it is Attic, My Home, Office,
+// so a switcher that sorted by `order` only could not pass.
+describe('LocationSwitcher — the sort in local mode', () => {
+  beforeEach(async () => {
+    clearStoredActiveLocationIds()
+    localStorage.removeItem('location-sort')
+    await seedLocations()
+    await db.locations.put({
+      id: 'loc-attic',
+      name: 'Attic',
+      order: 2,
+      isDefault: false,
+      createdAt: now,
+      updatedAt: now,
+    })
+  })
+
+  async function menuNames() {
+    const user = userEvent.setup()
+    await user.click(
+      await screen.findByRole('button', {
+        name: 'Switch location (current: My Home)',
+      }),
+    )
+    return (await screen.findAllByRole('menuitem'))
+      .map((i) => i.textContent ?? '')
+      .filter((t) => ['My Home', 'Office', 'Attic'].includes(t))
+  }
+
+  it('user sees the custom order when no sort is stored', async () => {
+    renderSwitcher({ variant: 'full' })
+    expect(await menuNames()).toEqual(['My Home', 'Office', 'Attic'])
+  })
+
+  it('user who chose Name sees the switcher by name', async () => {
+    localStorage.setItem('location-sort', 'name')
+    renderSwitcher({ variant: 'full' })
+    expect(await menuNames()).toEqual(['Attic', 'My Home', 'Office'])
+  })
+
+  it('a cloud-only sort stored on the device falls back to Custom', async () => {
+    localStorage.setItem('location-sort', 'lastVisited')
+    renderSwitcher({ variant: 'full' })
+    expect(await menuNames()).toEqual(['My Home', 'Office', 'Attic'])
   })
 })

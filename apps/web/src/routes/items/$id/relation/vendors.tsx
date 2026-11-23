@@ -7,7 +7,10 @@ import { EmptyState } from '@/components/shared/EmptyState'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useItem, useUpdateItem, useVendors } from '@/hooks'
+import { usePermissions } from '@/hooks/usePermissions'
 import { useCreateVendor } from '@/hooks/useVendors'
+import { showSaveError } from '@/lib/saveError'
+import { showVendorCreateError } from '@/lib/vendorCreateError'
 
 export const Route = createFileRoute('/items/$id/relation/vendors')({
   component: VendorsTab,
@@ -20,6 +23,10 @@ function VendorsTab() {
   const { data: vendors = [] } = useVendors()
   const updateItem = useUpdateItem()
   const createVendor = useCreateVendor()
+  // A household member sees what is assigned and cannot change it
+  // (households H5 task F.5): presses write nothing, the badges are
+  // aria-disabled, and there is no "New …" button.
+  const { canEditCatalog } = usePermissions()
   const [showDialog, setShowDialog] = useState(false)
   const [newVendorName, setNewVendorName] = useState('')
   const [togglingVendorId, setTogglingVendorId] = useState<string | null>(null)
@@ -29,7 +36,7 @@ function VendorsTab() {
   }, [updateItem.isPending])
 
   const toggleVendor = (vendorId: string) => {
-    if (!item) return
+    if (!item || !canEditCatalog) return
 
     const currentVendorIds = item.vendorIds ?? []
     const newVendorIds = currentVendorIds.includes(vendorId)
@@ -37,20 +44,37 @@ function VendorsTab() {
       : [...currentVendorIds, vendorId]
 
     setTogglingVendorId(vendorId)
-    updateItem.mutate({ id, updates: { vendorIds: newVendorIds } })
+    // `mutate` never rejects, so the failure comes in through `onError`.
+    // Before, it was ignored and a failed save showed nothing.
+    updateItem.mutate(
+      { id, updates: { vendorIds: newVendorIds } },
+      { onError: (err) => showSaveError(err) },
+    )
   }
 
   const handleAddVendor = async () => {
-    if (!newVendorName.trim()) return
+    const name = newVendorName.trim()
+    if (!name) return
 
-    const newVendor = await createVendor.mutateAsync(newVendorName.trim())
+    let newVendor: Awaited<ReturnType<typeof createVendor.mutateAsync>>
+    try {
+      newVendor = await createVendor.mutateAsync(name)
+    } catch (err) {
+      // The dialog stays open, so the user can try again.
+      showVendorCreateError(err, name)
+      return
+    }
     if (newVendor?.id) {
-      // Immediately assign to current item
+      // Immediately assign to current item. The vendor exists now, so the
+      // dialog closes even if this fails; the toast says so.
       const currentVendorIds = item?.vendorIds ?? []
-      updateItem.mutate({
-        id,
-        updates: { vendorIds: [...currentVendorIds, newVendor.id] },
-      })
+      updateItem.mutate(
+        {
+          id,
+          updates: { vendorIds: [...currentVendorIds, newVendor.id] },
+        },
+        { onError: (err) => showSaveError(err) },
+      )
     }
     setNewVendorName('')
     setShowDialog(false)
@@ -73,8 +97,9 @@ function VendorsTab() {
               key={vendor.id}
               role="button"
               aria-pressed={isAssigned}
+              aria-disabled={!canEditCatalog || undefined}
               variant={isAssigned ? 'neutral' : 'neutral-outline'}
-              className={`cursor-pointer normal-case${updateItem.isPending && togglingVendorId === vendor.id ? ' pointer-events-none' : ''}`}
+              className={`${canEditCatalog ? 'cursor-pointer' : 'cursor-default'} normal-case${updateItem.isPending && togglingVendorId === vendor.id ? ' pointer-events-none' : ''}`}
               onClick={() => toggleVendor(vendor.id)}
             >
               {vendor.name}
@@ -87,15 +112,17 @@ function VendorsTab() {
           )
         })}
 
-        <Button
-          variant="neutral-ghost"
-          size="sm"
-          className="px-0 py-0 gap-1 text-xs -my-1"
-          onClick={() => setShowDialog(true)}
-        >
-          <Plus />
-          {t('items.vendors.newVendor.button')}
-        </Button>
+        {canEditCatalog && (
+          <Button
+            variant="neutral-ghost"
+            size="sm"
+            className="px-0 py-0 gap-1 text-xs -my-1"
+            onClick={() => setShowDialog(true)}
+          >
+            <Plus />
+            {t('items.vendors.newVendor.button')}
+          </Button>
+        )}
       </div>
 
       {(item.vendorIds ?? []).length === 0 && (

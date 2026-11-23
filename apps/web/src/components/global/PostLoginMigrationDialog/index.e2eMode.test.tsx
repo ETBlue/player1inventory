@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
@@ -36,6 +36,25 @@ vi.mock('@clerk/react', () => {
     ClerkProvider: ({ children }: { children: ReactNode }) => children,
   }
 })
+
+// The household a stored copy goes into (owner decision O22-A). The copy
+// asks "Copy your offline data into Our Home?" first, so the test presses
+// Copy here.
+vi.mock('@/hooks/useHousehold', () => ({
+  useHousehold: () => ({
+    data: {
+      __typename: 'Household',
+      id: 'hh-1',
+      name: 'Our Home',
+      role: 'owner',
+      hasOwner: true,
+      pendingTransfer: null,
+    },
+    isLoading: false,
+    isError: false,
+    errorCode: undefined,
+  }),
+}))
 
 vi.mock('@/lib/exportData', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/exportData')>()
@@ -94,7 +113,9 @@ beforeEach(() => {
   vi.mocked(fetchLocalPayload).mockResolvedValue(
     PAYLOAD as unknown as Awaited<ReturnType<typeof fetchLocalPayload>>,
   )
-  vi.mocked(importCloudData).mockResolvedValue(undefined)
+  vi.mocked(importCloudData).mockResolvedValue({
+    skipped: { locationNames: [], rowCount: 0 },
+  })
 })
 
 afterEach(async () => {
@@ -111,8 +132,15 @@ describe('PostLoginMigrationDialog — the E2E branch needs no ClerkProvider', (
     // and no `ClerkProvider` anywhere — every Clerk hook throws
     localStorage.setItem(MIGRATION_STRATEGY_KEY, 'clear')
 
-    // When the dialog mounts in E2E test mode
+    // When the dialog mounts in E2E test mode, and the user presses Copy here
+    // and types the household name (owner decision O40: a `clear` copy asks
+    // for it)
     await renderE2EDialog()
+    fireEvent.click(await screen.findByRole('button', { name: 'Copy here' }))
+    fireEvent.change(await screen.findByLabelText('Type Our Home to confirm'), {
+      target: { value: 'Our Home' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Copy here' }))
 
     // Then the copy runs with that strategy
     await waitFor(() => expect(importCloudData).toHaveBeenCalledTimes(1))
@@ -132,9 +160,12 @@ describe('PostLoginMigrationDialog — the E2E branch needs no ClerkProvider', (
     // When the dialog mounts in E2E test mode
     await renderE2EDialog()
 
-    // Then the user is asked, and nothing was copied without being asked
+    // Then the user is asked, by household name, and nothing was copied
+    // without being asked
     expect(
-      await screen.findByText('Import local data to cloud?'),
+      await screen.findByRole('heading', {
+        name: /^Copy your offline data into /,
+      }),
     ).toBeInTheDocument()
     expect(importCloudData).not.toHaveBeenCalled()
   })

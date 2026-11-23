@@ -19,49 +19,71 @@ type CartItem {
 }
 
 """
-One bought item, with the on-hand total the CLIENT computed for its log row.
+One cart row the screen showed as being bought, and the amount it showed.
 
-── WHY THE CLIENT OWNS THIS NUMBER ──
+Since households H3b task B.5 (decision D1) a cart is shared by everyone with a
+role at its location, so it can change under the screen that shows it. The
+client sends back exactly what it showed, and `checkout` buys those rows or
+nothing:
 
-The log's `quantity` is the item's on-hand total in PACKAGE units after the
-purchase. Turning the unpacked remainder into a fraction of a pack needs
-`amountPerPackage`, which is a global field on `Item`, not on `ItemStock`. The
-resolver holds only the `ItemStock` row that `writeStock` returned, so it
-cannot do the conversion.
+- `cartItemId` is the `CartItem.id` of a row with `quantity > 0`.
+- `quantity` is the amount the screen showed for that row. It is compared with
+  the stored amount; it is not a stock total.
 
-It used to add the two columns raw — `stock.packedQuantity +
-stock.unpackedQuantity` — while local mode ran `getPackedTotal(...)` instead
-(apps/web/src/lib/quantityUtils.ts). The two answers differ whenever an item
-has an `amountPerPackage` AND a non-zero `unpackedQuantity`: with
-`amountPerPackage` 6, 2 packed and 3 unpacked, local logs 2.5 and cloud logged
-5. That is issue #336.
+Send one entry for every row being bought, each once. Anything else (an unknown
+or pinned row, another cart's row, a different amount, the same id twice, a
+row left out) refuses the whole checkout with the error code `CART_CHANGED`,
+and nothing is written.
 
-`consumeRecipes` set this precedent: `ConsumeRecipesItemInput` already carries
-a client-computed `quantity` for the same reason (src/schema/recipe.graphql).
+── THE CLIENT NO LONGER SENDS A STOCK TOTAL ──
 
-── WHAT `quantity` MUST BE ──
+From issue #336 until task B.5 this input was `{ itemId, quantity }`, where
+`quantity` was the post-purchase on-hand total the CLIENT computed, because the
+resolver did not read `amountPerPackage`. The resolver now reads `Item` and the
+`ItemStock` row in its own transaction and computes the log total with
+`getPackedTotal` from `@p1i/types`, the rule local mode uses. A total computed
+by the client could also be out of date by the time it arrived.
 
-The POST-purchase total, already converted:
+── OLD-BUNDLE SHIM (remove in the release after households) ──
 
-    getPackedTotal({ packedQuantity, unpackedQuantity, amountPerPackage })
-      + cartItem.quantity
+An old web bundle (`main` before the households release) still sends
+`{ itemId, quantity }`, where `quantity` is its own stock total. On 2026-11-15
+the owner accepted that such a bundle fails. On 2026-11-17 the owner chose to
+deploy the server BEFORE the web for the households release (option 4 in
+section 8.3 of docs/global/backend/2026-11-17-deploy-runbook-households-h4.md),
+so for ONE release the server accepts the old shape too:
 
-Read `packedQuantity` and `unpackedQuantity` from the PRE-purchase stock row.
-The cart quantity is added AFTER the conversion, because the cart quantity is
-already counted in packs and must not be divided by `amountPerPackage`.
+- `cartItemId` is optional in the schema. The resolver still needs, in every
+  entry, exactly one of `cartItemId` and `itemId`, and the same one in every
+  entry. Anything else is `BAD_USER_INPUT`.
+- An old-shape entry names the cart row by its item (a cart has at most one row
+  per item). The server reads that row's stored amount and buys it, as the old
+  server did. The old `quantity` (a stock total) is ignored.
+- An `itemId` with no row being bought is skipped, as the old server did.
+- NOT every `CART_CHANGED` rule applies. The amount rule cannot fire: the
+  amount is copied from the same read it would be compared with, so a change
+  that committed before the read is bought at the new amount (as on the old
+  server). Still `CART_CHANGED`: the same `itemId` twice, a row being bought
+  that the input leaves out, and a row changed or deleted between the read and
+  the claim. The claim still stops a double buy.
 
-Send one entry for every cart item with `quantity > 0` — the same rule the
-resolver's `buyingItems` filter uses. A bought item with no entry here fails
-the whole checkout with `BAD_USER_INPUT`; there is no fallback.
+When the shim goes, make `cartItemId` `ID!` again and delete `itemId`.
 """
 input CheckoutItemInput {
-  itemId: ID!
+  cartItemId: ID
+  itemId: ID
+    @deprecated(reason: "Old web bundles only. Remove in the release after households.")
   quantity: Float!
 }
 
 extend type Query {
   """
-  The permanent cart for one vendor at one location, created if it is missing.
+  The permanent cart for one vendor at one location.
+
+  Needs location role `viewer` (households H5 task F.2, decision T7). A
+  missing cart is created only for a `participant` or higher. A `viewer` gets
+  an empty cart with the id the row will have (`lastPurchasedAt` null), and
+  nothing is written: a read must not write for a role that may not write.
 
   `locationId` is REQUIRED (PR 3b Task 4). It was nullable for two tasks, with
   a fallback to the caller's default location, and that fallback is gone: an
@@ -75,9 +97,10 @@ extend type Query {
   vendorCart(vendorId: ID, locationId: ID!): Cart!
 
   """
-  Every cart the caller owns, across every location.
+  Every cart at every location of the caller's household where the caller has
+  a location role (any role). One household only since households H4 task E.5.
 
-  Whole-account on purpose, like `inventoryLogs`. The shopping page shows each
+  Whole-household on purpose, like `inventoryLogs`. The shopping page shows each
   vendor's "last purchased" and the export path needs every location's carts or
   the backup loses rows. Each row's location is recoverable from its id.
   """
@@ -97,12 +120,12 @@ extend type Query {
   """
   cartItemCountByItem(itemId: ID!, locationId: ID): Int!
 
-  "Every cart item the caller owns, across every location. The snapshot path, not a screen."
+  "Every cart item in the carts `allCarts` returns. The snapshot path, not a screen."
   allCartItems: [CartItem!]!
 }
 
 extend type Mutation {
-  "Add an item to a cart. The cart id names the location, and the caller needs the `member` role on it."
+  "Add an item to a cart. The cart id names the location, and the caller needs the `participant` role on it."
   addToCart(cartId: ID!, itemId: ID!, quantity: Int!): CartItem!
 
   "Change one cart item's quantity. `id` is a CartItem id; its location comes from the row's own cartId."
@@ -112,16 +135,16 @@ extend type Mutation {
   removeFromCart(id: ID!): Boolean!
 
   """
-  Buy everything in the cart with a quantity above zero.
+  Buy every row of the cart with a quantity above zero, whoever added it, in
+  one transaction. Pinned rows (quantity 0) stay.
 
-  The cart id names the location, is authorized against it, and — since PR 3b
-  Task 3 — is the location the stock move and the inventory log are written to.
-  Both used to go to the caller's DEFAULT location, so a checkout made while
-  viewing the Garage credited the Kitchen.
+  The cart id names the location, and the caller needs the `participant` role
+  on it. That location is where the stock move and the inventory log are
+  written (PR 3b Task 3).
 
-  `items` carries the on-hand total each log row records, computed by the
-  client. It is REQUIRED and has no fallback — see `CheckoutItemInput` above
-  for why the client owns that number, and what breaks for an old client.
+  `items` must list exactly the rows being bought, with the amounts the screen
+  showed. If the cart changed, the checkout is refused with `CART_CHANGED` and
+  nothing is written. See `CheckoutItemInput` above.
   """
   checkout(
     cartId: ID!
@@ -154,8 +177,8 @@ extend type Mutation {
      would have to create `locations x vendors` carts on every call. This
      mutation creates one location's worth, when that location becomes active.
   3. Authorization fits. One caller-supplied `locationId` goes through
-     `requireLocationRole(locationId, 'member')`, the same seam every other
-     location write uses. A read path would have to demand `member` on every
+     `requireLocationRole(locationId, 'participant')`, the same seam every other
+     location write uses. A read path would have to demand `participant` on every
      location just to list them.
 
   `locationId` was required from the start, and there is no default-location

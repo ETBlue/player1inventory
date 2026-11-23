@@ -9,12 +9,14 @@ import { useGetLocationsQuery } from '@/generated/graphql'
 //
 // A location-scoped cloud READ must NOT be sent with an unknown id, and not
 // merely because the response is a wasted `FORBIDDEN`. Apollo keeps that
-// request as a live OBSERVER keyed by its variables, and a mutation that
-// refetches BY NAME with `awaitRefetchQueries` refetches the stale
-// `{locationId: 'local'}` observer too, fails again, and rejects the
-// mutation's own promise. A create then left the item written, the dialog open
-// and no navigation: the second half of the bug cloud E2E caught on
-// 2026-09-04, and the half that survives fixing the write path alone.
+// request as a live OBSERVER keyed by its variables, and a write that
+// refetches BY NAME refetches the stale `{locationId: 'local'}` observer too
+// and fails again. Under `awaitRefetchQueries` that failure rejected the
+// mutation's own promise: a create then left the item written, the dialog open
+// and no navigation (the second half of the bug cloud E2E caught on
+// 2026-09-04). Since 2026-11-18 the writes read again through
+// `refetchAfterWrite` (`apollo/refetchAfterWrite.ts`), where a failed read no
+// longer rejects, but the wasted `FORBIDDEN` request would still be sent.
 //
 // `useGetLocationsQuery` rather than `useLocations()`: this must add nothing to
 // the LOCAL branch, and Apollo dedupes it against the provider's own call, so

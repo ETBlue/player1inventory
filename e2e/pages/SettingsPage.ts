@@ -1,4 +1,5 @@
 import type { Download, Locator, Page } from '@playwright/test'
+import { expect } from '@playwright/test'
 import { withSteps } from './step'
 
 export class SettingsPage {
@@ -102,8 +103,8 @@ export class SettingsPage {
    *
    * The labels are `settings.import.conflictDialog.{cancel,skip,replace,clear}`
    * in apps/web/src/i18n/locales/en.json. They are typed as a union so a typo
-   * is a compile error in an editor, even though nothing in the verification
-   * gate type-checks this directory (issue #322).
+   * is a compile error. The root `pnpm build` type-checks this directory
+   * (`pnpm typecheck:e2e`, since issue #322).
    */
   async chooseConflictStrategy(
     label: 'Cancel' | 'Skip conflicts' | 'Replace matches' | 'Clear & import',
@@ -111,6 +112,67 @@ export class SettingsPage {
     await this.getConflictDialog()
       .getByRole('button', { name: label, exact: true })
       .click()
+  }
+
+  /**
+   * Press "Clear & import" in the conflict dialog and, in cloud mode, pass
+   * the typed-name confirm that follows it (owner decision O40, households H6
+   * task K.0). Pass the household name in cloud, and `null` in local mode,
+   * which has no household and still runs the import on the first press.
+   *
+   * The confirm is `DeleteButton`'s typed-name mode (`ConflictDialog.tsx`).
+   * It opens as a `role="alertdialog"` on top of the conflict dialog, with a
+   * text field labelled "Type {name} to confirm"
+   * (`settings.household.danger.typeName`) and its own "Clear & import"
+   * button. This checks that button is DISABLED before the name is typed, so
+   * a confirm that let the import run at once would fail here.
+   *
+   * `beforeTyping` runs while the confirm is open and the name is not typed
+   * yet, so a spec can check that nothing was cleared at that point.
+   */
+  async chooseClearAndImport(
+    householdName: string | null,
+    beforeTyping?: () => Promise<void>,
+  ): Promise<void> {
+    await this.chooseConflictStrategy('Clear & import')
+    if (householdName === null) return
+    const confirm = this.page.getByRole('alertdialog')
+    const button = confirm.getByRole('button', {
+      name: 'Clear & import',
+      exact: true,
+    })
+    await expect(
+      confirm.getByLabel(`Type ${householdName} to confirm`),
+    ).toBeVisible()
+    await expect(button).toBeDisabled()
+    if (beforeTyping) await beforeTyping()
+    await confirm.getByRole('textbox').fill(householdName)
+    await button.click()
+  }
+
+  /**
+   * "Import into which location?" (`ImportLocationDialog`,
+   * src/components/settings/ImportLocationDialog, households H4 task E.4).
+   * Cloud mode only. It opens before the import of a LOCAL backup (a location
+   * with the id `'local'`) or of a file with no locations, except on
+   * "Clear & import". Its accessible name is its title,
+   * t('settings.import.locationDialog.title').
+   */
+  getImportLocationDialog(): Locator {
+    return this.page.getByRole('dialog', {
+      name: 'Import into which location?',
+    })
+  }
+
+  /**
+   * Pick a location in "Import into which location?" and press Import.
+   * `name` is a location name as stored, or "New location".
+   */
+  async chooseImportLocation(name: string): Promise<void> {
+    const dialog = this.getImportLocationDialog()
+    await dialog.getByRole('radio', { name, exact: true }).click()
+    // t('settings.import.locationDialog.confirm') = "Import"
+    await dialog.getByRole('button', { name: 'Import', exact: true }).click()
   }
 
   async waitForImportDone(mode: 'local' | 'cloud'): Promise<void> {

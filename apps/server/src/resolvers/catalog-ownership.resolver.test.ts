@@ -21,12 +21,24 @@ import { typeDefs } from '../schema/index.js'
 // here. `vi.mock` is per file, so the stateful fake lives in its own file —
 // the same reason `import-ownership.resolver.test.ts` gives.
 //
+// ─── Since households H3a task 3.7 ───────────────────────────────────────────
+//
+// "Mine" and "A's" now mean "my HOUSEHOLD's" and "A's household's". The
+// three catalog stores are scoped by `householdId`, and refuse a write that
+// names `userId` (task 3.14 dropped the column). `Cart` has no `userId` since
+// households H3b task B.3. Since task B.7 (decision D8) `deleteVendor` finds
+// the vendor's carts at every location of the caller's HOUSEHOLD, so this
+// file has a small `location` store and seeds `LocationMember` rows too. Each person is the `owner` of their own
+// household, so every role check passes here: the role checks, with three
+// people, are in `catalog-household.resolver.test.ts`.
+//
 // ─── The fixture ─────────────────────────────────────────────────────────────
 //
-// TWO users. The caller is `ME`; `A` owns the rows the caller must not touch.
-// Per model there is a row of mine, a row of A's, and an id no row holds.
-// With one user, "the row I own" and "the row that exists" are the same set,
-// so a resolver with no ownership check at all would pass every test.
+// TWO users in two households. The caller is `ME`; `A` owns the rows the
+// caller must not touch. Per model there is a row of mine, a row of A's, and
+// an id no row holds. With one household, "the row I own" and "the row that
+// exists" are the same set, so a resolver with no check at all would pass
+// every test.
 //
 // Two rows are deliberately BAD: a tag of mine whose `typeId` is A's tag type,
 // and a tag of mine whose `parentId` is A's tag. Before the guard, `createTag`
@@ -36,22 +48,67 @@ import { typeDefs } from '../schema/index.js'
 // when the walk is not scoped.
 vi.mock('../lib/prisma.js', async () => {
   const { createOwnedRowFake } = await import('../test/ownedRowFake.js')
+  const { createHouseholdFake } = await import('../test/householdFake.js')
+  const T = new Date('2026-11-01T00:00:00.000Z')
+  const households = createHouseholdFake({
+    households: [
+      { id: 'hh_me', name: 'Mine', ownerId: 'user_me', ownerGoneAt: null, createdAt: T, updatedAt: T },
+      { id: 'hh_a', name: 'Theirs', ownerId: 'user_a', ownerGoneAt: null, createdAt: T, updatedAt: T },
+    ],
+    householdMembers: [
+      { householdId: 'hh_me', userId: 'user_me', role: 'owner', joinedAt: T },
+      { householdId: 'hh_me', userId: 'user_me2', role: 'manager', joinedAt: T },
+      { householdId: 'hh_a', userId: 'user_a', role: 'owner', joinedAt: T },
+    ],
+    // ME and ME2 share loc_mine. loc_attic is in ME's household, but only ME2
+    // has a role there (H3b rule 14).
+    locationMembers: [
+      { locationId: 'loc_mine', userId: 'user_me', role: 'organizer', createdAt: T },
+      { locationId: 'loc_mine', userId: 'user_me2', role: 'organizer', createdAt: T },
+      { locationId: 'loc_attic', userId: 'user_me2', role: 'organizer', createdAt: T },
+      { locationId: 'loc_a', userId: 'user_a', role: 'organizer', createdAt: T },
+    ],
+    locations: () => [
+      { id: 'loc_mine', householdId: 'hh_me' },
+      { id: 'loc_attic', householdId: 'hh_me' },
+      { id: 'loc_a', householdId: 'hh_a' },
+    ],
+  })
+  const catalog = { scope: 'householdId' as const }
   const tag = createOwnedRowFake<{
     id: string
+    householdId: string
     userId: string
     name: string
     typeId: string
     parentId: string | null
-  }>({ model: 'Tag', columns: ['typeId', 'parentId'] })
-  const tagType = createOwnedRowFake<{ id: string; userId: string; name: string; color: string }>(
-    { model: 'TagType' },
-  )
-  const vendor = createOwnedRowFake<{ id: string; userId: string; name: string }>({
-    model: 'Vendor',
-  })
-  const cart = createOwnedRowFake<{ id: string; userId: string; locationId: string }>({
-    model: 'Cart',
-  })
+  }>({ model: 'Tag', columns: ['typeId', 'parentId'], ...catalog })
+  const tagType = createOwnedRowFake<{
+    id: string
+    householdId: string
+    userId: string
+    name: string
+    color: string
+  }>({ model: 'TagType', ...catalog })
+  const vendor = createOwnedRowFake<{
+    id: string
+    householdId: string
+    userId: string
+    name: string
+  }>({ model: 'Vendor', ...catalog })
+  // `cartFake` for `Cart`: it has no `userId` since households H3b task B.3,
+  // and the fake refuses one in a write or a `where`.
+  const { createCartFake } = await import('../test/cartFake.js')
+  const carts = createCartFake()
+  const cart = {
+    client: carts.client.cart,
+    state: carts.state,
+    get rows() {
+      return carts.state.carts
+    },
+    reset: (rows: { id: string; locationId: string }[]) =>
+      carts.reset({ carts: rows.map((r) => ({ lastPurchasedAt: null, ...r })), cartItems: [] }),
+  }
   const cartItem = createOwnedRowFake<{
     id: string
     userId: string
@@ -59,13 +116,58 @@ vi.mock('../lib/prisma.js', async () => {
     itemId: string
     quantity: number
   }>({ model: 'CartItem', columns: ['cartId'] })
+  // The three locations, read by `deleteVendor` (households H3b task B.7)
+  // to find every location of the caller's household. Only `householdId` is
+  // modelled; any other `where` key throws, so a read that scopes by
+  // something else is not silently answered.
+  const locationRows = [
+    { id: 'loc_mine', householdId: 'hh_me' },
+    { id: 'loc_attic', householdId: 'hh_me' },
+    { id: 'loc_a', householdId: 'hh_a' },
+  ]
+  const location = {
+    findMany: async ({ where = {} }: { where?: Record<string, unknown> } = {}) => {
+      for (const key of Object.keys(where)) {
+        if (key !== 'householdId') throw new Error(`location store does not model the where key '${key}'`)
+      }
+      return locationRows
+        .filter((l) => where.householdId === undefined || l.householdId === where.householdId)
+        .map((l) => ({ ...l }))
+    },
+    // `publishChange` sets `dataUpdatedAt` after `deleteVendor`'s CART event
+    // (households H7b task M.2). This file does not test that write, so it
+    // only counts the rows. Without it the write fails and is logged.
+    updateMany: async ({ where }: { where: { id: { in: string[] } } }) => ({
+      count: locationRows.filter((l) => where.id.in.includes(l.id)).length,
+    }),
+  }
+  const { runInTransaction } = await import('../test/stockFake.js')
+  const client: Record<string, unknown> = {
+    location,
+    household: households.client.household,
+    // `ensureHousehold` reads the household through the `User` row (decision
+    // T14 of the H5b plan). Every member here gets one (`rowForEveryMember`).
+    user: (await import('../test/userFake.js')).createUserFake([], {
+      householdMembers: () => households.state.householdMembers,
+      rowForEveryMember: true,
+    }).client,
+    householdMember: households.client.householdMember,
+    locationMember: households.client.locationMember,
+    tag: tag.client,
+    tagType: tagType.client,
+    vendor: vendor.client,
+    cart: cart.client,
+    cartItem: cartItem.client,
+  }
+  // `deleteTagType` runs its two writes in one interactive transaction.
+  const stores = [tag.state, tagType.state, vendor.state, cart.state, cartItem.state] as unknown as Record<
+    string,
+    unknown
+  >[]
+  client.$transaction = (arg: unknown) => runInTransaction(stores, client, arg)
   return {
     prisma: {
-      tag: tag.client,
-      tagType: tagType.client,
-      vendor: vendor.client,
-      cart: cart.client,
-      cartItem: cartItem.client,
+      ...client,
       // Handles onto the fakes. A `vi.mock` factory is hoisted above every
       // import and cannot close over a module-scope binding.
       $tag: tag,
@@ -80,22 +182,31 @@ vi.mock('../lib/prisma.js', async () => {
 import { prisma } from '../lib/prisma.js'
 import type { OwnedRowFake } from '../test/ownedRowFake.js'
 
-type TagRow = { id: string; userId: string; name: string; typeId: string; parentId: string | null }
-type TagTypeRow = { id: string; userId: string; name: string; color: string }
-type VendorRow = { id: string; userId: string; name: string }
-type CartRow = { id: string; userId: string; locationId: string }
+type TagRow = {
+  id: string
+  householdId: string
+  userId: string
+  name: string
+  typeId: string
+  parentId: string | null
+}
+type TagTypeRow = { id: string; householdId: string; userId: string; name: string; color: string }
+type VendorRow = { id: string; householdId: string; userId: string; name: string }
+type CartRow = { id: string; locationId: string }
 type CartItemRow = { id: string; userId: string; cartId: string; itemId: string; quantity: number }
 
 const fakes = prisma as unknown as {
   $tag: OwnedRowFake<TagRow>
   $tagType: OwnedRowFake<TagTypeRow>
   $vendor: OwnedRowFake<VendorRow>
-  $cart: OwnedRowFake<CartRow>
+  $cart: { rows: CartRow[]; reset: (rows: CartRow[]) => void }
   $cartItem: OwnedRowFake<CartItemRow>
 }
 
 const ME = 'user_me'
 const A = 'user_a'
+const HH_ME = 'hh_me'
+const HH_A = 'hh_a'
 
 const TT_MINE = 'tt_mine'
 const TT_A = 'tt_a'
@@ -120,6 +231,8 @@ const VEN_FREE = 'ven_free'
 
 const LOC_MINE = 'loc_mine'
 const LOC_A = 'loc_a'
+const LOC_ATTIC = 'loc_attic' // my household, but only ME2 has a role here
+const ME2 = 'user_me2' // a second member of my household
 
 let server: ApolloServer<Context>
 
@@ -134,41 +247,53 @@ afterAll(async () => {
 
 beforeEach(() => {
   fakes.$tagType.reset([
-    { id: TT_MINE, userId: ME, name: 'Category', color: 'blue' },
-    { id: TT_A, userId: A, name: 'Theirs', color: 'red' },
+    { id: TT_MINE, householdId: HH_ME, userId: ME, name: 'Category', color: 'blue' },
+    { id: TT_A, householdId: HH_A, userId: A, name: 'Theirs', color: 'red' },
   ])
   fakes.$tag.reset([
-    { id: TAG_MINE, userId: ME, name: 'Dairy', typeId: TT_MINE, parentId: null },
-    { id: TAG_MINE_CHILD, userId: ME, name: 'Milk', typeId: TT_MINE, parentId: TAG_MINE },
+    { id: TAG_MINE, householdId: HH_ME, userId: ME, name: 'Dairy', typeId: TT_MINE, parentId: null },
+    { id: TAG_MINE_CHILD, householdId: HH_ME, userId: ME, name: 'Milk', typeId: TT_MINE, parentId: TAG_MINE },
     {
       id: TAG_MINE_GRANDCHILD,
-      userId: ME,
+      householdId: HH_ME, userId: ME,
       name: 'Oat milk',
       typeId: TT_MINE,
       parentId: TAG_MINE_CHILD,
     },
-    { id: TAG_MINE_OTHER, userId: ME, name: 'Fruit', typeId: TT_MINE, parentId: null },
-    { id: TAG_MINE_OF_A_TYPE, userId: ME, name: 'Odd type', typeId: TT_A, parentId: null },
-    { id: TAG_MINE_UNDER_A, userId: ME, name: 'Odd parent', typeId: TT_MINE, parentId: TAG_A },
-    { id: TAG_A, userId: A, name: 'Theirs', typeId: TT_A, parentId: null },
-    { id: TAG_A_CHILD, userId: A, name: 'Their child', typeId: TT_A, parentId: TAG_A },
-    { id: TAG_A_UNDER_MINE, userId: A, name: 'Under mine', typeId: TT_A, parentId: TAG_MINE },
+    { id: TAG_MINE_OTHER, householdId: HH_ME, userId: ME, name: 'Fruit', typeId: TT_MINE, parentId: null },
+    { id: TAG_MINE_OF_A_TYPE, householdId: HH_ME, userId: ME, name: 'Odd type', typeId: TT_A, parentId: null },
+    { id: TAG_MINE_UNDER_A, householdId: HH_ME, userId: ME, name: 'Odd parent', typeId: TT_MINE, parentId: TAG_A },
+    { id: TAG_A, householdId: HH_A, userId: A, name: 'Theirs', typeId: TT_A, parentId: null },
+    { id: TAG_A_CHILD, householdId: HH_A, userId: A, name: 'Their child', typeId: TT_A, parentId: TAG_A },
+    { id: TAG_A_UNDER_MINE, householdId: HH_A, userId: A, name: 'Under mine', typeId: TT_A, parentId: TAG_MINE },
   ])
   fakes.$vendor.reset([
-    { id: VEN_MINE, userId: ME, name: 'Costco' },
-    { id: VEN_A, userId: A, name: 'Theirs' },
+    { id: VEN_MINE, householdId: HH_ME, userId: ME, name: 'Costco' },
+    { id: VEN_A, householdId: HH_A, userId: A, name: 'Theirs' },
   ])
+  // No cart has an owner since households H3b task B.3.
   fakes.$cart.reset([
-    { id: `${LOC_MINE}:${VEN_MINE}`, userId: ME, locationId: LOC_MINE },
-    { id: `${LOC_MINE}:no-vendor`, userId: ME, locationId: LOC_MINE },
-    { id: `${LOC_A}:${VEN_A}`, userId: A, locationId: LOC_A },
-    // My cart that names A's vendor. A refused deleteVendor must not touch it.
-    { id: `${LOC_MINE}:${VEN_A}`, userId: ME, locationId: LOC_MINE },
+    { id: `${LOC_MINE}:${VEN_MINE}`, locationId: LOC_MINE },
+    { id: `${LOC_MINE}:no-vendor`, locationId: LOC_MINE },
+    { id: `${LOC_A}:${VEN_A}`, locationId: LOC_A },
+    // A cart at my location that names A's vendor. A refused deleteVendor
+    // must not touch it.
+    { id: `${LOC_MINE}:${VEN_A}`, locationId: LOC_MINE },
+    // My vendor's cart at the location only ME2 has a role on.
+    { id: `${LOC_ATTIC}:${VEN_MINE}`, locationId: LOC_ATTIC },
+    // A cart of A's HOUSEHOLD whose id names MY vendor. Only a hand-edited
+    // import can make one, but it is what tells "the carts of my household"
+    // apart from "every cart that names this vendor": a deleteVendor that
+    // read all carts would delete it.
+    { id: `${LOC_A}:${VEN_MINE}`, locationId: LOC_A },
   ])
   fakes.$cartItem.reset([
     { id: 'ci_mine', userId: ME, cartId: `${LOC_MINE}:${VEN_MINE}`, itemId: 'i1', quantity: 1 },
     { id: 'ci_a', userId: A, cartId: `${LOC_A}:${VEN_A}`, itemId: 'i2', quantity: 1 },
     { id: 'ci_mine_a', userId: ME, cartId: `${LOC_MINE}:${VEN_A}`, itemId: 'i3', quantity: 1 },
+    // ME2 added it, at the location ME has no role on.
+    { id: 'ci_attic', userId: ME2, cartId: `${LOC_ATTIC}:${VEN_MINE}`, itemId: 'i4', quantity: 1 },
+    { id: 'ci_a_mine', userId: A, cartId: `${LOC_A}:${VEN_MINE}`, itemId: 'i5', quantity: 1 },
   ])
 })
 
@@ -184,7 +309,7 @@ function codeOf(result: { errors?: ReadonlyArray<{ extensions?: Record<string, u
 
 const tagIds = () => fakes.$tag.state.rows.map((r) => r.id).sort()
 const tagRow = (id: string) => fakes.$tag.state.rows.find((r) => r.id === id)
-const cartIds = () => fakes.$cart.state.rows.map((r) => r.id).sort()
+const cartIds = () => fakes.$cart.rows.map((r) => r.id).sort()
 const cartItemIds = () => fakes.$cartItem.state.rows.map((r) => r.id).sort()
 
 const UPDATE_VENDOR = `mutation($id: ID!, $name: String) { updateVendor(id: $id, name: $name) { id name } }`
@@ -244,14 +369,48 @@ describe('deleteVendor ownership', () => {
   })
 
   it('user can still delete their own vendor, with its carts and their items', async () => {
+    // Given my vendor has a cart at LOC_MINE (I have a role there) and at
+    // LOC_ATTIC (my household, but only ME2 has a role there, and ME2 added
+    // its row)
     const result = await exec(DELETE_VENDOR, { id: VEN_MINE })
 
+    // Then both carts are gone, with their rows: deleteVendor clears the
+    // vendor's carts at EVERY location of my household (households H3b task
+    // B.7, decision D8), not only where I have a role. A's cart that names my
+    // vendor id stays: it is in another household.
     expect(result.data?.deleteVendor).toBe(true)
     expect(fakes.$vendor.state.rows.map((r) => r.id)).toEqual([VEN_A])
     expect(cartIds()).toEqual(
-      [`${LOC_A}:${VEN_A}`, `${LOC_MINE}:${VEN_A}`, `${LOC_MINE}:no-vendor`].sort(),
+      [
+        `${LOC_A}:${VEN_A}`,
+        `${LOC_A}:${VEN_MINE}`,
+        `${LOC_MINE}:${VEN_A}`,
+        `${LOC_MINE}:no-vendor`,
+      ].sort(),
     )
-    expect(cartItemIds()).toEqual(['ci_a', 'ci_mine_a'])
+    expect(cartItemIds()).toEqual(['ci_a', 'ci_a_mine', 'ci_mine_a'])
+  })
+
+  it('a second member deleting the vendor removes its cart at the location they share, and at their own', async () => {
+    // Given ME2, a manager of my household, who shares LOC_MINE with ME and
+    // alone has a role on LOC_ATTIC. The carts have no owner, so a cart ME
+    // uses is ME2's to clear too (H3b rule 14: two members, and a location
+    // one of them has no role on).
+    const result = await exec(DELETE_VENDOR, { id: VEN_MINE }, ME2)
+
+    // Then both of the vendor's carts in my household are gone, with their
+    // items, and no other cart is touched — another vendor's cart in my
+    // household, and another household's cart, included
+    expect(result.data?.deleteVendor).toBe(true)
+    expect(cartIds()).toEqual(
+      [
+        `${LOC_A}:${VEN_A}`,
+        `${LOC_A}:${VEN_MINE}`,
+        `${LOC_MINE}:${VEN_A}`,
+        `${LOC_MINE}:no-vendor`,
+      ].sort(),
+    )
+    expect(cartItemIds()).toEqual(['ci_a', 'ci_a_mine', 'ci_mine_a'])
   })
 
   it('a missing vendor still returns false and deletes nothing', async () => {

@@ -99,6 +99,16 @@ export const NotStockedHereOnly: Story = {
   },
 }
 
+// A location viewer (households H5): the rows stocked only elsewhere are
+// listed, but with no action, because a viewer may not stock an item here.
+export const NotStockedHereReadOnly: Story = {
+  args: {
+    inLocationItems: [],
+    notStockedHereItems: [milkPowder, oatMilk],
+    notStockedHereReadOnly: true,
+  },
+}
+
 // A stock mutation in flight: the clicked row spins, its siblings disable.
 export const Pending: Story = {
   args: {

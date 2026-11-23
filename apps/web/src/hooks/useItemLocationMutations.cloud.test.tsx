@@ -1,3 +1,4 @@
+import { useApolloClient } from '@apollo/client/react'
 import {
   MockedProvider,
   type MockedProviderProps,
@@ -10,6 +11,7 @@ import {
   AddItemToLocationDocument,
   ItemStocksForItemDocument,
   PantryDataDocument,
+  type PantryDataQuery,
   RemoveItemFromLocationDocument,
 } from '@/generated/graphql'
 import {
@@ -19,6 +21,7 @@ import {
   getLocationsMock,
   LOC_A,
   LOC_B,
+  markLocationVisitedMock,
 } from '@/test/cloudFixtures'
 import {
   ActiveLocationProvider,
@@ -37,6 +40,15 @@ import {
 // the lists reading `itemStocks` / `itemStocksForItem` agree afterwards. A
 // stubbed mutation hook would pass against a hook that sent nothing.
 vi.mock('@/generated/graphql', async (importOriginal) => await importOriginal())
+
+// The REAL `useApolloClient`. `src/test/setup.ts` stubs it with an object
+// whose `query` resolves `{ data: {} }` and which has no `refetchQueries`, so
+// the reads these mutations send after the write would never reach the
+// mocks below.
+vi.mock(
+  '@apollo/client/react',
+  async (importOriginal) => await importOriginal(),
+)
 
 vi.mock('./useDataMode', () => ({ useDataMode: vi.fn() }))
 
@@ -72,12 +84,21 @@ const RICE_STOCK_A = cloudStock('stock-rice-a', 'item-rice', LOC_A, {
 let stocks: Record<string, ReturnType<typeof cloudStock>[]> = {}
 let riceStocks: ReturnType<typeof cloudStock>[] = []
 
+// When true, every `PantryData` read fails with a GraphQL error. The write
+// before it still lands, so a failed READ can be told apart from a failed save.
+let failPantry = false
+
 const pantryMock = (locationId: string) => ({
   request: { query: PantryDataDocument, variables: { locationId } },
   maxUsageCount: Number.POSITIVE_INFINITY,
-  result: () => ({
-    data: { items: CATALOG, itemStocks: stocks[locationId] ?? [] },
-  }),
+  result: () =>
+    failPantry
+      ? {
+          errors: [
+            { message: 'down', extensions: { code: 'INTERNAL_SERVER_ERROR' } },
+          ],
+        }
+      : { data: { items: CATALOG, itemStocks: stocks[locationId] ?? [] } },
 })
 
 const riceStocksMock = {
@@ -119,6 +140,7 @@ const removeMock = {
 
 const MOCKS = [
   bootstrapCartsMock,
+  markLocationVisitedMock,
   getLocationsMock,
   pantryMock(LOC_A),
   pantryMock(LOC_B),
@@ -152,6 +174,7 @@ describe('cloud location stock mutations', () => {
     localStorage.setItem(activeLocationStorageKey('cloud'), LOC_A)
     stocks = { [LOC_A]: [MILK_STOCK_A], [LOC_B]: [RICE_STOCK_B] }
     riceStocks = [RICE_STOCK_B]
+    failPantry = false
   })
 
   it('user in cloud mode can stock an item that lives only in another location', async () => {
@@ -203,5 +226,97 @@ describe('cloud location stock mutations', () => {
 
     // Then the row is gone from that location and the list has refreshed
     await waitFor(() => expect(result.current.riceStocks.data).toHaveLength(0))
+  })
+})
+
+// The server saved the add or the remove, then the pantry list could not be
+// read again. The call must still resolve (docs/global/bugs/
+// 2026-11-18-bug-failed-refetch-rejects-saved-write.md), and it must still
+// wait for the read: the search tail re-enables its row after the `await`.
+describe('cloud location stock mutations whose refresh fails', () => {
+  beforeEach(() => {
+    vi.mocked(dataModeHooks.useDataMode).mockReturnValue({
+      mode: 'cloud',
+      setMode: vi.fn(),
+    })
+    localStorage.clear()
+    localStorage.setItem(activeLocationStorageKey('cloud'), LOC_A)
+    stocks = { [LOC_A]: [MILK_STOCK_A], [LOC_B]: [RICE_STOCK_B] }
+    riceStocks = [RICE_STOCK_B]
+    failPantry = false
+  })
+
+  /** The pantry's stock rows for one location, as the cache holds them now. */
+  function cachedPantryItemIds(
+    client: ReturnType<typeof useApolloClient>,
+    locationId: string,
+  ) {
+    return client
+      .readQuery<PantryDataQuery>({
+        query: PantryDataDocument,
+        variables: { locationId },
+      })
+      ?.itemStocks.map((s) => s.itemId)
+  }
+
+  it("user's add to a location is not shown as failed when the refresh fails", async () => {
+    // Given the pantry list cannot be read
+    failPantry = true
+    const { result } = renderHook(() => useAddItemToLocation(), {
+      wrapper: makeWrapper(),
+    })
+
+    // When the user adds Rice here, which the server saves
+    const row = await result.current.mutateAsync({ itemId: 'item-rice' })
+
+    // Then the call resolves with the new row
+    expect(row.locationId).toBe(LOC_A)
+    expect(stocks[LOC_A]?.map((s) => s.itemId)).toContain('item-rice')
+  })
+
+  it("user's remove from a location is not shown as failed when the refresh fails", async () => {
+    // Given the pantry list cannot be read
+    failPantry = true
+    const { result } = renderHook(() => useRemoveItemFromLocation(), {
+      wrapper: makeWrapper(),
+    })
+
+    // When the user removes Rice from Cloud Garage, which the server saves
+    await result.current.mutateAsync({ itemId: 'item-rice', locationId: LOC_B })
+
+    // Then the call resolved, and the row is gone
+    expect(stocks[LOC_B]).toEqual([])
+  })
+
+  it('an add resolves only after the pantry list has been read again', async () => {
+    // Nothing is mounted but the hook, so only the awaited read fills the cache
+    const { result } = renderHook(
+      () => ({ add: useAddItemToLocation(), client: useApolloClient() }),
+      { wrapper: makeWrapper() },
+    )
+
+    await result.current.add.mutateAsync({ itemId: 'item-rice' })
+
+    expect(cachedPantryItemIds(result.current.client, LOC_A)).toEqual([
+      'item-milk',
+      'item-rice',
+    ])
+  })
+
+  it('a remove resolves only after the pantry list has been read again', async () => {
+    const { result } = renderHook(
+      () => ({
+        remove: useRemoveItemFromLocation(),
+        client: useApolloClient(),
+      }),
+      { wrapper: makeWrapper() },
+    )
+
+    await result.current.remove.mutateAsync({
+      itemId: 'item-rice',
+      locationId: LOC_B,
+    })
+
+    expect(cachedPantryItemIds(result.current.client, LOC_B)).toEqual([])
   })
 })

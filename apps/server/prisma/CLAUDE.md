@@ -36,6 +36,13 @@ queries Prisma batches into one transaction with no logic between them:
 `apps/server/src/resolvers/import.resolver.ts:499`,
 `apps/server/src/resolvers/purge.resolver.ts:22`, and
 `apps/server/src/lib/e2eCleanup.ts` (the E2E-only cleanup endpoint).
+(`purge.resolver.ts` was removed in households H3a task 3.10, and the same
+task moved `clearAllData` in `import.resolver.ts` to the interactive form.
+`e2eCleanup.ts` used the array form until E2E speed plan task S.2, 2026-11-22.
+It now calls ONE Postgres function, `e2e_cleanup`, with one `$queryRaw`; see
+`apps/server/src/lib/e2eCleanupSql.ts`. So no source file uses the array form
+today: `git grep -n '\$transaction(\[' -- apps/server/src` finds only the
+test fake `src/test/stockFake.ts`, which refuses it, and its test.)
 
 `apps/server/src/resolvers/shelf.resolver.ts:89`'s `applyShelfFilterPicks`
 resolver introduces the first **interactive (callback) form** —
@@ -46,8 +53,14 @@ cannot express.
 
 **Implication for pooled connections:** the interactive form holds one
 database connection open for the duration of the callback (every query inside
-it must run sequentially against the same `tx`), unlike the array form, which
-Prisma can send as a single batched request. `schema.prisma:5-8` already
+it must run sequentially against the same `tx`). The array form does NOT
+save round trips either. Measured 2026-11-22 on the Neon test branch (one round
+trip about 52 ms): the old `/e2e/cleanup`, one read plus an array-form
+`$transaction` of 22 `deleteMany`, took **1.33 s** (p50 of 20 calls). That is
+about 25 × 52 ms, so Prisma sent each statement, plus `BEGIN` and `COMMIT`, on
+its own. The same deletes in one SQL function took **56–68 ms**. When the
+number of round trips matters, put the statements in the database (a function
+or one SQL statement), not in a Prisma transaction. `schema.prisma:5-8` already
 configures a `directUrl` alongside the pooled `DATABASE_URL` — an interactive
 transaction is exactly the kind of pattern that benefits from a non-pooled
 connection, since it ties up a connection from the pool for the whole
@@ -105,6 +118,21 @@ why the resolvers map an absent input to `NULL` and never to `''` — see
 
 **It still needs its own `verify-migration.ts` assertions**, and "the column is present" alone
 is a weak claim. See the *ADD COLUMN needs the same two halves* bullet below.
+
+**One named exception: a nullable column that carries real history.**
+`20261122000000_add_location_preferences` (households H7b task M.1, decision T79) adds the
+nullable `"Location"."dataUpdatedAt"` AND fills it once with one `UPDATE`: the newest
+`"ItemStock"."updatedAt"` of each location. A location with no stock row keeps `NULL`. The
+reason is in data terms: the "Last updated" sort reads the column, and that history already
+exists in `ItemStock`. Without the backfill every location would read `NULL` after the
+deploy, and the sort would show no order until each location's next write. There is still
+no `RAISE EXCEPTION` guard: `NULL` is a valid answer, so there is nothing to count. Use this
+exception only when the value is real data that the new column must show from day one, and
+say so in the SQL comment, as that migration does. Its `verify-migration.ts` checks seed
+stock rows with known times BEFORE the last deploy (`seedLocationPreferenceBackfill`) and
+read them back first after it (`assertLocationDataUpdatedAtBackfill`). The same migration's
+other new column, `"User"."locationSort"`, follows the plain rule above: `NULL` means "the
+default", and it gets no backfill.
 
 ## Re-keying a primary key
 
@@ -190,20 +218,79 @@ rather than assuming the script rotted.
 These things about it are easy to get wrong. The list grows; count the bullets rather
 than trusting a number here — it said **four** when there were seven.
 
-- **It parks migrations by NAME.** `scripts/verify-migration.ts` holds a `MIGRATIONS` list —
-  **six** entries today:
+- **It parks migrations by NAME, and puts them back by deploy GROUP.** Since households H5b
+  task G.1 the names live in `scripts/migrationDeploys.ts`, one list per `migrate deploy`
+  (`first`, `households`, `drop user scope`, `last`), and `scripts/migrationDeploys.test.ts`
+  fails, with no database, while a folder under `prisma/migrations` is in no group or the
+  groups are out of name order. **Put a new migration into ONE group there.** Before G.1 the
+  first deploy put back "every migration except three named ones", so a new migration ran in
+  the first deploy by default; G.1's `add_household_invites` did, and would have failed
+  there (it needs the `HouseholdRole` type of `add_households`). The `last` group is applied
+  after `restoreIfParked`, so it is everything still parked at that point. **Ten** entries
+  since G.1 (`20261118000000_add_household_invites`, in the `last` group with `shared_carts`).
+  So the **fourth** `migrate deploy` applied two migrations, `shared_carts` and then
+  `add_household_invites` (measured 2026-11-18 by the G.1 Step 7 run on the test database).
+  **Eleven** entries since households H6 task J.1 (`20261120000000_add_household_activity`,
+  also in the `last` group: it needs no seed step and names only `"Household"`). So the
+  fourth `migrate deploy` now applies three migrations. The main session ran the script on
+  the test database on 2026-11-20, with the owner's consent: "Migration verified.", every
+  line `ok` (H6 plan, task J.9 Step 2).
+  **Twelve** entries since households H6b task K.1 (`20261120100000_add_ownership_offers`,
+  in the `last` group too: one enum and one empty table that names only `"Household"` and
+  `"User"`). So the fourth `migrate deploy` now applies four migrations. Its
+  `assertOwnershipOffers` checks the 7 columns, the `OfferKind` values, the two `CASCADE`
+  foreign keys (`householdId`, `toUserId`) and none on `fromUserId`, the unique
+  `(householdId, toUserId)` and the `toUserId` index, the `23505`, `22P02` and `23503`
+  refusals, and the three deletes. The main session ran the script on the test database on
+  2026-11-20, before task K.8, with the owner's consent: "Migration verified.", every line
+  `ok` (H6 plan, the top of task K.8). No file under `apps/server/prisma/` changed after that
+  run (`git log --oneline e0b7f585..HEAD -- apps/server/prisma/` is empty at `5cd82bf4`).
+  **Thirteen** entries since households H7b task M.1 (`20261122000000_add_location_preferences`,
+  in the `last` group too: one enum, two nullable columns, one backfill `UPDATE` and one
+  empty table that names `"User"` and `"Location"`). So the fourth `migrate deploy` now
+  applies five migrations. Two things were new for this group. (1) Five `Location` reads and
+  deletes in `verify-migration.ts` run BEFORE the last deploy, and the Prisma client built
+  from the final schema would ask for `dataUpdatedAt` before it exists (`P2022`). Each got a
+  `select`. A later column on a table those early steps read needs the same care.
+  (2) The backfill needs rows with known times before the deploy, so
+  `seedLocationPreferenceBackfill` writes them, and `assertLocationDataUpdatedAtBackfill`
+  runs first after the deploy. `assertLocationPreferences` checks the rest: the enum's four
+  values, the two nullable columns, the table's columns, the primary key
+  `("userId", "locationId")`, the `locationId` index, exactly two `CASCADE` foreign keys, the
+  `23505` and `23503` refusals, and the two deletes. The main session ran the script on the
+  test database on 2026-11-22, at `415cbf02`, with the owner's consent: "Migration
+  verified.", 284 lines `ok`, 0 failed. Removing the backfill `UPDATE` made it fail with
+  `FAIL: a location with two stock rows gets the NEWER "updatedAt" of its own rows,
+  2026-03-04T05:06:07.123Z (read: NULL)` (H7 plan, task M.1). No file under
+  `apps/server/prisma/` or `apps/server/scripts/` changed after that run
+  (`git log --oneline 415cbf02..HEAD -- apps/server/prisma/ apps/server/scripts/` is empty at
+  `14f9501c`).
+  The history below said the list was in `scripts/verify-migration.ts`, as a `MIGRATIONS` list —
+  **nine** entries since households H3b task B.3 (2026-11-15; eight on 2026-11-11). The
+  ninth, `20261114000000_shared_carts`, is applied in a **fourth** `migrate deploy`, after
+  `seedSharedCartDuplicates` writes duplicate cart rows that its unique index would refuse.
+  The eight before it:
   `20260830000000_add_location_and_item_stock`,
   `20260916000000_add_location_to_log_and_cart`,
   `20260917000000_rekey_cart_to_location_vendor`,
   `20261004000000_drop_item_stock_state_columns` (cloud locations PR 5, three assertions),
   `20261008000000_add_item_note_and_wikidata_url` (cloud-parity PR B, issue #335, four
   assertions — see the additive section below) and
-  `20261031000000_add_user` (households H2, a new empty `"User"` table, five checks).
+  `20261031000000_add_user` (households H2, a new empty `"User"` table, five checks),
+  `20261104000000_add_households` (households H3a) and `20261111000000_drop_user_scope`
+  (households H3a task 3.14). `add_households` is applied in a **second** `migrate deploy`,
+  after a second seed step writes two `"User"` rows: the first seed runs before `add_user`,
+  so it cannot write one. See `seedUsersBeforeHouseholds` in the script. `drop_user_scope`
+  is applied in a **third** `migrate deploy`. Before it, the script asserts every block that
+  reads `Location.userId` or `isDefault` (both are gone after it), then writes the rows the
+  old server could write between the two deploys (`seedBetweenDeploys`).
   **Count the array rather than trusting this line.** It said **four** until 2026-10-08:
   ```bash
-  grep -c "^  '2026" apps/server/scripts/verify-migration.ts
+  grep -o "'2026[0-9]*_[a-z_]*'" apps/server/scripts/migrationDeploys.ts | wc -l   # 13 since H7b task M.1 (12 since H6b task K.1, 11 since H6 task J.1, 10 since H5b task G.1)
   ```
-  **Add your new migration to that list.** A
+  (The command was `grep -c "^  '2026" apps/server/scripts/verify-migration.ts` until G.1. It
+  prints 0 now.)
+  **Add your new migration to a group in `migrationDeploys.ts`.** A
   migration missing from it is not parked, so `migrate reset` replays it against a database
   that has not yet seen the migrations it depends on. Add assertions for it too: without new
   assertions the script re-proves the old migration and says nothing about yours.
@@ -257,8 +344,8 @@ than trusting a number here — it said **four** when there were seven.
   have left the script broken. When you add a migration, re-read every assertion already
   there.
 - **The root `pnpm build` type-checks this script** — since 2026-10-07. `apps/server`'s
-  `build` is `tsc && tsc -p tsconfig.scripts.json && cp …`, and the second pass covers
-  `scripts/`. Before that nothing ran it, so a type error here passed the whole gate.
+  `build` runs `tsc --noEmit && tsc -p tsconfig.scripts.json` before it bundles (see the root
+  `CLAUDE.md`), and the second pass covers `scripts/`. Before that nothing ran it, so a type error here passed the whole gate.
   Proved by mutation: a deliberate `const x: number = "s"` gives
   `scripts/verify-migration.ts(698,7): error TS2322` and pnpm exits 2.
 - **It is destructive**, and Prisma's own AI guardrail requires the user's real-time consent
@@ -269,9 +356,14 @@ than trusting a number here — it said **four** when there were seven.
   insufficient: **Prisma Migrate issues DDL through `directUrl`**, so that is the connection
   that actually drops the schema.
 
-  The check lives in `scripts/databaseIsolation.ts` (issue #333) and is unit-tested in
+  The check (`assertNotAnotherDatabase`, with `databaseIdentity`) lives in
+  `src/lib/databaseUrl.ts` since E2E speed plan task S.6 (2026-11-23), so the E2E server can
+  share it. `scripts/databaseIsolation.ts` (issue #333) re-exports it, so
+  `verify-migration.ts` imports it from there as before. It is unit-tested in
   `scripts/databaseIsolation.test.ts` — 15 tests, all against fabricated URLs. The script
-  itself calls it at module top level, before any DDL.
+  itself calls it at module top level, before any DDL. Since the same date the local E2E
+  database variable, `E2E_LOCAL_DATABASE_URL`, ends in `_URL` too, so the guard also refuses
+  a `TEST_*` URL that names the local E2E database.
 
   **It used to compare `DATABASE_URL` and `DIRECT_URL` only**, a hardcoded pair. The same
   `apps/server/.env` also holds `PROD_COPY_DATABASE_URL` and `PROD_COPY_DIRECT_URL`, so
@@ -288,6 +380,27 @@ than trusting a number here — it said **four** when there were seven.
 
   A value that does not parse as a URL is skipped rather than crashing the run — an unrelated
   variable ending in `_URL` may hold anything, and `new URL()` throws on a malformed value.
+- **It also proves two things that are not migrations** (households H3a). At the end of
+  `main()`, after the migrations, `assertHouseholdsConstraints` proves the first sign-in claim
+  race on real Postgres, and `assertHouseholdLock` (task 3.16) proves `lockHousehold`: two
+  `deleteLocation` transactions on the last two locations, and `clearAllData` with
+  `deleteLocation` at once. Both use two `PrismaClient`s and read `pg_blocking_pids` to SEE
+  that the second transaction waits. Each keeps a copy of the code it proves, because
+  `scripts/` must not import from `src`: the `updateMany` claim of `ensureHousehold`, the
+  household lock, and the statements of `deleteLocation` and `clearAllData`.
+  **When you change one of those in `src`, change the copy too**, or the proof stops being
+  about the code that runs. Since households H6 task J.4 the lock copy is the `updateMany`
+  of `lockHouseholdOrForbid` (it was the `update` of `lockHousehold`), both bodies read the
+  household role after the lock, and `clearAllData`'s fourteen deletes are copied from
+  `deleteHouseholdData` in `src/lib/household.ts`. **That changed script was run against the
+  test database on 2026-11-20** (the main session, with the owner's consent, H6 plan task
+  J.9 Step 2): the household delete across 17 tables and the household lock tests passed
+  again, every line `ok`. (The lock proof was written on 2026-11-11; see the H3a runbook,
+  section 8, for its first result.)
+- **`RAISE NOTICE` lines do not show in its output.** Measured 2026-11-11: the `RAISE NOTICE`
+  counts of `drop_user_scope` step 3 did not appear when the script ran `migrate deploy`. A
+  rehearsal must count with plain SQL queries instead. The H3a runbook gives one query per
+  cleanup kind.
 - **Never point it at a copy of production.** For that, use an additive-only rehearsal:
   `migrate deploy` plus read-only assertions. See the *Production-data rehearsals* section of
   `docs/features/locations/2026-08-30-cloud-locations-design.md` §7. Since #333 the guard
@@ -304,6 +417,13 @@ If the override silently falls back, the migration is applied to the dev databas
 command still prints success. The rehearsal then reports green while having tested nothing,
 which is worse than a failure. PR 3a's rehearsal (2026-09-17) did this check first; the
 result is recorded in `docs/features/locations/cloud-locations-status.md`.
+
+**To stop between two migrations on a copy, park the later one.** `prisma migrate deploy`
+applies every pending migration. The H3a rehearsal needs counts AFTER `add_households` and
+BEFORE `drop_user_scope`, so it moves the `drop_user_scope` folder to
+`apps/server/.migration-under-test/` (in `.gitignore`) for one `migrate deploy`, then moves it
+back and checks `git status`. See section 3.3 of
+`docs/global/backend/2026-11-11-deploy-runbook-households-h3a.md`.
 
 Two more rules from that run:
 

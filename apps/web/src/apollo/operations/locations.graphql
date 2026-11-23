@@ -1,22 +1,51 @@
+# The location switcher's list: only locations where the caller has a role.
+# `myRole` is the caller's role there (households H5 task F.1). An export
+# never writes it: `toLocationInput` in lib/importData.ts is an allow-list.
 query GetLocations {
   locations {
     id
     name
     order
-    isDefault
     createdAt
     updatedAt
+    myRole
+    dataUpdatedAt
+    lastVisitedAt
   }
 }
 
+# The settings list (households H5 task F.1). An owner or manager gets every
+# location of the household, with `myRole` null where they have no role. A
+# household member gets the same list as GetLocations.
+query GetHouseholdLocations {
+  householdLocations {
+    id
+    name
+    order
+    myRole
+    hasOrganizer
+    dataUpdatedAt
+    lastVisitedAt
+  }
+}
+
+# The three location mutations below select every field of GetLocations AND
+# of GetHouseholdLocations. Their result is merged into the cached `Location`
+# entity, and `useReorderLocations` writes its list straight into
+# GetLocations. A field the query selects but the result lacks makes the
+# cached query incomplete, so Apollo reads it as missing. Checked by
+# `src/apollo/locationSelections.test.ts`.
 mutation CreateLocation($name: String!) {
   createLocation(name: $name) {
     id
     name
     order
-    isDefault
     createdAt
     updatedAt
+    myRole
+    hasOrganizer
+    dataUpdatedAt
+    lastVisitedAt
   }
 }
 
@@ -25,9 +54,12 @@ mutation UpdateLocation($id: ID!, $input: UpdateLocationInput!) {
     id
     name
     order
-    isDefault
     createdAt
     updatedAt
+    myRole
+    hasOrganizer
+    dataUpdatedAt
+    lastVisitedAt
   }
 }
 
@@ -40,8 +72,90 @@ mutation ReorderLocations($orderedIds: [ID!]!) {
     id
     name
     order
-    isDefault
     createdAt
     updatedAt
+    myRole
+    hasOrganizer
+    dataUpdatedAt
+    lastVisitedAt
   }
+}
+
+# ── Sort and visits (households H7b, task M.4) ──
+
+# The caller's own sort of their location lists (decision T74). `custom`
+# when they never chose one (owner decision O52-A). Not live: it changes
+# only by this person's own `setLocationSort`.
+query MyLocationSort {
+  myLocationSort
+}
+
+# Saves the caller's sort. Publishes nothing.
+mutation SetLocationSort($sort: LocationSort!) {
+  setLocationSort(sort: $sort)
+}
+
+# Records that the caller opened a location (decision T80, owner decision
+# O55-A). `false` when the last visit is under 60 seconds old; nothing is
+# written then. Publishes nothing.
+mutation MarkLocationVisited($locationId: ID!) {
+  markLocationVisited(locationId: $locationId)
+}
+
+# ── Location roles (households H5c, task H.4) ──
+
+# The people page of one location (decisions T32 and T39). Anyone with a role
+# on the location may read it, and every household owner and manager, also on
+# a location where they have no role (owner decision O24-A). Anyone else gets
+# FORBIDDEN, the same as an unknown id. `LocationPerson` has no `id`, so
+# `apollo/cloudCache.ts` replaces the cached list instead of merging it.
+query LocationPeople($locationId: ID!) {
+  locationPeople(locationId: $locationId) {
+    userId
+    displayName
+    role
+    isMe
+  }
+}
+
+# Give a person a role on the location, or change it. The same role again
+# writes nothing and returns the row (decision T38).
+mutation SetLocationRole(
+  $locationId: ID!
+  $userId: ID!
+  $role: LocationRole!
+) {
+  setLocationRole(locationId: $locationId, userId: $userId, role: $role) {
+    userId
+    displayName
+    role
+    isMe
+  }
+}
+
+# `false` when the person has no role there (a second press, decision T38).
+mutation RemoveLocationRole($locationId: ID!, $userId: ID!) {
+  removeLocationRole(locationId: $locationId, userId: $userId)
+}
+
+# The caller leaves the location. Any role may leave, the only organizer too
+# (owner decision O25-A). `false` when the caller has no role there.
+mutation LeaveLocation($locationId: ID!) {
+  leaveLocation(locationId: $locationId)
+}
+
+# ── Purges (households H6, task J.5; decision T55) ──
+
+# Household owner only. Deletes every location of the household with its
+# stock, logs, carts and role rows. The catalog stays. `false` when the
+# household had no location.
+mutation DeleteAllLocations {
+  deleteAllLocations
+}
+
+# Location organizer only. Deletes the location's stock rows and the rows of
+# its carts. The location, its carts, its logs and its roles stay. `false`
+# when there was nothing to delete.
+mutation RemoveAllLocationItems($locationId: ID!) {
+  removeAllLocationItems(locationId: $locationId)
 }
