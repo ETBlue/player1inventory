@@ -39,6 +39,9 @@ is done"). So there is no hotfix on `main` to bring into `develop`, and that que
 closed. If the decision changes, ask the owner first: a rebase of `develop` needs a
 force-push, and a merge breaks the repo's rebase-only rule.
 
+**The release of H3a to H7b** (one checkpoint, all phases together) is planned in
+[`../backend/2026-11-23-households-release-plan.md`](../backend/2026-11-23-households-release-plan.md).
+
 | Phase | Detail in this file | PR |
 |---|---|---|
 | H1 Settings layout and route moves (both modes, no backend change) | **Full** — tasks 1.1–1.9 | 1 |
