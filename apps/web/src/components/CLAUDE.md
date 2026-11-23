@@ -34,8 +34,19 @@ One-time structural components that appear once in the app shell.
 | --- | --- | --- |
 | `/onboarding`, `/items/*` | full-screen | full-screen |
 | household detail pages (`/settings/household/<section>/<id>…`) | full-screen | full-screen |
-| `/settings/household/{tags,vendors,recipes,shelves}` lists | **sidebar shown** | full-screen |
-| `/settings/household`, `/settings/household/locations` | sidebar shown | bars shown |
+| `/settings` and every household list page (`/settings/household`, `/settings/household/<section>`) | sidebar shown (`/settings` itself redirects to `/settings/household`) | **full-screen** |
+| every other page (`/`, `/shopping…`, `/cooking`) | sidebar shown | bars shown |
+
+**Every settings page is full-screen on mobile since 2026-11-23** (owner request): no bottom bar, and each page has its own Back icon in its top bar. Until then only the tags, vendors, recipes and shelves lists were; `/settings`, `/settings/household`, Locations, Members and Activity kept the bottom bar. `isSettingsPage(pathname)` in the same file is true for `/settings` and everything below it. So the bottom bar's Settings tab is never shown active any more (its active check is still in `Navigation`, harmless). Which Back each page has:
+
+| Mobile page | Back | Where it goes |
+| --- | --- | --- |
+| `/settings` (the accordion) | **Back** icon (`navigation.back`), new | `useBackToAppPage()`: the last Pantry, Shopping or Cooking page, the same as the desktop household sidebar's Back. This page is the mobile copy of that sidebar |
+| `/settings/household` (General) | **Go back** icon (`common.goBack`, `lg:hidden`), new | `useAppNavigation('/settings')`: the previous page, usually the `/settings` menu. The same Back as the other list pages |
+| Members, Activity, Locations, Shelves, Vendors, Recipes, Tags lists | their own **Go back** icon (`lg:hidden`), unchanged | `useAppNavigation('/settings')` |
+| detail pages (`…/<section>/<id>`) | their own back, unchanged | unchanged |
+
+No page has two Back buttons: the sidebar (with its Back) is not rendered on a full-screen page.
 
 `isHouseholdSettingsPage(pathname)` in the same file is true for `/settings/household` and `/settings/household/<section>` only. **Tests:** `src/test/setup.ts` mocks `matchMedia` as always `false`, so every test renders the mobile layout. Call `mockScreen({ desktop: true })` from `src/test/viewport.ts` to test the desktop one.
 
