@@ -163,8 +163,8 @@ Then the **follow-up release** (F).
 
 #### B.1 Merge this plan, and decide the owner questions
 
-- [ ] **Step 1 (owner):** answer R1 to R7 at the end of this file. R1 and R2 change steps
-  below.
+- [x] **Step 1 (owner):** answer R1 to R7 at the end of this file. R1 and R2 change steps
+  below. **Answered 2026-11-23: all seven A.**
 - [ ] **Step 2 (owner):** merge this plan's PR into `develop`. Write down the new `develop`
   tip. Call it the **release commit**. Any later commit into `develop` that changes code
   (not only docs) makes B.6 and B.7 owed again.
@@ -213,6 +213,15 @@ Result: `TBD`.
 | 5 | Railway, server service | `CLERK_JWT_KEY`: set or not, as R6 decides | as decided | H3c-1 2.3 |
 | 6 | Cloudflare Pages, web project, build settings | find the setting that stops automatic production builds from `main` (R1) | the owner knows where it is and that it exists | this plan, R1 |
 
+**Owner checks, 2026-11-23:**
+
+- Row 3: the endpoint exists and sends `user.created`, `user.updated`, `user.deleted` and
+  also `user.merged`. The fourth event does no harm: `handleClerkEvent`
+  (`apps/server/src/lib/clerkWebhook.ts`) has a `default: return` branch, so the server
+  answers 200 and writes nothing. It can stay subscribed or be removed.
+- Row 6: done. The owner turned off automatic deployments of `main` in Cloudflare Pages on
+  2026-11-23. So D.2 is already done; D.9 turns them back on.
+
 About rows 2 and 3: the repo says both were done for H2. `docs/INDEX.md` says H2 was
 "deployed with the webhook secret set", and the H6 plan's *Deploy notes* say the endpoint
 sends `user.deleted` "since H2". No doc records the event list as checked in the dashboard.
@@ -225,7 +234,8 @@ preview cannot sign in to the production Clerk instance (`docs/INDEX.md`, *envir
   now: `error: no WebSocket answer`, then `closed 1006`. Type the host by hand; print
   nothing that shows it.
 
-Result: rows 1 to 6 `TBD`; socket before `TBD`.
+Result: row 3 checked (four events, see above); row 6 done (automatic `main` deployments
+off since 2026-11-23); rows 1, 2, 4, 5 `TBD`; socket before `TBD`.
 
 #### B.5 Rehearse all seven migrations on ONE fresh Neon branch of production
 
@@ -386,7 +396,8 @@ apart that R1 chooses. The steps below assume **R1 option A** (pause the Cloudfl
   at the current time, named `prod-before-households-<date>`. Write the name down. Do not
   skip this because the rehearsal passed.
 - [ ] **D.2 (owner): pause the web.** In Cloudflare Pages, turn off automatic production
-  builds from `main` (R1-A). Check the setting shows it off. Success: a push to `main` will
+  builds from `main` (R1-A). The owner already did this on 2026-11-23 (B.4 row 6), so on
+  the deploy day only check the setting still shows it off. Success: a push to `main` will
   not start a production build.
 - [ ] **D.3 (owner): Railway stays on automatic deploy from `main`** under R1-A. (H3a 4.2
   turned it off, to make the web go first. That reason is gone: see C1.) Check it is on.
@@ -579,6 +590,9 @@ D gives a "new web, old server" gap in which every location query fails (H4 8.2)
 on Cloudflare having a pause setting; the owner checks it in B.4. If it does not exist, B is
 the next choice.
 
+**Answer (2026-11-23): A.** Cloudflare has the setting; the owner turned automatic
+`main` deployments off the same day (B.4 row 6).
+
 **R2. How does `develop` go into `main`?**
 
 | Option | What |
@@ -593,6 +607,8 @@ like every PR in this repo, and keeps all 668 commits. B gives identical SHAs bu
 and may be refused by branch protection. C rewrites or squashes 668 commits, so `develop` and
 `main` would no longer share history, and every later release would conflict.
 
+**Answer (2026-11-23): A.**
+
 **R3. What happens to `develop` after the release?**
 
 | Option | What |
@@ -605,6 +621,8 @@ Reason: F.1 still needs a short checkpoint (the shim goes only after every devic
 The 2026-11-13 decision ("no changes go to `main` until households is done") ends with this
 release, so the long-term choice is a new decision, not this plan's.
 
+**Answer (2026-11-23): A.**
+
 **R4. Run `verify:migration` on the TEST database again before the release (B.6)?**
 
 | Option | What |
@@ -615,6 +633,8 @@ release, so the long-term choice is a new decision, not this plan's.
 Reason: no migration changed since, but its database guard moved to `src/lib/databaseUrl.ts`
 (S.6) after that run. One run proves the moved guard and the seven migrations together. It
 costs a few minutes and Prisma's consent step.
+
+**Answer (2026-11-23): A.**
 
 **R5. If the release command fails at migration 3 or later (S3), how long do we try to fix
 forward before restoring the D.1 branch?**
@@ -629,6 +649,8 @@ Reason: in that state cloud mode is down for everyone (C9), and nobody can write
 restore loses almost nothing. A short limit keeps the outage short. Local mode keeps
 working the whole time.
 
+**Answer (2026-11-23): A.**
+
 **R6. Set `CLERK_JWT_KEY` on Railway?** (H3c-1 2.3)
 
 | Option | What |
@@ -640,6 +662,8 @@ Reason: it is optional. Without it, a socket token check fetches Clerk's keys, a
 closes with `1013` and retries. Not setting it removes one way to get it wrong (H3c-1 7.2:
 a wrong key gives `4401` on every tab). It can be added later if `1013` repeats.
 
+**Answer (2026-11-23): A.**
+
 **R7. When does the follow-up release (F.1) go out?**
 
 | Option | What |
@@ -650,6 +674,8 @@ a wrong key gives `4401` on every tab). It can be added later if `1013` repeats.
 Reason: the shim is the only thing that keeps an un-updated device working. The owner is the
 only user today, so B is safe if B.3's list is complete; A leaves time to find a device the
 list missed.
+
+**Answer (2026-11-23): A.**
 
 ---
 
