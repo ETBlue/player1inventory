@@ -135,6 +135,12 @@ let recovering = false
  *    With `to`, load that page (`location.replace`, so Back does not return
  *    to the old one). Without it, reload the current page.
  *
+ * Switch to… and Create new (`useMyHouseholds.ts`) pass the page to load:
+ * the same settings page when the switch starts in settings, or that
+ * section's list page when the page names a row id of the old household
+ * (`settingsPathAfterSwitch`), else `/` (since 2026-11-23; `/` always
+ * before).
+ *
  * The join page passes `{ to: '/' }`. Reloading `/join/<token>` would ask
  * `invitePreview` about an invite that is now USED, and it answers INVALID,
  * so the person who just joined would read "This invite is no longer valid".

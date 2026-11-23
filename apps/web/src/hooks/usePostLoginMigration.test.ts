@@ -1462,6 +1462,31 @@ describe('usePostLoginMigration — a copy into a chosen household (L.5)', () =>
     expect(mockImportCloudData).not.toHaveBeenCalled()
   })
 
+  // Since 2026-11-23 Switch to… keeps a settings page (`pageAfterSwitch`).
+  // The copy passes `to: '/'` itself, so it still lands on the pantry. The
+  // page is a settings page here, or the test could not tell the two apart.
+  it.each([
+    ['another household', { householdId: 'hh-b' }, 'hh-b'],
+    ['a new household', { newHouseholdName: 'Camp' }, 'hh-new'],
+  ] as const)('a copy into %s started on a settings page still lands on /', async (_label, target, movedTo) => {
+    window.history.pushState({}, '', '/settings/household/tags')
+    try {
+      // Given a stored skip copy, asked on a settings page
+      seed()
+      localStorage.setItem(MIGRATION_STRATEGY_KEY, 'skip')
+      const { result } = renderWith(OWNER_HOUSEHOLD)
+      await waitFor(() => expect(result.current.state).toBe('confirming'))
+
+      // When the user picks the household
+      await act(() => result.current.copyElsewhere(target))
+
+      // Then the page moves to the pantry, not to the settings page
+      expect(switchMock).toHaveBeenCalledWith(movedTo, { to: '/' })
+    } finally {
+      window.history.pushState({}, '', '/')
+    }
+  })
+
   it('a refused move stores nothing, copies nothing, and says so', async () => {
     // Given the plain question, and a server that refuses the switch
     seed()

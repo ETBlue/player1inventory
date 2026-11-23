@@ -126,6 +126,8 @@ beforeEach(() => {
 afterEach(() => {
   localStorage.removeItem('data-mode')
   switchMock.mockReset()
+  window.history.pushState({}, '', '/')
+  sessionStorage.removeItem('app-navigation-history')
 })
 
 describe('useMyHouseholds', () => {
@@ -153,6 +155,8 @@ describe('useMyHouseholds', () => {
 
 describe('useSwitchHousehold', () => {
   it('user can switch: the server is told first, then the device moves to /', async () => {
+    // Given a page outside settings
+    window.history.pushState({}, '', '/shopping/no-vendor')
     const { result } = renderHook(() => useSwitchHousehold(), { wrapper })
 
     await act(() => result.current.switchTo('hh-chen'))
@@ -179,6 +183,102 @@ describe('useSwitchHousehold', () => {
     expect(String(error)).toContain('Forbidden')
     expect(switchMock).not.toHaveBeenCalled()
     expect(result.current.isPending).toBe(false)
+  })
+})
+
+// Owner request 2026-11-23: "stay in the same page after switching household".
+describe('the page after a switch', () => {
+  it.each([
+    ['/settings/household/members', '/settings/household/members'],
+    ['/settings/household/tags', '/settings/household/tags'],
+    ['/settings/household/tags/tag-1/items', '/settings/household/tags'],
+    ['/settings/household/locations/loc-1', '/settings/household/locations'],
+  ])('user who switches on %s lands on %s', async (from, to) => {
+    window.history.pushState({}, '', from)
+    const { result } = renderHook(() => useSwitchHousehold(), { wrapper })
+
+    await act(() => result.current.switchTo('hh-chen'))
+
+    expect(switchMock).toHaveBeenCalledWith('hh-chen', { to })
+  })
+
+  it('user who creates a household on a settings page stays on it', async () => {
+    window.history.pushState({}, '', '/settings/household/members')
+    const { result } = renderHook(() => useCreateAnotherHousehold(), {
+      wrapper,
+    })
+
+    await act(() => result.current.createAndSwitch('Camp'))
+
+    expect(switchMock).toHaveBeenCalledWith('hh-new', {
+      to: '/settings/household/members',
+    })
+  })
+
+  it('reads the page when the switch runs, not when the hook rendered', async () => {
+    window.history.pushState({}, '', '/')
+    const { result } = renderHook(() => useSwitchHousehold(), { wrapper })
+    window.history.pushState({}, '', '/settings/household/activity')
+
+    await act(() => result.current.switchTo('hh-chen'))
+
+    expect(switchMock).toHaveBeenCalledWith('hh-chen', {
+      to: '/settings/household/activity',
+    })
+  })
+
+  it('empties the page history, so Back cannot open an id of the old household', async () => {
+    sessionStorage.setItem(
+      'app-navigation-history',
+      JSON.stringify([
+        '/?groupBy=shelf&id=old-shelf',
+        '/settings/household/tags/old-tag',
+      ]),
+    )
+    window.history.pushState({}, '', '/settings/household/tags')
+    const { result } = renderHook(() => useSwitchHousehold(), { wrapper })
+
+    await act(() => result.current.switchTo('hh-chen'))
+
+    expect(sessionStorage.getItem('app-navigation-history')).toBe('[]')
+  })
+
+  it('Create new empties the page history too', async () => {
+    sessionStorage.setItem(
+      'app-navigation-history',
+      JSON.stringify(['/settings/household/tags/old-tag']),
+    )
+    window.history.pushState({}, '', '/settings/household/tags')
+    const { result } = renderHook(() => useCreateAnotherHousehold(), {
+      wrapper,
+    })
+
+    await act(() => result.current.createAndSwitch('Camp'))
+
+    expect(sessionStorage.getItem('app-navigation-history')).toBe('[]')
+  })
+
+  it('a refused switch keeps the page history', async () => {
+    writeFails = true
+    sessionStorage.setItem('app-navigation-history', JSON.stringify(['/']))
+    const { result } = renderHook(() => useSwitchHousehold(), { wrapper })
+
+    await act(async () => {
+      await result.current.switchTo('hh-chen').catch(() => {})
+    })
+
+    expect(sessionStorage.getItem('app-navigation-history')).toBe('["/"]')
+  })
+
+  it('a caller that passes `to` gets that page, also on a settings page, and the history stays', async () => {
+    sessionStorage.setItem('app-navigation-history', JSON.stringify(['/']))
+    window.history.pushState({}, '', '/settings/household/tags')
+    const { result } = renderHook(() => useSwitchHousehold(), { wrapper })
+
+    await act(() => result.current.switchTo('hh-chen', { to: '/' }))
+
+    expect(switchMock).toHaveBeenCalledWith('hh-chen', { to: '/' })
+    expect(sessionStorage.getItem('app-navigation-history')).toBe('["/"]')
   })
 })
 
@@ -226,6 +326,8 @@ describe('beforeSwitch (task L.5)', () => {
 
 describe('useCreateAnotherHousehold', () => {
   it('user can create a household while in one: it sends alsoWhenMember: true', async () => {
+    // Given a page outside settings
+    window.history.pushState({}, '', '/cooking')
     const { result } = renderHook(() => useCreateAnotherHousehold(), {
       wrapper,
     })

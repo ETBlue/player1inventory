@@ -65,7 +65,11 @@ export class HouseholdSwitcher {
     await this.menu().waitFor()
   }
 
-  /** Open the menu and choose another household. The page then loads `/`. */
+  /**
+   * Open the menu and choose another household. The page then loads the
+   * same settings page again (a row page: its section's list), since
+   * 2026-11-23 (`pageAfterSwitch` in apps/web/src/hooks/useMyHouseholds.ts).
+   */
   async switchTo(householdName: string) {
     await this.open()
     await this.row(householdName).click()
@@ -83,7 +87,10 @@ export class HouseholdSwitcher {
     await this.createDialog().waitFor()
   }
 
-  /** Create new, type the name, press Create. The page then loads `/`. */
+  /**
+   * Create new, type the name, press Create. The page then loads the same
+   * settings page again, like `switchTo`.
+   */
   async createNew(name: string) {
     await this.openCreateDialog()
     await this.createDialog().getByLabel('Household name').fill(name)

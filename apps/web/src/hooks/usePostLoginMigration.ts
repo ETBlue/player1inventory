@@ -461,6 +461,9 @@ export function usePostLoginMigration({
   // for a refused move. When the move fails after that (the cache could not
   // be cleared), the stored id goes again, and so does a strategy this call
   // stored. The dialog stays open and says the move failed.
+  //
+  // `to: '/'`: the copy lands on the pantry, as before the 2026-11-23 change
+  // that keeps a settings page after Switch to… (`pageAfterSwitch`).
   const { switchTo } = useSwitchHousehold()
   const { createAndSwitch } = useCreateAnotherHousehold()
   const [moving, setMoving] = useState(false)
@@ -490,9 +493,12 @@ export function usePostLoginMigration({
     }
     try {
       if ('householdId' in target) {
-        await switchTo(target.householdId, { beforeSwitch })
+        await switchTo(target.householdId, { beforeSwitch, to: '/' })
       } else {
-        await createAndSwitch(target.newHouseholdName, { beforeSwitch })
+        await createAndSwitch(target.newHouseholdName, {
+          beforeSwitch,
+          to: '/',
+        })
       }
       // The page is about to load again: stay "moving".
     } catch (err) {
