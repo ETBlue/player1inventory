@@ -70,7 +70,7 @@ describe('Settings page (/settings)', () => {
         expect(router.state.location.pathname).toBe('/settings/household')
       })
       expect(
-        await screen.findByRole('heading', { level: 1, name: 'My data' }),
+        await screen.findByRole('heading', { level: 1, name: 'General' }),
       ).toBeInTheDocument()
     })
   })

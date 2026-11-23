@@ -353,9 +353,16 @@ async function expectTheme(page: Page, dark: boolean) {
   else await expect(html).not.toHaveClass(/(^|\s)dark(\s|$)/)
 }
 
-/** The household heading of `/settings/household` (`HouseholdLabel`). */
+/**
+ * The household heading of the desktop household sidebar on
+ * `/settings/household` (`HouseholdLabel`, the `<h2>` next to Back in
+ * HouseholdSidebar.tsx). The page's own `<h1>` says "General" since
+ * 2026-11-23, so the name is read from the sidebar.
+ */
 function householdHeading(page: Page, name: string) {
-  return page.getByRole('main').getByRole('heading', { name, exact: true })
+  return page
+    .getByRole('navigation', { name: 'Sidebar navigation' })
+    .getByRole('heading', { level: 2, name, exact: true })
 }
 
 test.beforeEach(async ({ request, baseURL }) => {

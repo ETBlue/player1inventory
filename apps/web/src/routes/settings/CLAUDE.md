@@ -6,17 +6,20 @@ Since households phase H1, every settings page except `/settings` itself lives u
 | Route | File | What it shows |
 |---|---|---|
 | `/settings` | `settings/index.tsx` | Desktop: `<Navigate to="/settings/household">`. Mobile: an accordion with two items. The household item (open), labelled by `HouseholdLabel`, holds six `SettingsNavCard` links, seven in cloud mode: **Members** is second there (households H5b task G.9). An owner or manager in cloud mode gets an eighth, **Activity**, after Tags (households H6 task J.6, `usePermissions().canReadActivity`). Cloud mode also ends the list with **Switch to…** (`HouseholdSwitcher variant="card"`, households H7 task L.4), for every household role; it is a menu, not a link. "Preferences" (closed) holds `UserSettingsPanel`. |
-| `/settings/household` | `settings/household/index.tsx` | Title `HouseholdLabel`, then `HouseholdNameCard` (cloud only), `ExportCard`, `ImportCard` and, for the cloud owner only, `HouseholdDangerZone` (households H6 task J.7: Clear household, Delete all locations, Delete household, each confirmed by typing the household name exactly as stored) |
+| `/settings/household` | `settings/household/index.tsx` | Title "General" (`settings.household.general.label`, the label of its own sidebar link, in both modes, since 2026-11-23; it was `HouseholdLabel` before), then `HouseholdNameCard` (cloud only), `ExportCard`, `ImportCard` and, for the cloud owner only, `HouseholdDangerZone` (households H6 task J.7: Clear household, Delete all locations, Delete household, each confirmed by typing the household name exactly as stored) |
 
 **The household name (households H3a task 3.13).** In cloud mode the 🏠 sidebar link, the
-household sidebar heading, the household page title and the mobile accordion trigger all
-show the household's name. Local mode has no household and keeps "My data"
-(`settings.household.title`); cloud mode shows "My data" too while the name loads. All four
-render `HouseholdLabel` (see `components/CLAUDE.md`). The name is shown as stored, with no
+household sidebar heading (next to the Back icon, on desktop) and the mobile accordion
+trigger all show the household's name. Local mode has no household and keeps "My data"
+(`settings.household.title`); cloud mode shows "My data" too while the name loads. All three
+render `HouseholdLabel` (see `components/CLAUDE.md`). The household page's own `<h1>` showed
+it too until 2026-11-23; it now says "General", like the other household pages, which title
+themselves with their sidebar label. The name is shown as stored, with no
 `capitalize`. Only the household `owner` can rename it, in `HouseholdNameCard`; the server
 checks the role too (`renameHousehold`, `apps/server/src/resolvers/household.resolver.ts`).
-Tests: `settings/household/index.cloud.test.tsx`; the local "My data" tests stay in
-`index.test.tsx` and `settings/index.test.tsx`.
+Tests: `settings/household/index.cloud.test.tsx` (the page title is "General", not the
+name; the name card and the sidebar heading show the name with no `capitalize`); the local
+tests stay in `index.test.tsx` and `settings/index.test.tsx`.
 | `/settings/household/members` | `settings/household/members.tsx` | Cloud only (local mode: `<Navigate to="/settings/household">`). Every person and their household role; Invite, open invites, role control, Remove and Leave by role. See *The Members page* below. |
 | `/settings/household/activity` | `settings/household/activity.tsx` | Cloud only (local mode: `<Navigate to="/settings/household">`). The household activity log, for an owner or manager. See *The Activity page* below. |
 | `/settings/household/{locations,shelves,vendors,recipes,tags}` | `settings/household/<section>/index.tsx` | The five list pages. Each has its own Back button on mobile only (`lg:hidden`). |

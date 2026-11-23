@@ -32,7 +32,7 @@ describe('Settings index stories smoke tests', () => {
     mockScreen({ desktop: true })
     render(<Desktop />)
     expect(
-      await screen.findByRole('heading', { level: 1, name: 'My data' }),
+      await screen.findByRole('heading', { level: 1, name: 'General' }),
     ).toBeInTheDocument()
   })
 })

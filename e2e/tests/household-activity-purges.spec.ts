@@ -434,13 +434,16 @@ test.describe('the activity log and the danger zones', () => {
     const seed = await seedHousehold(request)
     const beaPage = await openAs(browser, BEA)
     await beaPage.goto('/settings/household')
-    // The page title is the household name (`HouseholdLabel`)
+    // The household sidebar heading is the household name (`HouseholdLabel`;
+    // the page's own <h1> says "General")
     await expect(
-      beaPage.getByRole('heading', {
-        level: 1,
-        name: seed.householdName,
-        exact: true,
-      }),
+      beaPage
+        .getByRole('navigation', { name: 'Sidebar navigation' })
+        .getByRole('heading', {
+          level: 2,
+          name: seed.householdName,
+          exact: true,
+        }),
     ).toBeVisible()
 
     // When the owner deletes the household, typing its name

@@ -9,9 +9,10 @@ import { useHousehold } from '@/hooks/useHousehold'
  * In cloud mode it also says "My data" while the name is loading, and when it
  * cannot be read, so the label is never empty.
  *
- * Used by the desktop sidebar link, the household sidebar heading, the
- * household page title and the mobile accordion trigger, so all four always
- * say the same thing. The same idea as `UserLabel` for the 👤 entry.
+ * Used by the desktop sidebar link, the household sidebar heading and the
+ * mobile accordion trigger, so all three always say the same thing. (The
+ * household page title used it until 2026-11-23; it now says "General".)
+ * The same idea as `UserLabel` for the 👤 entry.
  *
  * The name is shown as stored. No `capitalize`: a household name is chosen by
  * its owner, like a vendor or location name (root `CLAUDE.md`, *Name Display

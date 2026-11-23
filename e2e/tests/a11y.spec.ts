@@ -279,7 +279,7 @@ test('user can view household config page without accessibility violations', asy
   // The page title and the household sidebar's Back are both on screen, so
   // the scan covers the page AND the household view of the sidebar
   await expect(
-    page.getByRole('heading', { name: 'My data', level: 1 }),
+    page.getByRole('heading', { name: 'General', level: 1 }),
   ).toBeVisible()
   await expect(
     page
@@ -1129,7 +1129,7 @@ test.describe('dark mode a11y', () => {
     await page.goto('/settings/household')
     await page.waitForLoadState('networkidle')
     await expect(
-      page.getByRole('heading', { name: 'My data', level: 1 }),
+      page.getByRole('heading', { name: 'General', level: 1 }),
     ).toBeVisible()
     await expect(
       page
@@ -1694,7 +1694,7 @@ test.describe('mobile viewport a11y', () => {
     await page.goto('/settings/household')
     await page.waitForLoadState('networkidle')
     await expect(
-      page.getByRole('heading', { name: 'My data', level: 1 }),
+      page.getByRole('heading', { name: 'General', level: 1 }),
     ).toBeVisible()
 
     // When axe scans the page for accessibility violations

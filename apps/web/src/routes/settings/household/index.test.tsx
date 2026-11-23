@@ -40,13 +40,13 @@ describe('Household config page', () => {
     return router
   }
 
-  it('user sees the "My data" title with the export and import cards', async () => {
+  it('user sees the "General" title with the export and import cards', async () => {
     // Given the household config page
     renderPage()
 
-    // Then the title is "My data"
+    // Then the title is "General", the label of this page's sidebar link
     expect(
-      await screen.findByRole('heading', { level: 1, name: 'My data' }),
+      await screen.findByRole('heading', { level: 1, name: 'General' }),
     ).toBeInTheDocument()
 
     // And the export and import cards are shown
@@ -58,7 +58,7 @@ describe('Household config page', () => {
     // Given the household config page has rendered
     renderPage()
     expect(
-      await screen.findByRole('heading', { level: 1, name: 'My data' }),
+      await screen.findByRole('heading', { level: 1, name: 'General' }),
     ).toBeInTheDocument()
 
     // Then there is no danger zone (it arrives with the purges in H6)
