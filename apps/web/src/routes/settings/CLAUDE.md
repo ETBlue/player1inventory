@@ -23,9 +23,11 @@ tests stay in `index.test.tsx` and `settings/index.test.tsx`.
 | `/settings/household/members` | `settings/household/members.tsx` | Cloud only (local mode: `<Navigate to="/settings/household">`). Every person and their household role; Invite, open invites, role control, Remove and Leave by role. See *The Members page* below. |
 | `/settings/household/activity` | `settings/household/activity.tsx` | Cloud only (local mode: `<Navigate to="/settings/household">`). The household activity log, for an owner or manager. See *The Activity page* below. |
 | `/settings/household/{locations,shelves,vendors,recipes,tags}` | `settings/household/<section>/index.tsx` | The five list pages. Each has its own Back button on mobile only (`lg:hidden`). |
+| `/settings/household/<section>/<id>…` | detail pages | Full-screen on every screen size |
 
 **On mobile every `/settings` page is full-screen since 2026-11-23** (owner request): no bottom bar, and a Back icon in the page's own top bar. See the table of which Back goes where in `components/CLAUDE.md`, *Navigation*.
-| `/settings/household/<section>/<id>…` | detail pages | Full-screen on every screen size |
+
+**Switch to… stays on the settings page** (cloud, since 2026-11-23, owner request). A switch or a Create new on a settings page loads that page again in the new household. A page below a section (`/settings/household/<section>/<id>…`) goes to the section's list page instead, because its id is a row of the old household; the switcher is not on those pages today, so this rule is only a safe default. See `useMyHouseholds` in `hooks/CLAUDE.md`.
 
 On desktop the sidebar switches to `HouseholdSidebar` on `/settings/household` and the five
 list pages. Theme, language, data mode and the account card are in `UserSettingsPanel`,
