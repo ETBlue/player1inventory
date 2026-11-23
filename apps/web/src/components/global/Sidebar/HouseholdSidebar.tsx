@@ -23,8 +23,9 @@ import { loadNavigationHistory } from '@/lib/sessionStorage'
 // G.9) is second, and cloud only: local mode has no members (design, *Local
 // mode*). Activity (H6 task J.6) is eighth, for an owner or manager in cloud.
 // Item 9, **Switch to…** (H7 task L.4), is not a link: `HouseholdSwitcher`
-// renders it after this list, in cloud for every role, and nothing in local
-// mode. The icons match the cards on the mobile /settings accordion.
+// renders it in its own block pinned to the bottom of the panel, below this
+// list, in cloud for every role, and nothing in local mode. The icons match
+// the cards on the mobile /settings accordion.
 //
 // `exact` decides when an item is marked active. General is active only on
 // `/settings/household` itself; a section is active on its list path (detail
@@ -162,7 +163,14 @@ export function HouseholdSidebar() {
             <span>{t(labelKey)}</span>
           </Link>
         ))}
-        {/* Item 9. Renders nothing in local mode. */}
+      </div>
+      {/* Item 9, pinned to the bottom of the panel (`mt-auto`), below the
+          links, like the 🏠 and 👤 block of the main sidebar. The `<nav>` is
+          a flex column at least as tall as the screen, so with few links
+          this block sits at the bottom of the screen; with many links the
+          whole panel scrolls and this block comes after them. Renders
+          nothing in local mode. */}
+      <div className="mt-auto px-2 pt-4 pb-2">
         <HouseholdSwitcher />
       </div>
     </>

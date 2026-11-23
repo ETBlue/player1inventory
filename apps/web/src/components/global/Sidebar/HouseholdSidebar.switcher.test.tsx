@@ -70,6 +70,24 @@ describe('HouseholdSidebar — Switch to…', () => {
     ).toBeTruthy()
   })
 
+  it('user sees Switch to… pinned to the bottom of the panel, outside the link list', async () => {
+    // Given cloud mode
+    renderAs('cloud', 'owner')
+    const nav = await screen.findByRole('navigation')
+    const switcher = await within(nav).findByRole('button', {
+      name: /Switch to…/,
+    })
+
+    // Then the switcher sits in its own block, a direct child of the nav
+    // column, pushed to the bottom by `mt-auto`
+    const block = switcher.closest('.mt-auto')
+    expect(block).not.toBeNull()
+    expect(block?.parentElement).toBe(nav)
+
+    // And that block holds no link: the list is a separate block above it
+    expect(within(block as HTMLElement).queryAllByRole('link')).toHaveLength(0)
+  })
+
   it('user in local mode does not see Switch to…', async () => {
     renderAs('local')
     const nav = await screen.findByRole('navigation')
