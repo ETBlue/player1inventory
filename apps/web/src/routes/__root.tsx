@@ -24,6 +24,7 @@ import { isCopyPromptPausedPath } from '@/hooks/usePostLoginMigration'
 import { useServiceWorkerUpdate } from '@/hooks/useServiceWorkerUpdate'
 import { useTags } from '@/hooks/useTags'
 import { useVendors } from '@/hooks/useVendors'
+import { isAuthPage } from '@/lib/authPages'
 import { shouldRedirectToOnboarding } from './shouldRedirectToOnboarding'
 
 // E2E test mode: VITE_E2E_TEST_USER_ID bypasses Clerk, so CloudAuthGuard
@@ -45,9 +46,10 @@ export function CloudAuthGuard() {
     // The user's cached data is on the device and should stay reachable.
     if (offline) return
     if (isLoaded && !isSignedIn) {
-      // Already there. Navigating again would replace the return path with
-      // the sign-in page's own URL.
-      if (pathname === '/sign-in') return
+      // Already on the sign-in or the sign-up page. Navigating again would
+      // replace the return path with the page's own URL, and on `/sign-up`
+      // it would also take the person away from the form they asked for.
+      if (isAuthPage(pathname)) return
       // Come back to this page after sign-in (households H5b, decision
       // T24). A person who opens an invite link must land on it again, also
       // after signing UP. `/sign-in` checks the value with
@@ -158,7 +160,8 @@ function RootComponent() {
         {/*
           In cloud mode, a person in NO household (after a leave or a
           removal) sees the no-household screen instead of the page
-          (households H5b, task G.8). Not on `/join/…` or `/sign-in`. The
+          (households H5b, task G.8). Not on `/join/…`, `/sign-in` or
+          `/sign-up`. The
           gate does nothing in local mode.
         */}
         <NoHouseholdGate>

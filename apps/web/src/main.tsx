@@ -15,6 +15,7 @@ import { getLastSignedInUserId, restoreCache } from './apollo/persistence'
 import { bootstrapCloudMode } from './bootstrap'
 import { db } from './db'
 import { bootstrapCarts } from './db/operations'
+import { SIGN_IN_PATH, SIGN_UP_PATH } from './lib/authPages'
 import type { DataMode } from './lib/dataMode'
 import { DATA_MODE_STORAGE_KEY, DEFAULT_DATA_MODE } from './lib/dataMode'
 import { getE2ETestUserId } from './lib/e2eUser'
@@ -88,7 +89,18 @@ function renderApp() {
 
     root.render(
       <StrictMode>
-        <ClerkProvider publishableKey={publishableKey}>
+        {/*
+          Both URLs are set, so no Clerk flow falls back to Clerk's hosted
+          pages, which drop our `?redirect=` (docs/global/bugs/
+          2026-11-23-bug-join-redirect-lost-on-sign-up.md). With only
+          `signInUrl` set, Clerk would run sign-up inside the sign-in page
+          (`/sign-in#/create`), a flow we do not use.
+        */}
+        <ClerkProvider
+          publishableKey={publishableKey}
+          signInUrl={SIGN_IN_PATH}
+          signUpUrl={SIGN_UP_PATH}
+        >
           <ApolloWrapper>
             <QueryClientProvider client={queryClient}>
               <RouterProvider router={router} />

@@ -78,10 +78,12 @@ import { makeGql } from '../utils/cloud'
 //
 // ── WHAT IT DOES NOT PROVE ───────────────────────────────────────────────────
 //
-// - The sign-in return path (decision T24). The E2E build has no Clerk and
-//   does not mount `CloudAuthGuard`, so "Sign in to join" lands straight on
-//   the join page in cloud mode. Unit tests cover it
-//   (`routes/sign-in.test.tsx`, `routes/__root.offline.test.tsx`).
+// - The sign-in and sign-up return path (decision T24). The E2E build has no
+//   Clerk and does not mount `CloudAuthGuard`, so "Sign in to join" lands
+//   straight on the join page in cloud mode. Unit tests cover the props our
+//   pages give Clerk (`routes/sign-in.test.tsx`, `routes/sign-up.test.tsx`,
+//   `routes/__root.offline.test.tsx`). Only a manual check with real Clerk
+//   proves Clerk follows them.
 // - An EXPIRED link. No E2E route moves time (decision T28); the unit tests of
 //   `invitePreview` and `joinHousehold` use a clock.
 // - Two joins on one link at the same moment (Review Focus 2). Covered by

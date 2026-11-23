@@ -301,6 +301,7 @@ describe('NoHouseholdGate', () => {
   it.each([
     '/join/tok-abc',
     '/sign-in',
+    '/sign-up',
   ])('shows the page on %s, and clears nothing', async (path) => {
     // A person with no household must still be able to open an invite link
     answer(noHousehold())

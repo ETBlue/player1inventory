@@ -85,6 +85,24 @@ describe('CloudAuthGuard', () => {
     expect(navigateMock).not.toHaveBeenCalled()
   })
 
+  it('leaves a signed-out person on the sign-up page', async () => {
+    // Given a signed-out person who chose "Sign up" on the sign-in page of
+    // an invite link (docs/global/bugs/2026-11-23-bug-join-redirect-lost-on-sign-up.md)
+    setOnLine(true)
+    routerLocation.value = {
+      pathname: '/sign-up',
+      searchStr: '?redirect=%2Fjoin%2Fabc',
+    }
+
+    // When the guard renders
+    render(<CloudAuthGuard />)
+
+    // Then it stays put. Sending them to sign-in would take them away from
+    // the sign-up form they asked for
+    await new Promise((r) => setTimeout(r, 0))
+    expect(navigateMock).not.toHaveBeenCalled()
+  })
+
   it('user stays on the page when signed out and offline', async () => {
     // Given the device has no connection and Clerk says signed out
     setOnLine(false)

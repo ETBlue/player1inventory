@@ -1,6 +1,7 @@
 import { SignIn, useAuth } from '@clerk/react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect } from 'react'
+import { authPageUrl, SIGN_UP_PATH } from '@/lib/authPages'
 import { safeRedirectPath } from '@/lib/safeRedirect'
 
 interface SignInSearch {
@@ -32,12 +33,23 @@ function SignInPage() {
   return (
     <div className="flex min-h-screen items-center justify-center">
       {/*
-        Both props are needed. `forceRedirectUrl` is used after a sign-IN.
-        `signUpForceRedirectUrl` is used after a sign-UP, which is what a
-        brand-new person who opens an invite link does. Both prop names were
-        checked in the installed `@clerk/react` 6.1.0 types (`SignInProps`).
+        `forceRedirectUrl` is used after a sign-IN.
+
+        `signUpUrl` is the target of Clerk's "Sign up" link. It must be OUR
+        `/sign-up` page with the same `redirect`. Without it the link went
+        to Clerk's hosted page, which keeps no `redirect`, so a brand-new
+        person who opened an invite link never came back to it
+        (docs/global/bugs/2026-11-23-bug-join-redirect-lost-on-sign-up.md).
+
+        `signUpForceRedirectUrl` alone does NOT fix that: Clerk does not put
+        it on the "Sign up" link. It is kept for the flows that do read it
+        (an e-mail link, an SSO callback that ends in a sign-up).
       */}
-      <SignIn forceRedirectUrl={path} signUpForceRedirectUrl={path} />
+      <SignIn
+        forceRedirectUrl={path}
+        signUpForceRedirectUrl={path}
+        signUpUrl={authPageUrl(SIGN_UP_PATH, path)}
+      />
     </div>
   )
 }
