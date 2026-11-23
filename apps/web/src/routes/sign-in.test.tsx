@@ -10,8 +10,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
 
-// Clerk's `<SignIn>` is replaced by a stub that shows the two redirect props
-// it was given, so the test can read them.
+// Clerk's `<SignIn>` is replaced by a stub that shows the redirect props and
+// the sign-up link it was given, so the test can read them.
 const authState = vi.hoisted(() => ({ isSignedIn: false }))
 vi.mock('@clerk/react', () => ({
   useAuth: () => ({ isLoaded: true, isSignedIn: authState.isSignedIn }),
@@ -20,10 +20,12 @@ vi.mock('@clerk/react', () => ({
   SignIn: (props: {
     forceRedirectUrl?: string | null
     signUpForceRedirectUrl?: string | null
+    signUpUrl?: string
   }) => (
     <div data-testid="clerk-sign-in">
       <span data-testid="sign-in-target">{props.forceRedirectUrl}</span>
       <span data-testid="sign-up-target">{props.signUpForceRedirectUrl}</span>
+      <span data-testid="sign-up-link">{props.signUpUrl}</span>
     </div>
   ),
 }))
@@ -52,17 +54,43 @@ afterEach(() => {
 })
 
 describe('sign-in return path', () => {
-  it('user who signs in or signs up from an invite link goes back to it', async () => {
+  it('user who signs in from an invite link goes back to it', async () => {
     // Given a signed-out person sent to sign-in from the join page
     renderAt('/sign-in?redirect=%2Fjoin%2Fabc%3Fx%3D1')
 
-    // Then Clerk is told to return to the join page after a sign-in AND
-    // after a sign-up (a brand-new person signs up)
+    // Then Clerk is told to return to the join page after a sign-in. The
+    // sign-up prop is also set, but Clerk does not put it on its "Sign up"
+    // link (docs/global/bugs/2026-11-23-bug-join-redirect-lost-on-sign-up.md),
+    // so it does not prove that a sign-up returns. The next test does.
     expect(await screen.findByTestId('sign-in-target')).toHaveTextContent(
       '/join/abc?x=1',
     )
     expect(screen.getByTestId('sign-up-target')).toHaveTextContent(
       '/join/abc?x=1',
+    )
+  })
+
+  it('user who chooses Sign up from an invite link keeps the return path', async () => {
+    // Given a signed-out person sent to sign-in from the join page
+    renderAt('/sign-in?redirect=%2Fjoin%2Fabc')
+
+    // Then Clerk's "Sign up" link goes to OUR sign-up page, with the same
+    // return path, not to Clerk's hosted page, which would lose it
+    expect(await screen.findByTestId('sign-up-link')).toHaveTextContent(
+      /^\/sign-up\?redirect=%2Fjoin%2Fabc$/,
+    )
+  })
+
+  it.each([
+    ['no return path', '/sign-in'],
+    ['a return path to another site', '/sign-in?redirect=%2F%2Fevil.example'],
+  ])('user with %s gets a plain sign-up link', async (_label, url) => {
+    // Given the sign-in page with nothing safe to return to
+    renderAt(url)
+
+    // Then the "Sign up" link carries no return path
+    expect(await screen.findByTestId('sign-up-link')).toHaveTextContent(
+      /^\/sign-up$/,
     )
   })
 

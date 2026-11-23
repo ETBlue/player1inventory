@@ -7,6 +7,7 @@ import { NoHouseholdScreen } from '@/components/household/NoHouseholdScreen'
 import { GetHouseholdDocument } from '@/generated/graphql'
 import { useDataMode } from '@/hooks/useDataMode'
 import { useHousehold } from '@/hooks/useHousehold'
+import { isAuthPage } from '@/lib/authPages'
 
 // The E2E build has no `ClerkProvider`, so `useAuth()` would throw there. It
 // has one account per page load, so it needs no account check.
@@ -23,8 +24,8 @@ const isE2ETestMode = !!import.meta.env.VITE_E2E_TEST_USER_ID
  * household. `useHousehold().errorCode` is set even when an old household is
  * still cached, which is the normal case for a person just removed.
  *
- * **Not on `/join/…` or `/sign-in`.** A person with no household must still
- * be able to open an invite link and sign in.
+ * **Not on `/join/…`, `/sign-in` or `/sign-up`.** A person with no household
+ * must still be able to open an invite link, sign in and sign up.
  *
  * **When the screen first shows, it clears the old household's data** once,
  * with no reload (Step 3b):
@@ -115,7 +116,7 @@ function GateBody({
   // the code may show the screen.
   const [checking, setChecking] = useState(recheck)
 
-  const excluded = pathname === '/sign-in' || pathname.startsWith('/join/')
+  const excluded = isAuthPage(pathname) || pathname.startsWith('/join/')
   const noHousehold = !checking && errorCode === 'NO_HOUSEHOLD'
   const [shown, setShown] = useState(false)
   const forgotten = useRef(false)

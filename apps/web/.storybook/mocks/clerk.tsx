@@ -37,3 +37,7 @@ export function ClerkProvider({ children }: { children: ReactNode }) {
 export function SignIn() {
   return <div data-testid="clerk-sign-in-stub" />
 }
+
+export function SignUp() {
+  return <div data-testid="clerk-sign-up-stub" />
+}

@@ -1682,9 +1682,11 @@ describe('skipCopyPromptIn', () => {
 })
 
 describe('isCopyPromptPausedPath', () => {
-  it('pauses on the join page and the sign-in page only', () => {
+  it('pauses on the join page, the sign-in page and the sign-up page only', () => {
     expect(isCopyPromptPausedPath('/join/abc')).toBe(true)
     expect(isCopyPromptPausedPath('/sign-in')).toBe(true)
+    expect(isCopyPromptPausedPath('/sign-up')).toBe(true)
+    expect(isCopyPromptPausedPath('/sign-upx')).toBe(false)
     expect(isCopyPromptPausedPath('/')).toBe(false)
     expect(isCopyPromptPausedPath('/joined')).toBe(false)
     expect(isCopyPromptPausedPath('/settings/household/members')).toBe(false)

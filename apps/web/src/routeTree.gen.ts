@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SignUpRouteImport } from './routes/sign-up'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as ShoppingRouteImport } from './routes/shopping'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
@@ -55,6 +56,11 @@ import { Route as SettingsHouseholdShelvesShelfIdItemsRouteImport } from './rout
 import { Route as SettingsHouseholdShelvesShelfIdFiltersRouteImport } from './routes/settings/household/shelves/$shelfId/filters'
 import { Route as SettingsHouseholdRecipesIdItemsRouteImport } from './routes/settings/household/recipes/$id/items'
 
+const SignUpRoute = SignUpRouteImport.update({
+  id: '/sign-up',
+  path: '/sign-up',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SignInRoute = SignInRouteImport.update({
   id: '/sign-in',
   path: '/sign-in',
@@ -311,6 +317,7 @@ export interface FileRoutesByFullPath {
   '/onboarding': typeof OnboardingRoute
   '/shopping': typeof ShoppingRouteWithChildren
   '/sign-in': typeof SignInRoute
+  '/sign-up': typeof SignUpRoute
   '/items/$id': typeof ItemsIdRouteWithChildren
   '/join/$token': typeof JoinTokenRoute
   '/shopping/$vendorId': typeof ShoppingVendorIdRoute
@@ -357,6 +364,7 @@ export interface FileRoutesByTo {
   '/cooking': typeof CookingRoute
   '/onboarding': typeof OnboardingRoute
   '/sign-in': typeof SignInRoute
+  '/sign-up': typeof SignUpRoute
   '/join/$token': typeof JoinTokenRoute
   '/shopping/$vendorId': typeof ShoppingVendorIdRoute
   '/settings': typeof SettingsIndexRoute
@@ -394,6 +402,7 @@ export interface FileRoutesById {
   '/onboarding': typeof OnboardingRoute
   '/shopping': typeof ShoppingRouteWithChildren
   '/sign-in': typeof SignInRoute
+  '/sign-up': typeof SignUpRoute
   '/items/$id': typeof ItemsIdRouteWithChildren
   '/join/$token': typeof JoinTokenRoute
   '/shopping/$vendorId': typeof ShoppingVendorIdRoute
@@ -443,6 +452,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/shopping'
     | '/sign-in'
+    | '/sign-up'
     | '/items/$id'
     | '/join/$token'
     | '/shopping/$vendorId'
@@ -489,6 +499,7 @@ export interface FileRouteTypes {
     | '/cooking'
     | '/onboarding'
     | '/sign-in'
+    | '/sign-up'
     | '/join/$token'
     | '/shopping/$vendorId'
     | '/settings'
@@ -525,6 +536,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/shopping'
     | '/sign-in'
+    | '/sign-up'
     | '/items/$id'
     | '/join/$token'
     | '/shopping/$vendorId'
@@ -573,6 +585,7 @@ export interface RootRouteChildren {
   OnboardingRoute: typeof OnboardingRoute
   ShoppingRoute: typeof ShoppingRouteWithChildren
   SignInRoute: typeof SignInRoute
+  SignUpRoute: typeof SignUpRoute
   ItemsIdRoute: typeof ItemsIdRouteWithChildren
   JoinTokenRoute: typeof JoinTokenRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
@@ -588,6 +601,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/sign-up': {
+      id: '/sign-up'
+      path: '/sign-up'
+      fullPath: '/sign-up'
+      preLoaderRoute: typeof SignUpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/sign-in': {
       id: '/sign-in'
       path: '/sign-in'
@@ -1112,6 +1132,7 @@ const rootRouteChildren: RootRouteChildren = {
   OnboardingRoute: OnboardingRoute,
   ShoppingRoute: ShoppingRouteWithChildren,
   SignInRoute: SignInRoute,
+  SignUpRoute: SignUpRoute,
   ItemsIdRoute: ItemsIdRouteWithChildren,
   JoinTokenRoute: JoinTokenRoute,
   SettingsIndexRoute: SettingsIndexRoute,

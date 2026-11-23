@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { getShownHouseholdId } from '@/apollo/householdGuard'
 import { getAllItems } from '@/db/operations'
 import type { HouseholdRole } from '@/generated/graphql'
+import { isAuthPage } from '@/lib/authPages'
 import { type ExportPayload, fetchLocalPayload } from '@/lib/exportData'
 import {
   type ImportStrategy,
@@ -109,18 +110,20 @@ export function skipCopyPromptIn(householdId: string): void {
 }
 
 /**
- * The pages where the question waits: the join page and the sign-in page.
+ * The pages where the question waits: the join page, the sign-in page and
+ * the sign-up page.
  *
  * A person who opens an invite link is on their way into another household.
  * A brand-new person already has a household of their own there (their
  * first request made it), and a copy into it would keep it from being
- * deleted when they join. The sign-in page is on the same path: Clerk
- * reports "signed in" a moment before it leaves for the invite link. The
+ * deleted when they join. The sign-in and sign-up pages (`isAuthPage`) are
+ * on the same path: Clerk reports "signed in" a moment before it leaves for
+ * the invite link. The
  * question waits; it is not answered. If the person leaves without joining,
  * it comes on the next page.
  */
 export function isCopyPromptPausedPath(pathname: string): boolean {
-  return pathname.startsWith('/join/') || pathname === '/sign-in'
+  return pathname.startsWith('/join/') || isAuthPage(pathname)
 }
 
 export type MigrationState =
