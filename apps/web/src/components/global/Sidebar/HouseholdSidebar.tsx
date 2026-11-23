@@ -122,17 +122,25 @@ export function HouseholdSidebar() {
 
   return (
     <>
-      <div className="px-2 pt-2">
-        <Button variant="neutral-ghost" className="w-auto" onClick={goBack}>
+      {/* One row: the Back icon, then the heading. Back shows only its icon;
+          `aria-label` keeps its name "Back" for screen readers and tests. The
+          heading is the household's name in cloud mode, "My data" in local
+          mode. A long name wraps inside its own column (`min-w-0 flex-1`), so
+          it never widens the 224px sidebar and never pushes the icon away. */}
+      <div className="flex items-start gap-1 px-2 pt-2 pb-3">
+        <Button
+          variant="neutral-ghost"
+          size="icon"
+          className="shrink-0"
+          aria-label={t('navigation.back')}
+          onClick={goBack}
+        >
           <ArrowLeft className="h-4 w-4" />
-          {t('navigation.back')}
         </Button>
+        <h2 className="min-w-0 flex-1 py-1 break-words">
+          <HouseholdLabel />
+        </h2>
       </div>
-      {/* The household's name in cloud mode, "My data" in local mode. A long
-          name wraps instead of widening the 224px column. */}
-      <h2 className="px-5 py-3 break-words">
-        <HouseholdLabel />
-      </h2>
       <div className="flex flex-col gap-1 px-2">
         {links.map(({ to, labelKey, icon: Icon, exact }) => (
           <Link
