@@ -49,6 +49,7 @@ Why C is large:
 | Q1 | Build A + B now and C later only if still needed; or all of it; or a shared Save for Info and Stock only? | **A + B first** (option 1). C is decided later, after using A + B |
 | Q2 | The 6 tabs do not fit with text on a 390 px phone. How should the row look? | **Icons only on a phone**, icon and text from a wider width. Each tab keeps its name as its accessible name |
 | Q3 | The design as presented (below) | **Approved** ("sounds good") |
+| Q4 | (2026-11-25) PR #417 left Save at the bottom of each form, but the design put it in row 1. Keep it at the bottom, move it to the top bar, or wait for part C? | **Move Save to the top bar** ("I prefer moving the save button to top bar"). Built on `feature/item-save-top-bar` |
 
 ## The approved design, short
 
