@@ -3,17 +3,30 @@
 Item detail pages use a tabbed layout with two rows (since 2026-11-24, design
 `docs/features/items/2026-11-24-item-tabs-flat-design.md`, part B; brainstorming beside it):
 
-- **Row 1** is the top bar: back and the item name.
+- **Row 1** is the top bar: back, the item name and, on Info and Stock, **Save**.
 - **Row 2** is one flat tab row, **Info · Stock · Tags · Vendors · Recipes · Log**: a
   `<nav aria-label="Item sections">` (`items.detail.tabsLabel`) passed to `LayoutInnerPages`'s
   `tabs` prop. Below `sm` each tab shows its icon only; from `sm` up, icon and text. The name is
   a `sr-only sm:not-sr-only` span, so it is each link's accessible name at every width (the old
   icon-only toolbar used `aria-label`s such as "Item info tab"; those are gone). TanStack
   Router marks the open tab with `aria-current="page"`; Info uses `activeOptions.exact`.
-- **The Save button is not in row 1.** It is still the full-width button at the bottom of
-  each `ItemForm` (Info and Stock). The design said "the tab's Save" sits in row 1, but no tab
-  had a Save there. Moving Save out of the form is a larger change and was not done; the
-  owner decides it (it may belong with part C, one shared Save).
+- **Save is in row 1** (owner decision 2026-11-25, brainstorming Q4; until then it was the
+  full-width button at the bottom of each `ItemForm`). `$id.tsx` passes an empty
+  `<div ref={setSaveSlot} className="contents" />` as `toolbarEnd`; `useItemLayout()` shares
+  the element as `saveSlot`; the Info and Stock tabs pass it to `ItemForm` as `submitSlot`.
+  `ItemForm` renders its Save there with `createPortal`, as
+  `<button type="submit" form={formId}>` (`formId` from `useId()`). So the button is OUTSIDE
+  the `<form>` in the DOM, and the HTML `form` attribute is what makes a click, and Enter in a
+  field, submit it. Disabled state, the spinner (`isPending`), validation, the toast, the
+  discard dialog and the unit-switch dialog are unchanged. A read-only form (`readOnly`)
+  renders no Save, in the slot or in the form. While the slot is `null` (the first render,
+  before the top bar's ref is set) there is no Save. Tags, Vendors, Recipes and Log render
+  nothing into the slot, and `contents` keeps an empty slot from adding a flex gap. On a
+  phone row 1 is back, the truncated name and "Save" with its text label (default `h-8`
+  size, the same height as the back button). Tests: `$id/saveTopBar.test.tsx`;
+  `ItemForm.test.tsx` (`submitSlot`); Enter is checked only by E2E
+  (`item-management.spec.ts`), because user-event looks for the submit button inside the
+  form only.
 
 Until 2026-11-24 the toolbar was **Info · Stock · Relation · Log**, and Tags, Vendors and
 Recipes sat under **Relation** as a submenu (`/items/$id/relation/…`). That level is gone. The
@@ -100,7 +113,7 @@ The dialog used to hang off the **Stock** tab, where saving *one location's* `co
 - **Target Quantity**, then **Refill When Below** — steppers too, with no action button and no grid. Every stepper clamps at 0 and disables `−` there; Packed always steps by 1, the other three step by `consumeAmount` (falling back to 1 when unset — a `+`/`−` increment must be non-zero to be usable), and Target steps by 1 instead whenever `targetUnit === 'package'`
 - **Structurally the Stock tab is NOT the dialog's grid.** It is a `<div className="space-y-2">` of sibling blocks, each a `<Label>` stacked above its stepper, so the progress row is a plain sibling and needs no `col-span-3` wrapper and no `my-2`. The dialog needs both because its rows share one `grid-cols-[auto_auto_auto]` grid whose columns must line up above and below the bar. Do not copy the dialog's grid here
 - The quantity labels still show the item's units (`(bottle)`, `(ml)`): they read the **global** configuration, which is why every location page labels them identically even for a row that carries nothing but numbers
-- Save button (persists the five via `buildStockUpdates`) — disabled when no changes made. Saves route to **the location whose page is on screen** (`useUpdateItem({ …, locationId })`), not necessarily the active one
+- Save button in the top bar (persists the five via `buildStockUpdates`) — disabled when no changes made. Saves route to **the location whose page is on screen** (`useUpdateItem({ …, locationId })`), not necessarily the active one
 - No global settings and no unit-switch dialog — both moved to Info
 - Editable: registers dirty state via `useItemLayout()`; the toolbar dirty-guard fires when leaving it
 
@@ -214,7 +227,7 @@ Uses `useAppNavigation()` hook from `src/hooks/useAppNavigation.ts`.
 - `src/routes/items/$id/relation/index.tsx` and `relation/$.tsx` - redirects from the old `/items/$id/relation/…` addresses
 - `src/routes/items/$id/log.tsx` - History/logs tab (view-only); stories at `$id/log.stories.tsx`
 - `src/routes/items/$id.test.tsx` - Integration tests
-- `src/hooks/useItemLayout.tsx` - Dirty state context for tab coordination
+- `src/hooks/useItemLayout.tsx` - Dirty state context for tab coordination, and the top bar's Save slot (`saveSlot`, `setSaveSlot`)
 
 ### Manual Quantity Input
 
@@ -262,7 +275,7 @@ A household `member` may read the catalog but not change it. Everything reads `u
 
 | Tab | Member |
 | --- | --- |
-| Info | `ItemForm readOnly`: the fields are `readOnly` or disabled, no Save, no Delete. The note "Only a household owner or manager can change this." (`settings.catalogReadOnlyItem`) shows above the form. The unit-switch dialog is reached only through Save, so it cannot open |
+| Info | `ItemForm readOnly`: the fields are `readOnly` or disabled, no Save (in the top bar or anywhere), no Delete. The note "Only a household owner or manager can change this." (`settings.catalogReadOnlyItem`) shows above the form. The unit-switch dialog is reached only through Save, so it cannot open |
 | Tags, Vendors, Recipes | the badges show what is assigned, are `aria-disabled`, and a press writes nothing. No "New Tag Type" / "New …" buttons |
 | Stock | unchanged by the household role. It follows the LOCATION role (task F.6) |
 
