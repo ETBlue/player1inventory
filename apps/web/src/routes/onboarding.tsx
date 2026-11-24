@@ -47,7 +47,7 @@ function OnboardingPage() {
   }, [setupMutation.isSuccess, navigate])
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-[100cqh]">
       {currentStep.type === 'welcome' && (
         <OnboardingWelcome
           onChooseTemplate={() => handleNavigate({ type: 'template-overview' })}

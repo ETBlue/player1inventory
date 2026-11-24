@@ -35,7 +35,7 @@ function SignUpPage() {
   if (isSignedIn) return null
 
   return (
-    <div className="flex min-h-screen items-center justify-center">
+    <div className="flex min-h-[100cqh] items-center justify-center">
       {/*
         `forceRedirectUrl` is used after the sign-UP. `signInForceRedirectUrl`
         is used when the person signs in from here instead, and
