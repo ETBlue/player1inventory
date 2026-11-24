@@ -171,7 +171,14 @@ Each tab tracks unsaved changes independently:
 
 Back button and post-action navigation use smart history tracking:
 - Back button navigates to previous app page (fallback to home if no history)
-- After successful save: auto-navigate back
+- **Save stays on the page** (since 2026-11-24, design
+  `docs/features/items/2026-11-24-item-tabs-flat-design.md`, part A). After a successful save
+  on Info or Stock the page does not move: the tab bumps `savedAt`, so `ItemForm` takes the
+  saved values as its new clean state (Save is disabled again and the dirty guard is not
+  armed), and the toast `items.detail.saved` ("Saved") shows. The Stock tab stays on the same
+  location page. The unit-switch dialog still runs before an Info save; only the `goBack()`
+  at its end is gone. A failed save shows `showSaveError` and keeps the edit, as before.
+  Tests: `$id/saveStays.test.tsx` (local) and `$id/saveStays.cloud.test.tsx` (cloud)
 - After successful delete: auto-navigate back
 - Back button respects dirty state guard (shows discard dialog if unsaved changes)
 

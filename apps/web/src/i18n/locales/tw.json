@@ -399,6 +399,7 @@
     },
     "detail": {
       "notFound": "查無此品項",
+      "saved": "已儲存",
       "tabs": {
         "info": "基本資訊",
         "stock": "庫存",

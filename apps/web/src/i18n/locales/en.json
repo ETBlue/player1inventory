@@ -399,6 +399,7 @@
     },
     "detail": {
       "notFound": "Item not found",
+      "saved": "Saved",
       "tabs": {
         "info": "Item info tab",
         "stock": "Item stock tab",

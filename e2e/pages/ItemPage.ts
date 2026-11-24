@@ -1,4 +1,4 @@
-import type { Locator, Page } from '@playwright/test'
+import { expect, type Locator, type Page } from '@playwright/test'
 import { withSteps } from './step'
 
 export class ItemPage {
@@ -57,15 +57,19 @@ export class ItemPage {
   }
 
   async saveExisting() {
-    // For saving an already-existing item (not /items/new).
-    // After saving, the app navigates back (via goBack()) — typically to the pantry (/).
-    // We wait for any URL change away from the current item page.
-    const currentUrl = this.page.url()
-    await this.page.getByRole('button', { name: /save/i }).click()
-    // Wait for navigation away from the current URL
-    await this.page.waitForURL((url) => url.toString() !== currentUrl, {
-      timeout: 10000,
-    })
+    // For saving an already-existing item (not /items/new) on the Info or
+    // Stock tab. Since 2026-11-24 a save STAYS on the page (design
+    // docs/features/items/2026-11-24-item-tabs-flat-design.md, part A): it
+    // shows the toast "Saved" (`items.detail.saved`, routes/items/$id/index.tsx
+    // and stock.tsx) and disables Save again. Wait for both, so the caller can
+    // rely on the write having finished.
+    const saveButton = this.page.getByRole('button', { name: /save/i })
+    await saveButton.click()
+    await this.page
+      .getByText('Saved', { exact: true })
+      .first()
+      .waitFor({ timeout: 10000 })
+    await expect(saveButton).toBeDisabled()
   }
 
   async navigateToTab(tab: 'tags' | 'vendors' | 'recipes' | 'log' | 'stock') {
