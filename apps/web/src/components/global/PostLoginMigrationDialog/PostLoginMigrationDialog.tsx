@@ -1,4 +1,5 @@
 import { useAuth } from '@clerk/react'
+import { Loader2 } from 'lucide-react'
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ImportLocationDialog } from '@/components/settings/ImportLocationDialog'
@@ -235,6 +236,7 @@ function MigrationDialogs({
     copyElsewhere,
     moving,
     moveFailed,
+    progress,
   } = usePostLoginMigration({
     isLoaded,
     isSignedIn,
@@ -270,8 +272,15 @@ function MigrationDialogs({
   // and Done, like the stored copy, and never reaches "Import into which
   // location?". The hook waits for the household before it asks, so
   // `household` is set here; the check keeps the dialog shut if it is not.
-  const prompting =
-    (state === 'prompting' || state === 'importing') && household !== undefined
+  // It closes when the copy starts: the progress dialog below takes over
+  // (issue #402). Until then it stayed open on 'importing' with its buttons
+  // off and Copy here reading '...'.
+  const prompting = state === 'prompting' && household !== undefined
+  // A copy is running: the stored copy ('auto-importing'), or Copy here and
+  // the copy after "Import into which location?" ('importing'). The copy
+  // into ANOTHER household runs after the page has moved there and
+  // reloaded, through the stored copy, so it shows here too.
+  const copying = state === 'auto-importing' || state === 'importing'
 
   // The household choice (households H7 task L.5, decision T73). Both
   // questions show it: the stored copy's (`confirming`, its stored strategy)
@@ -284,7 +293,7 @@ function MigrationDialogs({
   const choiceStrategy: ImportStrategy | null =
     state === 'confirming'
       ? waitingStrategy
-      : state === 'prompting' || state === 'importing'
+      : state === 'prompting'
         ? 'skip'
         : null
   const options =
@@ -348,6 +357,16 @@ function MigrationDialogs({
   function copyThere() {
     if (elsewhere !== null) void copyElsewhere(elsewhere)
   }
+
+  // On the button while the page moves to another household for the copy
+  // (issue #402). The copy itself runs after the reload, under the progress
+  // dialog.
+  const movingSpinner = (
+    <Loader2
+      aria-hidden="true"
+      className="animate-spin [transform-box:fill-box]"
+    />
+  )
 
   const choiceBlock = (
     <>
@@ -436,6 +455,7 @@ function MigrationDialogs({
                     onClick={isHere ? confirmCopy : copyThere}
                     disabled={moving}
                   >
+                    {moving && movingSpinner}
                     {copyLabel}
                   </AlertDialogAction>
                 )}
@@ -449,14 +469,41 @@ function MigrationDialogs({
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Auto-import progress dialog — no buttons, user already chose strategy */}
-      <AlertDialog open={state === 'auto-importing'}>
-        <AlertDialogContent aria-describedby={undefined}>
+      {/* The copy is running (issue #402). One dialog for every copy path,
+          with a spinner, and the batches sent once `importCloudData` has
+          counted them. No buttons: nothing here can start a second copy,
+          and the question above is closed while it shows. */}
+      <AlertDialog open={copying}>
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
               {t('settings.postLoginMigration.autoImporting')}
             </AlertDialogTitle>
           </AlertDialogHeader>
+          {/* A `div`, not the default `p`: it holds the spinner and the
+              count. As the description it also stops Radix's missing
+              description warning. */}
+          <AlertDialogDescription
+            asChild
+            role="status"
+            aria-label={t('settings.postLoginMigration.autoImporting')}
+            className="flex items-center gap-2"
+          >
+            <div>
+              <Loader2
+                aria-hidden="true"
+                className="size-5 animate-spin [transform-box:fill-box]"
+              />
+              {progress !== null && progress.totalBatches > 0 && (
+                <span>
+                  {t('settings.import.batchProgress', {
+                    completed: progress.completedBatches,
+                    total: progress.totalBatches,
+                  })}
+                </span>
+              )}
+            </div>
+          </AlertDialogDescription>
         </AlertDialogContent>
       </AlertDialog>
 
@@ -494,17 +541,15 @@ function MigrationDialogs({
           <AlertDialogFooter>
             {canPromptCopy ? (
               <>
-                <AlertDialogCancel
-                  onClick={dismiss}
-                  disabled={state === 'importing' || moving}
-                >
+                <AlertDialogCancel onClick={dismiss} disabled={moving}>
                   {t('settings.postLoginMigration.dontCopy')}
                 </AlertDialogCancel>
                 <AlertDialogAction
                   onClick={isHere ? () => importData('append') : copyThere}
-                  disabled={state === 'importing' || moving}
+                  disabled={moving}
                 >
-                  {state === 'importing' ? '...' : copyLabel}
+                  {moving && movingSpinner}
+                  {copyLabel}
                 </AlertDialogAction>
               </>
             ) : (
@@ -521,8 +566,8 @@ function MigrationDialogs({
           strategy, and Copy here in the question above. Before this dialog existed the
           first one set 'done' and said nothing, and the second one left an
           unhandled rejection with the prompt stuck on '...'.
-          The question above opens only on 'prompting' || 'importing', so
-          these two never show at once. */}
+          The question above opens only on 'prompting', and the progress
+          dialog only while a copy runs, so none of them shows at once. */}
       <AlertDialog open={state === 'error'}>
         <AlertDialogContent>
           <AlertDialogHeader>
