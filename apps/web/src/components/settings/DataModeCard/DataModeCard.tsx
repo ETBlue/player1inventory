@@ -297,12 +297,26 @@ function CloudModeSection({ signOut }: CloudModeSectionProps) {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Dialog 2: askMigrate — offer to copy data before switching */}
-      {/* No onOpenChange: all state transitions are driven by the buttons */}
+      {/* Dialog 2: askMigrate — offer to copy data before switching.
+          Cancel and Escape cancel the whole sign-out (owner, 2026-11-24:
+          Cancel cancels the action the person is trying to do). They close
+          the flow, not go back to askOffline: still signed in, still cloud,
+          nothing copied. Cancel is the only `AlertDialogCancel`, so the focus
+          starts there; Skip was one until 2026-11-24, so Enter switched to
+          offline and signed out. Both are off while the copy runs. No
+          onOpenChange: Radix calls it for every button. */}
       <AlertDialog
         open={signOutFlow === 'askMigrate' || signOutFlow === 'migrating'}
       >
-        <AlertDialogContent>
+        <AlertDialogContent
+          onEscapeKeyDown={(event) => {
+            if (signOutFlow === 'migrating') {
+              event.preventDefault()
+              return
+            }
+            setSignOutFlow('idle')
+          }}
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>
               {t('settings.dataMode.signOutMigrateDialog.title')}
@@ -311,13 +325,20 @@ function CloudModeSection({ signOut }: CloudModeSectionProps) {
           <AlertDialogDescription>
             {t('settings.dataMode.signOutMigrateDialog.description')}
           </AlertDialogDescription>
-          <AlertDialogFooter>
+          <AlertDialogFooter className="flex-wrap">
             <AlertDialogCancel
+              disabled={signOutFlow === 'migrating'}
+              onClick={() => setSignOutFlow('idle')}
+            >
+              {t('common.cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="neutral-outline"
               disabled={signOutFlow === 'migrating'}
               onClick={() => doSignOut(true, false)}
             >
               {t('settings.dataMode.signOutMigrateDialog.skip')}
-            </AlertDialogCancel>
+            </AlertDialogAction>
             <AlertDialogAction
               disabled={signOutFlow === 'migrating'}
               onClick={() => doSignOut(true, true)}
