@@ -1781,6 +1781,12 @@ test.describe('mobile viewport a11y', () => {
 // text; from `sm` up they show icon and text. So the row is scanned at both
 // widths, in light and dark mode. Each test first checks the six tabs are
 // there by name, so a scan of a page without the row cannot pass.
+//
+// Since 2026-11-25 row 1 (the top bar) also holds the Info and Stock tabs'
+// Save (owner decision). So each test also checks that Save is in the top
+// bar, fits the width with the item name, and is scanned twice: disabled
+// (a clean form) and enabled (after an edit). A disabled button is exempt
+// from the contrast rule, so only the second scan checks Save's contrast.
 const ITEM_TAB_NAMES = ['Info', 'Stock', 'Tags', 'Vendors', 'Recipes', 'Log']
 
 for (const { label, viewport } of [
@@ -1816,8 +1822,53 @@ for (const { label, viewport } of [
           row.getByRole('link', { name: 'Info', exact: true }),
         ).toHaveAttribute('aria-current', 'page')
 
+        // And Save is in the top bar, beside the item name, disabled while
+        // the form is clean (routes/items/$id.tsx, ItemForm's submitSlot)
+        const heading = page.getByRole('heading', { level: 1 })
+        const save = page.getByRole('button', { name: 'Save', exact: true })
+        await expect(save).toBeVisible()
+        await expect(save).toBeDisabled()
+        await expect(
+          page.locator('form').getByRole('button', { name: 'Save' }),
+        ).toHaveCount(0)
+        // It fits: inside the window, to the right of the name, on the same
+        // row, and the page does not scroll sideways
+        const saveBox = await save.boundingBox()
+        const headingBox = await heading.boundingBox()
+        expect(saveBox).not.toBeNull()
+        expect(headingBox).not.toBeNull()
+        if (saveBox && headingBox) {
+          expect(saveBox.x + saveBox.width).toBeLessThanOrEqual(viewport.width)
+          expect(saveBox.x).toBeGreaterThanOrEqual(
+            headingBox.x + headingBox.width,
+          )
+          expect(
+            Math.abs(
+              saveBox.y +
+                saveBox.height / 2 -
+                (headingBox.y + headingBox.height / 2),
+            ),
+          ).toBeLessThan(8)
+        }
+        const overflow = await page.evaluate(
+          () =>
+            document.documentElement.scrollWidth -
+            document.documentElement.clientWidth,
+        )
+        expect(overflow).toBeLessThanOrEqual(0)
+
         // And axe finds no violations on the page
         await injectAxe(page)
+        await checkA11y(page, undefined, AXE_OPTIONS)
+
+        // When the user edits the name, Save is enabled. The seeded row has
+        // no consume amount, which the form shows as 0 and refuses ("Must be
+        // greater than 0."), so it is set too, or Save would stay disabled.
+        await page.locator('#name').fill('Renamed item')
+        await page.locator('#consumeAmount').fill('1')
+        await expect(save).toBeEnabled()
+
+        // Then axe still finds no violations, Save's contrast included
         await checkA11y(page, undefined, AXE_OPTIONS)
       })
     })
