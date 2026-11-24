@@ -76,9 +76,12 @@ export class StockFormPage {
   }
 
   getSaveButton(): Locator {
-    // The form's only type="submit"; its label is the `submitLabel` prop,
-    // default "Save" (ItemForm.tsx:101, 800-806)
-    return this.page.getByRole('button', { name: 'Save' })
+    // Since 2026-11-25 Save is in the item page's TOP BAR, not at the bottom
+    // of the form (owner decision). ItemForm renders it into the top bar's
+    // slot (`submitSlot`, routes/items/$id.tsx) as a
+    // `<button type="submit" form="…">`, so it is outside the <form>. The
+    // label is still "Save". `exact` so it never matches the "Saved" toast.
+    return this.page.getByRole('button', { name: 'Save', exact: true })
   }
 
   // Put the caret at the END of a number input's text without selecting it, so
