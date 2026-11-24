@@ -400,14 +400,14 @@
     "detail": {
       "notFound": "Item not found",
       "saved": "Saved",
+      "tabsLabel": "Item sections",
       "tabs": {
-        "info": "Item info tab",
-        "stock": "Item stock tab",
-        "relations": "Item relations tab",
-        "tags": "Item tags tab",
-        "vendors": "Item vendors tab",
-        "recipes": "Item recipes tab",
-        "history": "Item history tab"
+        "info": "Info",
+        "stock": "Stock",
+        "tags": "Tags",
+        "vendors": "Vendors",
+        "recipes": "Recipes",
+        "history": "Log"
       },
       "deleteDialog": {
         "title": "Delete Item?",

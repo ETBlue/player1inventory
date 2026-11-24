@@ -64,7 +64,7 @@ function DefaultStory() {
   const router = createRouter({
     routeTree,
     history: createMemoryHistory({
-      initialEntries: [`/items/${itemId}/relation/tags`],
+      initialEntries: [`/items/${itemId}/tags`],
     }),
     context: { queryClient },
   })
@@ -119,7 +119,7 @@ function WithAssignedTagsStory() {
   const router = createRouter({
     routeTree,
     history: createMemoryHistory({
-      initialEntries: [`/items/${itemId}/relation/tags`],
+      initialEntries: [`/items/${itemId}/tags`],
     }),
     context: { queryClient },
   })
@@ -173,7 +173,7 @@ function EmptyTagTypesStory() {
   const router = createRouter({
     routeTree,
     history: createMemoryHistory({
-      initialEntries: [`/items/${itemId}/relation/tags`],
+      initialEntries: [`/items/${itemId}/tags`],
     }),
     context: { queryClient },
   })
@@ -250,7 +250,7 @@ function WithNestedTagsStory() {
   const router = createRouter({
     routeTree,
     history: createMemoryHistory({
-      initialEntries: [`/items/${itemId}/relation/tags`],
+      initialEntries: [`/items/${itemId}/tags`],
     }),
     context: { queryClient },
   })

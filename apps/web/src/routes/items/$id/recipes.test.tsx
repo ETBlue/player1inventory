@@ -62,7 +62,7 @@ describe('Recipes Tab', () => {
 
   const renderRecipesTab = (itemId: string) => {
     const history = createMemoryHistory({
-      initialEntries: [`/items/${itemId}/relation/recipes`],
+      initialEntries: [`/items/${itemId}/recipes`],
     })
     const router = createRouter({ routeTree, history })
     render(

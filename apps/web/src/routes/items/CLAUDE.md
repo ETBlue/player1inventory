@@ -1,6 +1,27 @@
 ### Tabbed Item Form
 
-Item detail pages use a tabbed layout. The toolbar order is **Info · Stock · Relation · Log** (4 buttons). Tags, Vendors, and Recipes are grouped under the **Relation** tab as a secondary submenu.
+Item detail pages use a tabbed layout with two rows (since 2026-11-24, design
+`docs/features/items/2026-11-24-item-tabs-flat-design.md`, part B; brainstorming beside it):
+
+- **Row 1** is the top bar: back and the item name.
+- **Row 2** is one flat tab row, **Info · Stock · Tags · Vendors · Recipes · Log**: a
+  `<nav aria-label="Item sections">` (`items.detail.tabsLabel`) passed to `LayoutInnerPages`'s
+  `tabs` prop. Below `sm` each tab shows its icon only; from `sm` up, icon and text. The name is
+  a `sr-only sm:not-sr-only` span, so it is each link's accessible name at every width (the old
+  icon-only toolbar used `aria-label`s such as "Item info tab"; those are gone). TanStack
+  Router marks the open tab with `aria-current="page"`; Info uses `activeOptions.exact`.
+- **The Save button is not in row 1.** It is still the full-width button at the bottom of
+  each `ItemForm` (Info and Stock). The design said "the tab's Save" sits in row 1, but no tab
+  had a Save there. Moving Save out of the form is a larger change and was not done; the
+  owner decides it (it may belong with part C, one shared Save).
+
+Until 2026-11-24 the toolbar was **Info · Stock · Relation · Log**, and Tags, Vendors and
+Recipes sat under **Relation** as a submenu (`/items/$id/relation/…`). That level is gone. The
+old addresses still work: `$id/relation/index.tsx` (`/items/$id/relation`) and `$id/relation/$.tsx`
+(`/items/$id/relation/{tags,vendors,recipes}`, and anything else under it) redirect to the new
+tab. TanStack Router replaces the history entry on every redirect, so Back does not land on
+the old address (the routes also pass `replace: true`, which changes nothing today).
+Tests: `routes/items/$id.tabs.test.tsx`.
 
 **The Info/Stock line is "global vs per-location", not "identity vs stock".** Since the v16 schema bump (see `src/db/CLAUDE.md`) the eight stock **configuration** fields are properties of the `Item`, so they are edited on Info and apply to every location at once. Stock holds only what genuinely varies by location.
 
@@ -108,34 +129,29 @@ an allow-list that forgot them would drop them here with no error. Since 2026-10
 
 The **cart rows themselves survive** (they are shared by every item in the location), other locations' logs and cart entries are untouched, and the global **`Item` persists**. An item removed from its *last* location becomes an **orphan**: gone from the pantry (`getStockedItems` filters on `ItemStock`) but still in the catalog (`getAllItems`), so the pantry Add combobox still finds it and can re-stock it via copy-on-add. Removing an item from *everywhere* is the Info tab's **Delete** button (`deleteItem`), not this. The Stock tab is also reachable for an orphan — every page just renders the not-stocked state.
 
-> Both the Info and Stock tabs are editable `ItemForm`s registering dirty state through `useItemLayout()`. The toolbar guard in `$id.tsx` (`isOnEditableTab`) shows the discard dialog when navigating away dirty from **either** tab. The Relation subtabs (Tags/Vendors/Recipes) and Log apply changes immediately and never go dirty.
+> Both the Info and Stock tabs are editable `ItemForm`s registering dirty state through `useItemLayout()`. The tab-row guard in `$id.tsx` (`isOnEditableTab`) shows the discard dialog when navigating away dirty from **either** tab. Tags, Vendors, Recipes and Log apply changes immediately and never go dirty.
 
-**3. Relation (`/items/$id/relation`, `Settings2` icon)**
-- A layout (`$id/relation.tsx`) that renders a secondary submenu (three `Link` icon buttons: Tags `Tags`, Vendors `Store`, Recipes `ChefHat`) under the main toolbar, plus the routed `<Outlet/>`
-- The Relation toolbar button is active on any `…/relation/*` route
-- `/items/$id/relation` (index) redirects to `…/relation/tags` (default subtab)
-
-**3a. Tags (`/items/$id/relation/tags`, default subtab)**
+**3. Tags (`/items/$id/tags`, `Tags` icon)**
 - Tag assignment interface with uppercase text styling for tag type names
 - Click badges to toggle tag assignment (selected tags show X icon)
 - Visual dividers between tag type sections
 - Inline tag creation via "New Tag" buttons (opens `AddNameDialog`): creates the tag and immediately assigns it to this item
 - Changes apply immediately without save button
 
-**A tag or vendor created on this page is assigned to the item, in both modes** (since 2026-03-23 for tags, `e6253d2e`; checked again for issue #402 on 2026-11-24). It is two writes: the create (`useCreateTag` / `useCreateVendor`), then `useUpdateItem` with the item's list plus the new id. Cloud has no single write for this: `createTag` and `createVendor` take no item, and adding that would be a server change. When the create succeeds and the assign fails, the dialog closes (trying again would create a second tag or vendor), the new row exists but is not on the item, and `showSaveError` shows "Could not save the change. Please try again." The user can press the new badge to assign it. Tests: local `tags.test.tsx` "… automatically assigned to the item" and `vendors.test.tsx` "user can create a new vendor from the vendors tab"; cloud `relation/createAssign.cloud.test.tsx` (the assign is sent with the old ids kept); the failed assign in `$id/saveFailed.cloud.test.tsx` and in both local files. Removing the assign call turns all four success tests red. The settings pages' create flows assign nothing; they have no item.
+**A tag or vendor created on this page is assigned to the item, in both modes** (since 2026-03-23 for tags, `e6253d2e`; checked again for issue #402 on 2026-11-24). It is two writes: the create (`useCreateTag` / `useCreateVendor`), then `useUpdateItem` with the item's list plus the new id. Cloud has no single write for this: `createTag` and `createVendor` take no item, and adding that would be a server change. When the create succeeds and the assign fails, the dialog closes (trying again would create a second tag or vendor), the new row exists but is not on the item, and `showSaveError` shows "Could not save the change. Please try again." The user can press the new badge to assign it. Tests: local `tags.test.tsx` "… automatically assigned to the item" and `vendors.test.tsx` "user can create a new vendor from the vendors tab"; cloud `createAssign.cloud.test.tsx` (the assign is sent with the old ids kept); the failed assign in `$id/saveFailed.cloud.test.tsx` and in both local files. Removing the assign call turns all four success tests red. The settings pages' create flows assign nothing; they have no item.
 
-**3b. Vendors (`/items/$id/relation/vendors`)**
+**4. Vendors (`/items/$id/vendors`, `Store` icon)**
 - Vendor assignment interface: click-to-toggle badges, immediate save
 - "New Vendor" button inline with badges — opens `AddNameDialog`, creates and immediately assigns the vendor
 - Changes apply immediately without save button
 
-**3c. Recipes (`/items/$id/relation/recipes`)**
+**5. Recipes (`/items/$id/recipes`, `ChefHat` icon)**
 - Recipe assignment interface: click-to-toggle badges, immediate save
 - Architecture: recipe-centric — `Recipe.items[]` stores the relationship; toggling updates the recipe, not the item
 - "New Recipe" button inline with badges — opens `AddNameDialog`, creates recipe assigned to this item
 - Changes apply immediately without save button
 
-**4. Log (`/items/$id/log`, `History` icon)**
+**6. Log (`/items/$id/log`, `History` icon)**
 - History/logs tab (view-only); never has unsaved changes
 
 **Measurement Tracking Behavior:**
@@ -186,15 +202,14 @@ Uses `useAppNavigation()` hook from `src/hooks/useAppNavigation.ts`.
 
 **Files:**
 - `src/components/item/ItemForm/ItemForm.tsx` - Shared form component (gates fields via its `sections` prop: `'info'` = identity + the global stock settings, `'stock'` = the per-location numbers). It always holds every value — the stock section's labels read the global units — but each section renders only its own half
-- `src/routes/items/$id.tsx` - Parent layout with the 4-button toolbar (Info · Stock · Relation · Log) and navigation guard (dual-tab dirty guard via `isOnEditableTab`)
+- `src/routes/items/$id.tsx` - Parent layout: the top bar, the flat tab row (Info · Stock · Tags · Vendors · Recipes · Log) and the navigation guard (dual-tab dirty guard via `isOnEditableTab`). Tests at `$id.tabs.test.tsx` (the row, the marking, the old addresses)
 - `src/routes/items/$id/index.tsx` - Info tab (`ItemForm sections={['info']}` — identity + the eight global stock settings, persisted by `buildInfoUpdates`); hosts the unit-switch dialog (recipe `defaultAmount`s + every location's tracked quantities) and the Delete button. Stories at `$id/index.stories.tsx` (`StockedInThreeLocations` seeds the multi-location conversion). Cloud-mode coverage of the same switch is in `$id/index.cloud.test.tsx`, which drives the real `useApplyUnitSwitchMutation` through `MockedProvider`
 - `src/routes/items/$id/stock.tsx` - Stock tab: `ItemStockTab` → `StockTab`, one all-locations pager for **both** modes (no mode split since PR 2), rendering `StockFormPanel` (the `sections={['stock']}` ItemForm; `buildStockUpdates` writes the five per-location fields only). Stories at `$id/stock.stories.tsx`, smoke tests at `$id/stock.stories.test.tsx`, integration tests at `$id/stock.test.tsx` and cloud-mode tests at `$id/stock.cloud.test.tsx`
 - `src/components/item/LocationPager/LocationPager.tsx` - the dot pager (tablist) used by the Stock tab
-- `src/routes/items/$id/relation.tsx` - Relation layout: secondary submenu (Tags/Vendors/Recipes) + `<Outlet/>`. Stories at `$id/relation.stories.tsx`
-- `src/routes/items/$id/relation/index.tsx` - Redirects to `…/relation/tags`
-- `src/routes/items/$id/relation/tags.tsx` - Tags subtab implementation (default); tests at `relation/tags.test.tsx`
-- `src/routes/items/$id/relation/vendors.tsx` - Vendors subtab implementation; tests at `relation/vendors.test.tsx`
-- `src/routes/items/$id/relation/recipes.tsx` - Recipes subtab implementation; tests at `relation/recipes.test.tsx`
+- `src/routes/items/$id/tags.tsx` - Tags tab; tests at `$id/tags.test.tsx`
+- `src/routes/items/$id/vendors.tsx` - Vendors tab; tests at `$id/vendors.test.tsx`
+- `src/routes/items/$id/recipes.tsx` - Recipes tab; tests at `$id/recipes.test.tsx`
+- `src/routes/items/$id/relation/index.tsx` and `relation/$.tsx` - redirects from the old `/items/$id/relation/…` addresses
 - `src/routes/items/$id/log.tsx` - History/logs tab (view-only); stories at `$id/log.stories.tsx`
 - `src/routes/items/$id.test.tsx` - Integration tests
 - `src/hooks/useItemLayout.tsx` - Dirty state context for tab coordination

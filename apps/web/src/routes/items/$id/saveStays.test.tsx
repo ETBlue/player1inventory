@@ -101,9 +101,7 @@ describe(
       expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
 
       // And leaving the tab asks nothing: the dirty guard is not armed
-      await user.click(
-        screen.getByRole('link', { name: /^(item stock tab|stock)$/i }),
-      )
+      await user.click(screen.getByRole('link', { name: /^stock$/i }))
       await waitFor(() =>
         expect(router.state.location.pathname).toBe(`/items/${item.id}/stock`),
       )

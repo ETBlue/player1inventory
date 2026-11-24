@@ -19,7 +19,7 @@ import { watchUnhandledRejections } from '@/test/unhandledRejections'
 // `{ mutate, mutateAsync, isPending }` (src/hooks/useItems.ts:1041). The stub
 // below builds the cloud member, which is the smaller of the two. The test
 // asserts on `isPending`. `mutate` is called by the badge click
-// (src/routes/items/$id/relation/vendors.tsx:40) and its return value is
+// (src/routes/items/$id/vendors.tsx:40) and its return value is
 // ignored there, so a resolved promise is enough.
 const pendingCloudUpdateItem = (): ReturnType<
   typeof hooksModule.useUpdateItem
@@ -61,7 +61,7 @@ describe('Vendors Tab', () => {
 
   const renderVendorsTab = (itemId: string) => {
     const history = createMemoryHistory({
-      initialEntries: [`/items/${itemId}/relation/vendors`],
+      initialEntries: [`/items/${itemId}/vendors`],
     })
     const router = createRouter({ routeTree, history })
     render(
