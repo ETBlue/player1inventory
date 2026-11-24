@@ -26,7 +26,6 @@ import {
   upsertItemStock,
 } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
-import { elementAt } from '@/test/narrow'
 import { watchUnhandledRejections } from '@/test/unhandledRejections'
 import { DEFAULT_LOCATION_ID } from '@/types'
 
@@ -65,6 +64,7 @@ describe('Item detail page - manual quantity input', () => {
         <RouterProvider router={router} />
       </QueryClientProvider>,
     )
+    return router
   }
 
   it('user can manually set packed quantity', async () => {
@@ -741,36 +741,6 @@ describe('Item detail page - manual quantity input', () => {
     })
   })
 
-  it('user can see the relation tab icon', async () => {
-    // Given an item
-    const item = await createItem({
-      name: 'Test Item',
-      packageUnit: 'pack',
-      targetUnit: 'package',
-      targetQuantity: 5,
-      refillThreshold: 2,
-      packedQuantity: 0,
-      unpackedQuantity: 0,
-      consumeAmount: 1,
-      tagIds: [],
-    })
-
-    renderItemDetailPage(item.id)
-
-    // When item detail page loads
-    await waitFor(() => {
-      expect(screen.getByText('Test Item')).toBeInTheDocument()
-    })
-
-    // Then a link to the relation tab exists (tags/vendors/recipes now live
-    // under the relation submenu)
-    const relationHref = `/items/${item.id}/relation`
-    const allLinks = screen.getAllByRole('link')
-    expect(allLinks.some((l) => l.getAttribute('href') === relationHref)).toBe(
-      true,
-    )
-  })
-
   it('user can see updated quantities after pantry +/- when reopening detail page', async () => {
     // Given an item already cached in TanStack Query (previous visit to detail page)
     // consumeAmount: 2 avoids ambiguity with unpackedQuantity: 1 in assertions
@@ -859,7 +829,7 @@ describe('Item detail page - manual quantity input', () => {
       JSON.stringify(['/', `/items/${item.id}`]),
     )
 
-    renderItemDetailPage(item.id)
+    const router = renderItemDetailPage(item.id)
 
     await waitFor(() => {
       expect(screen.getByText('Test Item')).toBeInTheDocument()
@@ -869,9 +839,10 @@ describe('Item detail page - manual quantity input', () => {
     const backButton = screen.getByRole('button', { name: /back/i })
     await user.click(backButton)
 
-    // Then navigates back to previous page (pantry)
+    // Then navigates back to previous page (pantry). Read the router: jsdom's
+    // `window.location` is `/` whatever a memory history does.
     await waitFor(() => {
-      expect(window.location.pathname).toBe('/')
+      expect(router.state.location.pathname).toBe('/')
     })
   })
 
@@ -898,67 +869,34 @@ describe('Item detail page - manual quantity input', () => {
     )
 
     // Delete lives on the Info tab (index route)
-    renderItemDetailPage(item.id, `/items/${item.id}`)
+    const router = renderItemDetailPage(item.id, `/items/${item.id}`)
 
     await waitFor(() => {
       expect(screen.getByText('Test Item')).toBeInTheDocument()
     })
 
-    // When user deletes the item
-    const allButtons = screen.getAllByRole('button')
-    // Last button in header is delete button
-    const deleteButton = elementAt(allButtons, allButtons.length - 1)
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
-    await user.click(deleteButton)
-
-    // Then navigates back to previous page (pantry)
-    await waitFor(() => {
-      expect(window.location.pathname).toBe('/')
-    })
-  })
-
-  it('user can navigate back after saving changes', async () => {
-    const user = userEvent.setup()
-
-    // Given an item
-    const item = await createItem({
-      name: 'Test Item',
-      packageUnit: 'pack',
-      targetUnit: 'package',
-      targetQuantity: 5,
-      refillThreshold: 2,
-      packedQuantity: 2,
-      unpackedQuantity: 0,
-      consumeAmount: 1,
-      tagIds: [],
-    })
-
-    // And navigation history exists (user came from pantry page)
-    sessionStorage.setItem(
-      'app-navigation-history',
-      JSON.stringify(['/', `/items/${item.id}`]),
+    // When user deletes the item and confirms. (This test used to click the
+    // last button and stub `window.confirm`, which the page never calls. It
+    // never confirmed, and its `window.location` check passed anyway.)
+    await user.click(screen.getByRole('button', { name: /^delete$/i }))
+    await user.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', {
+        name: /^delete$/i,
+      }),
     )
 
-    renderItemDetailPage(item.id)
-
+    // Then navigates back to previous page (pantry). Read the ROUTER, not
+    // `window.location`: the memory history never changes jsdom's URL, which
+    // is `/` from the start, so that check passed whatever the page did.
     await waitFor(() => {
-      expect(screen.getByLabelText(/^packed/i)).toBeInTheDocument()
-    })
-
-    // When user changes packed quantity
-    const packedInput = screen.getByLabelText(/^packed/i)
-    await user.clear(packedInput)
-    await user.type(packedInput, '5')
-
-    // And saves the form
-    const saveButton = screen.getByRole('button', { name: /save/i })
-    await user.click(saveButton)
-
-    // Then navigates back to previous page (pantry)
-    await waitFor(() => {
-      expect(window.location.pathname).toBe('/')
+      expect(router.state.location.pathname).toBe('/')
     })
   })
+
+  // A save no longer leaves the page (design 2026-11-24, part A). The test
+  // that said it did is replaced by `$id/saveStays.test.tsx`. It also read
+  // `window.location`, which a memory history never changes, so it could not
+  // fail.
 })
 
 describe('Item detail page - hierarchical navigation', () => {
@@ -1010,18 +948,11 @@ describe('Item detail page - hierarchical navigation', () => {
 
     sessionStorage.setItem(
       'app-navigation-history',
-      JSON.stringify([
-        '/',
-        `/items/${item.id}`,
-        `/items/${item.id}/relation/tags`,
-      ]),
+      JSON.stringify(['/', `/items/${item.id}`, `/items/${item.id}/tags`]),
     )
 
     // When rendering tags tab
-    const router = renderItemDetailPage(
-      item.id,
-      `/items/${item.id}/relation/tags`,
-    )
+    const router = renderItemDetailPage(item.id, `/items/${item.id}/tags`)
 
     await waitFor(() => {
       expect(screen.getByText('Test Item')).toBeInTheDocument()
@@ -1099,6 +1030,7 @@ describe('Item detail page - delete dialog', () => {
         <RouterProvider router={router} />
       </QueryClientProvider>,
     )
+    return router
   }
 
   it('user can open delete dialog', async () => {
@@ -1202,7 +1134,7 @@ describe('Item detail page - delete dialog', () => {
     })
 
     // When user confirms deletion
-    renderWithRouter(`/items/${item.id}`)
+    const router = renderWithRouter(`/items/${item.id}`)
     const deleteButton = await screen.findByRole('button', {
       name: /^delete$/i,
     })
@@ -1223,9 +1155,10 @@ describe('Item detail page - delete dialog', () => {
       expect(deletedCartItem).toBeUndefined()
     })
 
-    // And user is navigated away from detail page
+    // And user is navigated away from detail page (the router, not jsdom's
+    // `window.location`, which a memory history never changes)
     await waitFor(() => {
-      expect(window.location.pathname).not.toBe(`/items/${item.id}`)
+      expect(router.state.location.pathname).not.toBe(`/items/${item.id}`)
     })
   })
 
@@ -2185,101 +2118,6 @@ describe('Item detail page - toolbar tabs', () => {
     )
     return router
   }
-
-  it('user sees the four toolbar tabs in order: info, stock, relation, log', async () => {
-    // Given an item
-    const item = await createItem({
-      name: 'Test Item',
-      packageUnit: 'pack',
-      targetUnit: 'package',
-      targetQuantity: 5,
-      refillThreshold: 2,
-      packedQuantity: 0,
-      unpackedQuantity: 0,
-      consumeAmount: 1,
-      tagIds: [],
-    })
-
-    renderItemDetailPage(item.id)
-
-    await waitFor(() => {
-      expect(screen.getByText('Test Item')).toBeInTheDocument()
-    })
-
-    // Then the toolbar links appear in the expected order:
-    // Info (index) · Stock · Relation · Log.
-    const links = screen.getAllByRole('link')
-    const hrefs = links.map((l) => l.getAttribute('href'))
-    const indexHref = `/items/${item.id}`
-    const stockHref = `/items/${item.id}/stock`
-    const relationHref = `/items/${item.id}/relation`
-    const logHref = `/items/${item.id}/log`
-
-    expect(hrefs).toContain(indexHref)
-    expect(hrefs).toContain(stockHref)
-    expect(hrefs).toContain(relationHref)
-    expect(hrefs).toContain(logHref)
-
-    const indexPos = hrefs.indexOf(indexHref)
-    const stockPos = hrefs.indexOf(stockHref)
-    const relationPos = hrefs.indexOf(relationHref)
-    const logPos = hrefs.indexOf(logHref)
-
-    // Stock comes immediately after Info; Relation between Stock and Log.
-    expect(stockPos).toBe(indexPos + 1)
-    expect(relationPos).toBe(stockPos + 1)
-    expect(logPos).toBe(relationPos + 1)
-
-    // The three old top-level toolbar buttons are gone.
-    expect(hrefs).not.toContain(`/items/${item.id}/tags`)
-    expect(hrefs).not.toContain(`/items/${item.id}/vendors`)
-    expect(hrefs).not.toContain(`/items/${item.id}/recipes`)
-  })
-
-  it('user can open the Relation tab and lands on tags with the submenu', async () => {
-    const user = userEvent.setup()
-
-    // Given an item
-    const item = await createItem({
-      name: 'Test Item',
-      packageUnit: 'pack',
-      targetUnit: 'package',
-      targetQuantity: 5,
-      refillThreshold: 2,
-      packedQuantity: 0,
-      unpackedQuantity: 0,
-      consumeAmount: 1,
-      tagIds: [],
-    })
-
-    const router = renderItemDetailPage(item.id)
-
-    await waitFor(() => {
-      expect(screen.getByText('Test Item')).toBeInTheDocument()
-    })
-
-    // When user clicks the Relation toolbar button
-    const relationLink = screen
-      .getAllByRole('link')
-      .find((l) => l.getAttribute('href') === `/items/${item.id}/relation`)
-    expect(relationLink).toBeDefined()
-    if (relationLink) await user.click(relationLink)
-
-    // Then it lands on the tags subtab (default redirect)
-    await waitFor(() => {
-      expect(router.state.location.pathname).toBe(
-        `/items/${item.id}/relation/tags`,
-      )
-    })
-
-    // And the submenu exposes the tags / vendors / recipes subtab links
-    const subHrefs = screen
-      .getAllByRole('link')
-      .map((l) => l.getAttribute('href'))
-    expect(subHrefs).toContain(`/items/${item.id}/relation/tags`)
-    expect(subHrefs).toContain(`/items/${item.id}/relation/vendors`)
-    expect(subHrefs).toContain(`/items/${item.id}/relation/recipes`)
-  })
 
   it('user sees discard dialog when leaving the Info tab with unsaved changes', async () => {
     const user = userEvent.setup()

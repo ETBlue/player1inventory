@@ -123,7 +123,7 @@ describe('Item page - a tag or vendor created there is assigned (cloud)', () => 
     cloudServer.results.useCreateTagMutation = (vars) => ({
       createTag: cloudTag('tag-dairy', String(vars.name), 'type-label'),
     })
-    renderPage('/items/item-flour/relation/tags')
+    renderPage('/items/item-flour/tags')
 
     // When the user adds a tag named "dairy"
     await user.click(await screen.findByRole('button', { name: /new tag$/i }))
@@ -156,7 +156,7 @@ describe('Item page - a tag or vendor created there is assigned (cloud)', () => 
     cloudServer.results.useCreateVendorMutation = (vars) => ({
       createVendor: cloudVendor('vendor-aldi', String(vars.name)),
     })
-    renderPage('/items/item-flour/relation/vendors')
+    renderPage('/items/item-flour/vendors')
 
     // When the user adds a vendor named "Aldi"
     await user.click(await screen.findByRole('button', { name: /new vendor/i }))

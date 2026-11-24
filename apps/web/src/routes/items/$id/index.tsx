@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import type { ItemFormValues } from '@/components/item/ItemForm'
 import { ItemForm } from '@/components/item/ItemForm'
 import { DeleteButton } from '@/components/shared/DeleteButton'
@@ -235,9 +236,12 @@ function ItemInfoTab() {
     })
   }
 
+  // A save stays on the page (design 2026-11-24, part A). Bumping `savedAt`
+  // makes `ItemForm` take the saved values as its new clean state, so Save is
+  // disabled again and the tab's dirty guard is not armed. Only Delete leaves.
   const finishSave = () => {
     setSavedAt((n) => n + 1)
-    goBack()
+    toast.success(t('items.detail.saved'))
   }
 
   // Caught here because `ItemForm` does not await `onSubmit`: a failed save

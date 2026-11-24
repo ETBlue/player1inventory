@@ -193,9 +193,10 @@ describe('Item pages - a failed cloud save', () => {
     expect(rejections.list).toEqual([])
   })
 
-  // The Relation tabs. Each badge press and each "New …" dialog is a separate
+  // The Tags, Vendors and Recipes tabs (under a "Relation" tab until
+  // 2026-11-24). Each badge press and each "New …" dialog is a separate
   // write, so each gets its own test.
-  describe('Relation tabs', () => {
+  describe('Tags, Vendors and Recipes tabs', () => {
     beforeEach(() => {
       cloudServer.queries.useGetTagTypesQuery = {
         tagTypes: [cloudTagType('type-label', 'Label')],
@@ -221,7 +222,7 @@ describe('Item pages - a failed cloud save', () => {
       const user = userEvent.setup()
       // Given a server that refuses the item write
       cloudServer.failing.add('useUpdateItemMutation')
-      renderPage('/items/item-flour/relation/tags')
+      renderPage('/items/item-flour/tags')
 
       // When the user presses the tag badge
       await user.click(await screen.findByRole('button', { name: /frozen/i }))
@@ -240,7 +241,7 @@ describe('Item pages - a failed cloud save', () => {
       const user = userEvent.setup()
       // Given a server that refuses the new tag
       cloudServer.failing.add('useCreateTagMutation')
-      renderPage('/items/item-flour/relation/tags')
+      renderPage('/items/item-flour/tags')
 
       // When the user adds a tag named "dairy"
       await user.click(await screen.findByRole('button', { name: /new tag$/i }))
@@ -266,7 +267,7 @@ describe('Item pages - a failed cloud save', () => {
         createTag: cloudTag('tag-dairy', String(vars.name), 'type-label'),
       })
       cloudServer.failing.add('useUpdateItemMutation')
-      renderPage('/items/item-flour/relation/tags')
+      renderPage('/items/item-flour/tags')
 
       // When the user adds a tag named "dairy"
       await user.click(await screen.findByRole('button', { name: /new tag$/i }))
@@ -293,7 +294,7 @@ describe('Item pages - a failed cloud save', () => {
       cloudServer.queries.useGetTagTypesQuery = { tagTypes: [] }
       cloudServer.queries.useGetTagsQuery = { tags: [] }
       cloudServer.failing.add('useCreateTagTypeMutation')
-      renderPage('/items/item-flour/relation/tags')
+      renderPage('/items/item-flour/tags')
 
       // When the user adds a tag type named "Season"
       await user.click(
@@ -313,7 +314,7 @@ describe('Item pages - a failed cloud save', () => {
       const user = userEvent.setup()
       // Given a server that refuses the item write
       cloudServer.failing.add('useUpdateItemMutation')
-      renderPage('/items/item-flour/relation/vendors')
+      renderPage('/items/item-flour/vendors')
 
       // When the user presses the vendor badge
       await user.click(await screen.findByRole('button', { name: /costco/i }))
@@ -335,7 +336,7 @@ describe('Item pages - a failed cloud save', () => {
         createVendor: cloudVendor('vendor-new', String(vars.name)),
       })
       cloudServer.failing.add('useUpdateItemMutation')
-      renderPage('/items/item-flour/relation/vendors')
+      renderPage('/items/item-flour/vendors')
 
       // When the user adds a vendor named "Aldi"
       await user.click(
@@ -358,7 +359,7 @@ describe('Item pages - a failed cloud save', () => {
       const user = userEvent.setup()
       // Given a server that refuses the recipe write
       cloudServer.failing.add('useUpdateRecipeMutation')
-      renderPage('/items/item-flour/relation/recipes')
+      renderPage('/items/item-flour/recipes')
 
       // When the user presses the recipe badge
       await user.click(
@@ -379,7 +380,7 @@ describe('Item pages - a failed cloud save', () => {
       const user = userEvent.setup()
       // Given a server that refuses the new recipe
       cloudServer.failing.add('useCreateRecipeMutation')
-      renderPage('/items/item-flour/relation/recipes')
+      renderPage('/items/item-flour/recipes')
 
       // When the user adds a recipe named "Soup"
       await user.click(

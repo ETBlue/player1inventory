@@ -29,8 +29,10 @@ import { Route as SettingsHouseholdRecipesRouteImport } from './routes/settings/
 import { Route as SettingsHouseholdMembersRouteImport } from './routes/settings/household/members'
 import { Route as SettingsHouseholdLocationsRouteImport } from './routes/settings/household/locations'
 import { Route as SettingsHouseholdActivityRouteImport } from './routes/settings/household/activity'
+import { Route as ItemsIdVendorsRouteImport } from './routes/items/$id/vendors'
+import { Route as ItemsIdTagsRouteImport } from './routes/items/$id/tags'
 import { Route as ItemsIdStockRouteImport } from './routes/items/$id/stock'
-import { Route as ItemsIdRelationRouteImport } from './routes/items/$id/relation'
+import { Route as ItemsIdRecipesRouteImport } from './routes/items/$id/recipes'
 import { Route as ItemsIdLogRouteImport } from './routes/items/$id/log'
 import { Route as SettingsHouseholdVendorsIndexRouteImport } from './routes/settings/household/vendors/index'
 import { Route as SettingsHouseholdTagsIndexRouteImport } from './routes/settings/household/tags/index'
@@ -43,9 +45,7 @@ import { Route as SettingsHouseholdTagsIdRouteImport } from './routes/settings/h
 import { Route as SettingsHouseholdShelvesShelfIdRouteImport } from './routes/settings/household/shelves/$shelfId'
 import { Route as SettingsHouseholdRecipesIdRouteImport } from './routes/settings/household/recipes/$id'
 import { Route as SettingsHouseholdLocationsIdRouteImport } from './routes/settings/household/locations/$id'
-import { Route as ItemsIdRelationVendorsRouteImport } from './routes/items/$id/relation/vendors'
-import { Route as ItemsIdRelationTagsRouteImport } from './routes/items/$id/relation/tags'
-import { Route as ItemsIdRelationRecipesRouteImport } from './routes/items/$id/relation/recipes'
+import { Route as ItemsIdRelationSplatRouteImport } from './routes/items/$id/relation/$'
 import { Route as SettingsHouseholdVendorsIdIndexRouteImport } from './routes/settings/household/vendors/$id/index'
 import { Route as SettingsHouseholdTagsIdIndexRouteImport } from './routes/settings/household/tags/$id/index'
 import { Route as SettingsHouseholdShelvesShelfIdIndexRouteImport } from './routes/settings/household/shelves/$shelfId/index'
@@ -162,14 +162,24 @@ const SettingsHouseholdActivityRoute =
     path: '/settings/household/activity',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ItemsIdVendorsRoute = ItemsIdVendorsRouteImport.update({
+  id: '/vendors',
+  path: '/vendors',
+  getParentRoute: () => ItemsIdRoute,
+} as any)
+const ItemsIdTagsRoute = ItemsIdTagsRouteImport.update({
+  id: '/tags',
+  path: '/tags',
+  getParentRoute: () => ItemsIdRoute,
+} as any)
 const ItemsIdStockRoute = ItemsIdStockRouteImport.update({
   id: '/stock',
   path: '/stock',
   getParentRoute: () => ItemsIdRoute,
 } as any)
-const ItemsIdRelationRoute = ItemsIdRelationRouteImport.update({
-  id: '/relation',
-  path: '/relation',
+const ItemsIdRecipesRoute = ItemsIdRecipesRouteImport.update({
+  id: '/recipes',
+  path: '/recipes',
   getParentRoute: () => ItemsIdRoute,
 } as any)
 const ItemsIdLogRoute = ItemsIdLogRouteImport.update({
@@ -208,9 +218,9 @@ const SettingsHouseholdLocationsIndexRoute =
     getParentRoute: () => SettingsHouseholdLocationsRoute,
   } as any)
 const ItemsIdRelationIndexRoute = ItemsIdRelationIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => ItemsIdRelationRoute,
+  id: '/relation/',
+  path: '/relation/',
+  getParentRoute: () => ItemsIdRoute,
 } as any)
 const SettingsHouseholdVendorsIdRoute =
   SettingsHouseholdVendorsIdRouteImport.update({
@@ -241,20 +251,10 @@ const SettingsHouseholdLocationsIdRoute =
     path: '/$id',
     getParentRoute: () => SettingsHouseholdLocationsRoute,
   } as any)
-const ItemsIdRelationVendorsRoute = ItemsIdRelationVendorsRouteImport.update({
-  id: '/vendors',
-  path: '/vendors',
-  getParentRoute: () => ItemsIdRelationRoute,
-} as any)
-const ItemsIdRelationTagsRoute = ItemsIdRelationTagsRouteImport.update({
-  id: '/tags',
-  path: '/tags',
-  getParentRoute: () => ItemsIdRelationRoute,
-} as any)
-const ItemsIdRelationRecipesRoute = ItemsIdRelationRecipesRouteImport.update({
-  id: '/recipes',
-  path: '/recipes',
-  getParentRoute: () => ItemsIdRelationRoute,
+const ItemsIdRelationSplatRoute = ItemsIdRelationSplatRouteImport.update({
+  id: '/relation/$',
+  path: '/relation/$',
+  getParentRoute: () => ItemsIdRoute,
 } as any)
 const SettingsHouseholdVendorsIdIndexRoute =
   SettingsHouseholdVendorsIdIndexRouteImport.update({
@@ -324,8 +324,10 @@ export interface FileRoutesByFullPath {
   '/settings/': typeof SettingsIndexRoute
   '/shopping/': typeof ShoppingIndexRoute
   '/items/$id/log': typeof ItemsIdLogRoute
-  '/items/$id/relation': typeof ItemsIdRelationRouteWithChildren
+  '/items/$id/recipes': typeof ItemsIdRecipesRoute
   '/items/$id/stock': typeof ItemsIdStockRoute
+  '/items/$id/tags': typeof ItemsIdTagsRoute
+  '/items/$id/vendors': typeof ItemsIdVendorsRoute
   '/settings/household/activity': typeof SettingsHouseholdActivityRoute
   '/settings/household/locations': typeof SettingsHouseholdLocationsRouteWithChildren
   '/settings/household/members': typeof SettingsHouseholdMembersRoute
@@ -335,9 +337,7 @@ export interface FileRoutesByFullPath {
   '/settings/household/vendors': typeof SettingsHouseholdVendorsRouteWithChildren
   '/items/$id/': typeof ItemsIdIndexRoute
   '/settings/household/': typeof SettingsHouseholdIndexRoute
-  '/items/$id/relation/recipes': typeof ItemsIdRelationRecipesRoute
-  '/items/$id/relation/tags': typeof ItemsIdRelationTagsRoute
-  '/items/$id/relation/vendors': typeof ItemsIdRelationVendorsRoute
+  '/items/$id/relation/$': typeof ItemsIdRelationSplatRoute
   '/settings/household/locations/$id': typeof SettingsHouseholdLocationsIdRoute
   '/settings/household/recipes/$id': typeof SettingsHouseholdRecipesIdRouteWithChildren
   '/settings/household/shelves/$shelfId': typeof SettingsHouseholdShelvesShelfIdRouteWithChildren
@@ -370,14 +370,15 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsIndexRoute
   '/shopping': typeof ShoppingIndexRoute
   '/items/$id/log': typeof ItemsIdLogRoute
+  '/items/$id/recipes': typeof ItemsIdRecipesRoute
   '/items/$id/stock': typeof ItemsIdStockRoute
+  '/items/$id/tags': typeof ItemsIdTagsRoute
+  '/items/$id/vendors': typeof ItemsIdVendorsRoute
   '/settings/household/activity': typeof SettingsHouseholdActivityRoute
   '/settings/household/members': typeof SettingsHouseholdMembersRoute
   '/items/$id': typeof ItemsIdIndexRoute
   '/settings/household': typeof SettingsHouseholdIndexRoute
-  '/items/$id/relation/recipes': typeof ItemsIdRelationRecipesRoute
-  '/items/$id/relation/tags': typeof ItemsIdRelationTagsRoute
-  '/items/$id/relation/vendors': typeof ItemsIdRelationVendorsRoute
+  '/items/$id/relation/$': typeof ItemsIdRelationSplatRoute
   '/settings/household/locations/$id': typeof SettingsHouseholdLocationsIdRoute
   '/items/$id/relation': typeof ItemsIdRelationIndexRoute
   '/settings/household/locations': typeof SettingsHouseholdLocationsIndexRoute
@@ -409,8 +410,10 @@ export interface FileRoutesById {
   '/settings/': typeof SettingsIndexRoute
   '/shopping/': typeof ShoppingIndexRoute
   '/items/$id/log': typeof ItemsIdLogRoute
-  '/items/$id/relation': typeof ItemsIdRelationRouteWithChildren
+  '/items/$id/recipes': typeof ItemsIdRecipesRoute
   '/items/$id/stock': typeof ItemsIdStockRoute
+  '/items/$id/tags': typeof ItemsIdTagsRoute
+  '/items/$id/vendors': typeof ItemsIdVendorsRoute
   '/settings/household/activity': typeof SettingsHouseholdActivityRoute
   '/settings/household/locations': typeof SettingsHouseholdLocationsRouteWithChildren
   '/settings/household/members': typeof SettingsHouseholdMembersRoute
@@ -420,9 +423,7 @@ export interface FileRoutesById {
   '/settings/household/vendors': typeof SettingsHouseholdVendorsRouteWithChildren
   '/items/$id/': typeof ItemsIdIndexRoute
   '/settings/household/': typeof SettingsHouseholdIndexRoute
-  '/items/$id/relation/recipes': typeof ItemsIdRelationRecipesRoute
-  '/items/$id/relation/tags': typeof ItemsIdRelationTagsRoute
-  '/items/$id/relation/vendors': typeof ItemsIdRelationVendorsRoute
+  '/items/$id/relation/$': typeof ItemsIdRelationSplatRoute
   '/settings/household/locations/$id': typeof SettingsHouseholdLocationsIdRoute
   '/settings/household/recipes/$id': typeof SettingsHouseholdRecipesIdRouteWithChildren
   '/settings/household/shelves/$shelfId': typeof SettingsHouseholdShelvesShelfIdRouteWithChildren
@@ -459,8 +460,10 @@ export interface FileRouteTypes {
     | '/settings/'
     | '/shopping/'
     | '/items/$id/log'
-    | '/items/$id/relation'
+    | '/items/$id/recipes'
     | '/items/$id/stock'
+    | '/items/$id/tags'
+    | '/items/$id/vendors'
     | '/settings/household/activity'
     | '/settings/household/locations'
     | '/settings/household/members'
@@ -470,9 +473,7 @@ export interface FileRouteTypes {
     | '/settings/household/vendors'
     | '/items/$id/'
     | '/settings/household/'
-    | '/items/$id/relation/recipes'
-    | '/items/$id/relation/tags'
-    | '/items/$id/relation/vendors'
+    | '/items/$id/relation/$'
     | '/settings/household/locations/$id'
     | '/settings/household/recipes/$id'
     | '/settings/household/shelves/$shelfId'
@@ -505,14 +506,15 @@ export interface FileRouteTypes {
     | '/settings'
     | '/shopping'
     | '/items/$id/log'
+    | '/items/$id/recipes'
     | '/items/$id/stock'
+    | '/items/$id/tags'
+    | '/items/$id/vendors'
     | '/settings/household/activity'
     | '/settings/household/members'
     | '/items/$id'
     | '/settings/household'
-    | '/items/$id/relation/recipes'
-    | '/items/$id/relation/tags'
-    | '/items/$id/relation/vendors'
+    | '/items/$id/relation/$'
     | '/settings/household/locations/$id'
     | '/items/$id/relation'
     | '/settings/household/locations'
@@ -543,8 +545,10 @@ export interface FileRouteTypes {
     | '/settings/'
     | '/shopping/'
     | '/items/$id/log'
-    | '/items/$id/relation'
+    | '/items/$id/recipes'
     | '/items/$id/stock'
+    | '/items/$id/tags'
+    | '/items/$id/vendors'
     | '/settings/household/activity'
     | '/settings/household/locations'
     | '/settings/household/members'
@@ -554,9 +558,7 @@ export interface FileRouteTypes {
     | '/settings/household/vendors'
     | '/items/$id/'
     | '/settings/household/'
-    | '/items/$id/relation/recipes'
-    | '/items/$id/relation/tags'
-    | '/items/$id/relation/vendors'
+    | '/items/$id/relation/$'
     | '/settings/household/locations/$id'
     | '/settings/household/recipes/$id'
     | '/settings/household/shelves/$shelfId'
@@ -741,6 +743,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsHouseholdActivityRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/items/$id/vendors': {
+      id: '/items/$id/vendors'
+      path: '/vendors'
+      fullPath: '/items/$id/vendors'
+      preLoaderRoute: typeof ItemsIdVendorsRouteImport
+      parentRoute: typeof ItemsIdRoute
+    }
+    '/items/$id/tags': {
+      id: '/items/$id/tags'
+      path: '/tags'
+      fullPath: '/items/$id/tags'
+      preLoaderRoute: typeof ItemsIdTagsRouteImport
+      parentRoute: typeof ItemsIdRoute
+    }
     '/items/$id/stock': {
       id: '/items/$id/stock'
       path: '/stock'
@@ -748,11 +764,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ItemsIdStockRouteImport
       parentRoute: typeof ItemsIdRoute
     }
-    '/items/$id/relation': {
-      id: '/items/$id/relation'
-      path: '/relation'
-      fullPath: '/items/$id/relation'
-      preLoaderRoute: typeof ItemsIdRelationRouteImport
+    '/items/$id/recipes': {
+      id: '/items/$id/recipes'
+      path: '/recipes'
+      fullPath: '/items/$id/recipes'
+      preLoaderRoute: typeof ItemsIdRecipesRouteImport
       parentRoute: typeof ItemsIdRoute
     }
     '/items/$id/log': {
@@ -799,10 +815,10 @@ declare module '@tanstack/react-router' {
     }
     '/items/$id/relation/': {
       id: '/items/$id/relation/'
-      path: '/'
+      path: '/relation'
       fullPath: '/items/$id/relation/'
       preLoaderRoute: typeof ItemsIdRelationIndexRouteImport
-      parentRoute: typeof ItemsIdRelationRoute
+      parentRoute: typeof ItemsIdRoute
     }
     '/settings/household/vendors/$id': {
       id: '/settings/household/vendors/$id'
@@ -839,26 +855,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsHouseholdLocationsIdRouteImport
       parentRoute: typeof SettingsHouseholdLocationsRoute
     }
-    '/items/$id/relation/vendors': {
-      id: '/items/$id/relation/vendors'
-      path: '/vendors'
-      fullPath: '/items/$id/relation/vendors'
-      preLoaderRoute: typeof ItemsIdRelationVendorsRouteImport
-      parentRoute: typeof ItemsIdRelationRoute
-    }
-    '/items/$id/relation/tags': {
-      id: '/items/$id/relation/tags'
-      path: '/tags'
-      fullPath: '/items/$id/relation/tags'
-      preLoaderRoute: typeof ItemsIdRelationTagsRouteImport
-      parentRoute: typeof ItemsIdRelationRoute
-    }
-    '/items/$id/relation/recipes': {
-      id: '/items/$id/relation/recipes'
-      path: '/recipes'
-      fullPath: '/items/$id/relation/recipes'
-      preLoaderRoute: typeof ItemsIdRelationRecipesRouteImport
-      parentRoute: typeof ItemsIdRelationRoute
+    '/items/$id/relation/$': {
+      id: '/items/$id/relation/$'
+      path: '/relation/$'
+      fullPath: '/items/$id/relation/$'
+      preLoaderRoute: typeof ItemsIdRelationSplatRouteImport
+      parentRoute: typeof ItemsIdRoute
     }
     '/settings/household/vendors/$id/': {
       id: '/settings/household/vendors/$id/'
@@ -940,36 +942,26 @@ const ShoppingRouteWithChildren = ShoppingRoute._addFileChildren(
   ShoppingRouteChildren,
 )
 
-interface ItemsIdRelationRouteChildren {
-  ItemsIdRelationRecipesRoute: typeof ItemsIdRelationRecipesRoute
-  ItemsIdRelationTagsRoute: typeof ItemsIdRelationTagsRoute
-  ItemsIdRelationVendorsRoute: typeof ItemsIdRelationVendorsRoute
-  ItemsIdRelationIndexRoute: typeof ItemsIdRelationIndexRoute
-}
-
-const ItemsIdRelationRouteChildren: ItemsIdRelationRouteChildren = {
-  ItemsIdRelationRecipesRoute: ItemsIdRelationRecipesRoute,
-  ItemsIdRelationTagsRoute: ItemsIdRelationTagsRoute,
-  ItemsIdRelationVendorsRoute: ItemsIdRelationVendorsRoute,
-  ItemsIdRelationIndexRoute: ItemsIdRelationIndexRoute,
-}
-
-const ItemsIdRelationRouteWithChildren = ItemsIdRelationRoute._addFileChildren(
-  ItemsIdRelationRouteChildren,
-)
-
 interface ItemsIdRouteChildren {
   ItemsIdLogRoute: typeof ItemsIdLogRoute
-  ItemsIdRelationRoute: typeof ItemsIdRelationRouteWithChildren
+  ItemsIdRecipesRoute: typeof ItemsIdRecipesRoute
   ItemsIdStockRoute: typeof ItemsIdStockRoute
+  ItemsIdTagsRoute: typeof ItemsIdTagsRoute
+  ItemsIdVendorsRoute: typeof ItemsIdVendorsRoute
   ItemsIdIndexRoute: typeof ItemsIdIndexRoute
+  ItemsIdRelationSplatRoute: typeof ItemsIdRelationSplatRoute
+  ItemsIdRelationIndexRoute: typeof ItemsIdRelationIndexRoute
 }
 
 const ItemsIdRouteChildren: ItemsIdRouteChildren = {
   ItemsIdLogRoute: ItemsIdLogRoute,
-  ItemsIdRelationRoute: ItemsIdRelationRouteWithChildren,
+  ItemsIdRecipesRoute: ItemsIdRecipesRoute,
   ItemsIdStockRoute: ItemsIdStockRoute,
+  ItemsIdTagsRoute: ItemsIdTagsRoute,
+  ItemsIdVendorsRoute: ItemsIdVendorsRoute,
   ItemsIdIndexRoute: ItemsIdIndexRoute,
+  ItemsIdRelationSplatRoute: ItemsIdRelationSplatRoute,
+  ItemsIdRelationIndexRoute: ItemsIdRelationIndexRoute,
 }
 
 const ItemsIdRouteWithChildren =

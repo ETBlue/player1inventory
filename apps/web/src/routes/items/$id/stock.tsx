@@ -32,7 +32,6 @@ import {
   useUpdateItem,
 } from '@/hooks'
 import { useActiveLocation } from '@/hooks/useActiveLocation'
-import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useItemLayout } from '@/hooks/useItemLayout'
 import { useItemStocks } from '@/hooks/useItemStocks'
 import { useLocations } from '@/hooks/useLocations'
@@ -156,9 +155,9 @@ function StockFormPanel({
   /** A location `viewer` of this page's location (households H5 task F.6). */
   readOnly: boolean
 }) {
+  const { t } = useTranslation()
   const updateItem = useUpdateItem()
   const { registerDirtyState } = useItemLayout()
-  const { goBack } = useAppNavigation()
   const [savedAt, setSavedAt] = useState(0)
 
   const id = item.id
@@ -183,8 +182,11 @@ function StockFormPanel({
       showSaveError(err)
       return
     }
+    // The page stays, on the same location page (design 2026-11-24, part A).
+    // Bumping `savedAt` makes `ItemForm` take the saved values as its new
+    // clean state, so Save is disabled again and the dirty guard is not armed.
     setSavedAt((n) => n + 1)
-    goBack()
+    toast.success(t('items.detail.saved'))
   }
 
   return (

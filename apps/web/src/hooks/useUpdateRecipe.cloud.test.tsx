@@ -244,7 +244,7 @@ describe('useUpdateRecipe (cloud) when the refresh after the save fails', () => 
     await waitFor(() => expect(served.GetRecipesSent).toBe(1))
 
     // Then the hook still reports the save as pending while the read runs.
-    // The recipe relation tab keeps its badge busy on this flag, so a second
+    // The item Recipes tab keeps its badge busy on this flag, so a second
     // press cannot start from the old recipe list.
     expect(served.UpdateRecipe).toBe(1)
     expect(result.current.update.isPending).toBe(true)

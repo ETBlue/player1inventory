@@ -12,7 +12,7 @@ import { useCreateVendor } from '@/hooks/useVendors'
 import { showSaveError } from '@/lib/saveError'
 import { showVendorCreateError } from '@/lib/vendorCreateError'
 
-export const Route = createFileRoute('/items/$id/relation/vendors')({
+export const Route = createFileRoute('/items/$id/vendors')({
   component: VendorsTab,
 })
 

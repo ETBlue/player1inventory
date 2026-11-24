@@ -39,7 +39,7 @@ describe('Tags Tab - Add Tag Functionality', () => {
     })
 
     const history = createMemoryHistory({
-      initialEntries: [`/items/${item.id}/relation/tags`],
+      initialEntries: [`/items/${item.id}/tags`],
     })
     const router = createRouter({ routeTree, history })
 
@@ -94,7 +94,7 @@ describe('Tags Tab - Add Tag Functionality', () => {
     })
 
     const history = createMemoryHistory({
-      initialEntries: [`/items/${item.id}/relation/tags`],
+      initialEntries: [`/items/${item.id}/tags`],
     })
     const router = createRouter({ routeTree, history })
 
@@ -142,7 +142,7 @@ describe('Tags Tab - Add Tag Functionality', () => {
       defaultOptions: { queries: { retry: false } },
     })
     const history = createMemoryHistory({
-      initialEntries: [`/items/${item.id}/relation/tags`],
+      initialEntries: [`/items/${item.id}/tags`],
     })
     const router = createRouter({ routeTree, history })
 
@@ -193,7 +193,7 @@ describe('Tags Tab - Add Tag Functionality', () => {
       defaultOptions: { queries: { retry: false } },
     })
     const history = createMemoryHistory({
-      initialEntries: [`/items/${item.id}/relation/tags`],
+      initialEntries: [`/items/${item.id}/tags`],
     })
     const router = createRouter({ routeTree, history })
     render(
@@ -234,7 +234,7 @@ describe('Tags Tab - Add Tag Functionality', () => {
       defaultOptions: { queries: { retry: false } },
     })
     const history = createMemoryHistory({
-      initialEntries: [`/items/${item.id}/relation/tags`],
+      initialEntries: [`/items/${item.id}/tags`],
     })
     const router = createRouter({ routeTree, history })
     render(
@@ -285,7 +285,7 @@ describe('Tags Tab - Add Tag Functionality', () => {
         defaultOptions: { queries: { retry: false } },
       })
       const history = createMemoryHistory({
-        initialEntries: [`/items/${item.id}/relation/tags`],
+        initialEntries: [`/items/${item.id}/tags`],
       })
       const router = createRouter({ routeTree, history })
       render(
@@ -325,7 +325,7 @@ describe('Tags Tab - Add Tag Functionality', () => {
       defaultOptions: { queries: { retry: false } },
     })
     const history = createMemoryHistory({
-      initialEntries: [`/items/${itemId}/relation/tags`],
+      initialEntries: [`/items/${itemId}/tags`],
     })
     const router = createRouter({ routeTree, history })
     render(

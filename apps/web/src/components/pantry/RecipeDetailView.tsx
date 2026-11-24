@@ -174,7 +174,7 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
   // (a failed read does not reject the save). What the guard
   // still covers is every path that does NOT await that refetch — `mutate`
   // call sites, whose continuation runs without awaiting the returned promise
-  // (e.g. `items/$id/relation/recipes.tsx:45`) — and any concurrent write
+  // (e.g. `items/$id/recipes.tsx:45`) — and any concurrent write
   // (another surface, another tab) landing between this render and the press.
   async function handleAddToRecipe(item: PantryItem) {
     if (isUnsorted || !recipe) return
