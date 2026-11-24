@@ -130,6 +130,43 @@ test('user can edit an item name', async ({ page }) => {
   await expect(pantry.getItemCard('Edit Me')).not.toBeVisible()
 })
 
+// Since 2026-11-25 Save is in the item page's top bar, OUTSIDE the <form>
+// (owner decision; ItemForm's `submitSlot`). It is linked to the form by the
+// HTML `form` attribute, so Enter in a field must still submit: a browser
+// uses the first submit button whose form owner is the form. jsdom's
+// user-event looks for the button INSIDE the form only, so no unit test can
+// check this; this one does, in a real browser.
+test('user can save the Info tab by pressing Enter', async ({ page }) => {
+  const pantry = new PantryPage(page)
+  const item = new ItemPage(page)
+
+  // Given an item on its Info tab
+  await pantry.navigateTo()
+  await pantry.clickAddItem()
+  await item.fillName('Enter Item')
+  await item.save()
+
+  // And Save is in the top bar, not in the form
+  await expect(
+    page.getByRole('button', { name: 'Save', exact: true }),
+  ).toBeVisible()
+  await expect(
+    page.locator('form').getByRole('button', { name: 'Save', exact: true }),
+  ).toHaveCount(0)
+
+  // When the user renames it and presses Enter in the name field
+  await item.fillName('Entered Name')
+  await page.getByLabel('Name').press('Enter')
+
+  // Then it saves and stays on the page
+  await expect(page.getByText('Saved', { exact: true }).first()).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: 'Save', exact: true }),
+  ).toBeDisabled()
+  await pantry.navigateTo()
+  await expect(pantry.getItemCard('Entered Name')).toBeVisible()
+})
+
 // `note` and `wikidataUrl` run in BOTH projects since 2026-10-08 (issue #335). This test
 // used to carry `test.skip(baseURL === CLOUD_WEB_URL)` because the cloud GraphQL `Item`
 // type declared neither field, so a cloud save of either one failed outright. Both now

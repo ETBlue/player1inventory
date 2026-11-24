@@ -1,4 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
+import { useState } from 'react'
+import { Toolbar } from '@/components/shared/Toolbar'
 import type { ItemFormValues } from '.'
 import { ItemForm } from '.'
 
@@ -6,7 +8,8 @@ import { ItemForm } from '.'
 // create mode: ItemForm.tsx:433 disables submit only when the prop is present
 // and the form is not dirty. `exactOptionalPropertyTypes` rejects
 // `onDirtyChange: undefined` as a story override, so the two create-mode
-// stories omit the key and the seven edit-mode stories pass it themselves.
+// stories omit the key and the seven edit-mode stories pass it themselves
+// (`SaveInTopBar` passes it too, inside its render).
 const onDirtyChange = () => {}
 
 const meta: Meta<typeof ItemForm> = {
@@ -164,4 +167,35 @@ export const StockSectionReadOnly: Story = {
     sections: ['stock'],
     readOnly: true,
   },
+}
+
+// Save in a top bar, as on the item page (owner decision 2026-11-25). The
+// story renders its own small bar with an empty slot and passes the slot as
+// `submitSlot`; the form then puts its Save there and has none at the bottom.
+function SaveInTopBarDemo() {
+  const [slot, setSlot] = useState<HTMLElement | null>(null)
+  return (
+    <div>
+      <Toolbar>
+        <h1 className="text-base font-regular truncate flex-1 capitalize">
+          {editValues.name}
+        </h1>
+        <div ref={setSlot} className="contents" />
+      </Toolbar>
+      <div className="p-4">
+        <ItemForm
+          initialValues={editValues}
+          sections={['info']}
+          onSubmit={() => {}}
+          onDirtyChange={onDirtyChange}
+          submitSlot={slot}
+        />
+      </div>
+    </div>
+  )
+}
+
+export const SaveInTopBar: Story = {
+  name: 'Save in a top bar (item page)',
+  render: () => <SaveInTopBarDemo />,
 }

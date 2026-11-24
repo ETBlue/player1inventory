@@ -205,7 +205,7 @@ function ItemInfoTab() {
   // dialog is reached only through Save, so it cannot open either.
   const { canEditCatalog, roleKnown } = usePermissions()
   const deleteItem = useDeleteItem()
-  const { registerDirtyState } = useItemLayout()
+  const { registerDirtyState, saveSlot } = useItemLayout()
   const { goBack } = useAppNavigation()
   const [savedAt, setSavedAt] = useState(0)
 
@@ -464,6 +464,7 @@ function ItemInfoTab() {
         savedAt={savedAt}
         isPending={updateItem.isPending}
         readOnly={!canEditCatalog}
+        submitSlot={saveSlot}
       />
 
       <AlertDialog
