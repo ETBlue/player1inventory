@@ -1,5 +1,5 @@
 import { composeStories } from '@storybook/react'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { cloudRoleStorySetup } from '@/test/cloudRoleStory'
 import * as stories from './$token.stories'
@@ -12,7 +12,8 @@ vi.mock(
   async (importOriginal) => await importOriginal(),
 )
 
-const { Valid, AlreadyMember, Invalid, LocalMode } = composeStories(stories)
+const { Valid, NoLocations, AlreadyMember, Invalid, LocalMode } =
+  composeStories(stories)
 
 describe('Join page stories smoke tests', () => {
   // composeStories does not run a story's `beforeEach`, so each test runs it
@@ -23,7 +24,22 @@ describe('Join page stories smoke tests', () => {
     expect(
       await screen.findByRole('heading', { name: 'Join the Lin home' }),
     ).toBeInTheDocument()
+    expect(
+      within(
+        screen.getByRole('list', { name: 'Locations in this household' }),
+      ).getAllByRole('listitem'),
+    ).toHaveLength(2)
     expect(screen.getByRole('button', { name: 'Join' })).toBeInTheDocument()
+  })
+
+  it('NoLocations shows the household role and no locations list', async () => {
+    onTestFinished(cloudRoleStorySetup())
+    render(<NoLocations />)
+    expect(
+      await screen.findByRole('heading', { name: 'Join the Lin home' }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Member')).toBeInTheDocument()
+    expect(screen.queryByRole('list')).toBeNull()
   })
 
   it('AlreadyMember says so, with no Join button', async () => {
