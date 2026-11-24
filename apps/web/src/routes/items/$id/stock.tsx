@@ -11,16 +11,7 @@ import { DeleteButton } from '@/components/shared/DeleteButton'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { ReadOnlyNote } from '@/components/shared/ReadOnlyNote'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+import { UnsavedChangesDialog } from '@/components/shared/UnsavedChangesDialog'
 import { Button } from '@/components/ui/button'
 import { joinItemStock, stripStockFields } from '@/db/operations'
 import {
@@ -157,12 +148,14 @@ function StockFormPanel({
 }) {
   const { t } = useTranslation()
   const updateItem = useUpdateItem()
-  const { registerDirtyState, saveSlot } = useItemLayout()
+  const { registerDirtyState, registerSaveControl, saveSlot } = useItemLayout()
   const [savedAt, setSavedAt] = useState(0)
 
   const id = item.id
 
-  const handleSubmit = async (values: ItemFormValues) => {
+  // Answers whether the save worked: the unsaved-changes dialog's Save
+  // (tabs, Back and the location pager) leaves only on `true`.
+  const handleSubmit = async (values: ItemFormValues): Promise<boolean> => {
     // Cast to Partial<StockFields> — the wider ItemUpdatePayload type is
     // compatible at runtime; the cast is needed because exactOptionalPropertyTypes
     // disallows undefined on Partial<StockFields>. updateItem routes these stock
@@ -180,13 +173,14 @@ function StockFormPanel({
       })
     } catch (err) {
       showSaveError(err)
-      return
+      return false
     }
     // The page stays, on the same location page (design 2026-11-24, part A).
     // Bumping `savedAt` makes `ItemForm` take the saved values as its new
     // clean state, so Save is disabled again and the dirty guard is not armed.
     setSavedAt((n) => n + 1)
     toast.success(t('items.detail.saved'))
+    return true
   }
 
   return (
@@ -195,6 +189,7 @@ function StockFormPanel({
       sections={['stock']}
       onSubmit={handleSubmit}
       onDirtyChange={registerDirtyState}
+      onSaveControlChange={registerSaveControl}
       savedAt={savedAt}
       isPending={updateItem.isPending}
       readOnly={readOnly}
@@ -282,7 +277,7 @@ function StockTab({ itemId }: { itemId: string }) {
   const { data: locations } = useLocations()
   const { data: stocks } = useItemStocks(itemId)
   const { activeLocationId } = useActiveLocation()
-  const { isDirty, registerDirtyState } = useItemLayout()
+  const { isDirty, registerDirtyState, saveControl } = useItemLayout()
   const addItemToLocation = useAddItemToLocation()
   const removeItemFromLocation = useRemoveItemFromLocation()
   // Each page follows the caller's role at THAT page's location, not at the
@@ -461,29 +456,14 @@ function StockTab({ itemId }: { itemId: string }) {
         )}
       </div>
 
-      <AlertDialog
+      {/* Save keeps the edits on this location's page, then turns the page.
+          Discard turns it without saving. */}
+      <UnsavedChangesDialog
         open={pendingPageIndex !== null}
-        onOpenChange={(open) => {
-          if (!open) setPendingPageIndex(null)
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('common.unsavedTitle')}</AlertDialogTitle>
-          </AlertDialogHeader>
-          <AlertDialogDescription>
-            {t('common.unsavedDescription')}
-          </AlertDialogDescription>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setPendingPageIndex(null)}>
-              {t('common.cancel')}
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={confirmPageChange}>
-              {t('common.discard')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        onCancel={() => setPendingPageIndex(null)}
+        onLeave={confirmPageChange}
+        saveControl={saveControl}
+      />
     </div>
   )
 }

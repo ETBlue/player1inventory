@@ -26,7 +26,7 @@ Vendor CRUD at `/settings/household/vendors`. Vendors are separate entities (not
 
 The Items tab is a **global** assignment surface: rows carry `showStock={false}`, order is assigned-then-unassigned with no active/inactive split, and create-from-search calls `useCreateItem({ catalogOnly: true })` directly so the new item is stocked in no location. See `settings/CLAUDE.md` for the three rules.
 
-**Dirty state**: `src/hooks/useVendorLayout.tsx` — same pattern as `useItemLayout`. Navigation guard on parent layout applies only to the Info tab (vendor name editing); the Items tab has no unsaved state.
+**Dirty state**: `src/hooks/useVendorLayout.tsx` — same pattern as `useItemLayout`. Navigation guard on parent layout applies only to the Info tab (vendor name editing); the Items tab has no unsaved state. Leaving it with edits opens `UnsavedChangesDialog` (Cancel · Discard · Save); see `routes/settings/CLAUDE.md`, *The unsaved-changes dialog on the detail pages*.
 
 **Navigation:**
 

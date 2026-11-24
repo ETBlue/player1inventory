@@ -23,7 +23,7 @@ function RecipeInfoTab() {
   const { data: recipes = [] } = useRecipes()
   const recipe = recipes.find((r) => r.id === id)
   const updateRecipe = useUpdateRecipe()
-  const { registerDirtyState } = useRecipeLayout()
+  const { registerDirtyState, registerSaveControl } = useRecipeLayout()
   const { goBack } = useAppNavigation()
   const deleteRecipe = useDeleteRecipe()
   // A household member sees this page read only (households H5 task F.5)
@@ -66,13 +66,17 @@ function RecipeInfoTab() {
               // with nothing on screen. The error is passed on so the form
               // marks the edit as unsaved again; the form catches it.
               .then(
-                () => goBack(),
+                () => {},
                 (err: unknown) => {
                   showSaveError(err)
                   throw err
                 },
               )
           }
+          // Only the form's own Save goes back. The unsaved-changes dialog's
+          // Save goes where the user pressed (design 2026-11-25).
+          onSaved={goBack}
+          onSaveControlChange={registerSaveControl}
           isPending={updateRecipe.isPending}
           onDirtyChange={registerDirtyState}
           readOnly={!canEditCatalog}

@@ -18,7 +18,7 @@ Item detail pages use a tabbed layout with two rows (since 2026-11-24, design
   `<button type="submit" form={formId}>` (`formId` from `useId()`). So the button is OUTSIDE
   the `<form>` in the DOM, and the HTML `form` attribute is what makes a click, and Enter in a
   field, submit it. Disabled state, the spinner (`isPending`), validation, the toast, the
-  discard dialog and the unit-switch dialog are unchanged. A read-only form (`readOnly`)
+  unsaved-changes dialog and the unit-switch dialog are unchanged. A read-only form (`readOnly`)
   renders no Save, in the slot or in the form. While the slot is `null` (the first render,
   before the top bar's ref is set) there is no Save. Tags, Vendors, Recipes and Log render
   nothing into the slot, and `contents` keeps an empty slot from adding a flex gap. On a
@@ -121,7 +121,7 @@ The dialog used to hang off the **Stock** tab, where saving *one location's* `co
 - **Stocked page** → `StockFormPanel` for that location's `ItemStock`, plus `RemoveFromLocationButton` (a `DeleteButton`). Its confirmation names the item and the location and, **in both modes since PR 3c**, lists what else goes: `Inventory logs: N · Cart entries: N`, from `useInventoryLogCountByItem(itemId, locationId)` / `useCartItemCountByItem(itemId, locationId)` — **location-scoped**, and rendered only once both counts resolve. The line was local-only before PR 3c, because cloud's `removeItemFromLocation` deleted the stock row and nothing else, so the local numbers would have named rows a cloud removal did not touch. PR 3c gave cloud the same cascade and both count hooks a cloud branch, so the number shown and the rows deleted come from the same filter. The two count hooks live in that child component on purpose: declared up in `StockTab` they would each fire once against `locationId: undefined` (an item-global scan) before `useLocations()` resolves. Confirming calls `useRemoveItemFromLocation({ itemId, locationId })`; the page then becomes the not-stocked state (no navigation)
 - **Not-stocked page** → `EmptyState` + an **"Add to location"** button calling `useAddItemToLocation({ itemId, locationId })` (copy-on-add). While the add is saving, the button shows a spinner and is disabled (`Button isLoading={addItemToLocation.isPending}`), so a second click sends no second write. `isPending` stays true until the stock lists have refetched (local: `onSuccess` returns the invalidations; cloud: `refetchAfterWrite`), so the stock form replaces the button. Failures are caught and reported inline (`locationPager.addFailed`, `role="alert"`) — the call runs straight off an `onClick`, so an uncaught rejection would leave nothing on screen. There is no stock form to save here, which is why the PR D implicit stock-add confirmation (`items.detail.stockAddDialog.*`) is gone: an explicit CTA replaced it and the dialog became unreachable
 - **The page item is re-joined by `withLocationStock`**, which strips the active-location join off the `PantryItem` `useItem()` returned before applying the viewed row (`stripStockFields` + `joinItemStock` from `db/operations`). Spreading the viewed row straight over the joined item let the **active** location's values show through wherever the viewed row omitted the key — and Save wrote them into the viewed location's row. Since v16 only `dueDate` is still exposed to that trap (the unit/expiration-config keys are global and are *meant* to survive the strip), but the strip is still required: a location's expiry date must not leak onto another location's page. **`withLocationStock` and its `stripStockFields` call survived cloud locations PR 5 and must not be read as dead.** PR 5 dropped the five state columns from the cloud `Item`, which made three *other* `stripStockFields` call sites dead — but this one never had anything to do with them. It operates on an already-joined `PantryItem`, and `useItem` joins in **both** modes, so the fields it strips come from `ItemStock` and exist in local mode too
-- **Paging while dirty** shows the shared discard dialog (`common.unsaved*`) — the form is remounted per page (`key={locationId}`), so its edits would otherwise vanish silently. No explicit dirty reset is needed there: the remounted `ItemForm` reports `onDirtyChange(false)` on mount (its `prevIsDirtyRef` starts `null`). **Removing** a location does need one — it swaps the form for the empty state, so nothing remounts to report the dirty state back down, and the tab guard would stay armed for edits that no longer exist
+- **Paging while dirty** shows the shared unsaved-changes dialog (`UnsavedChangesDialog`, Cancel · Discard · Save; see *The unsaved-changes dialog* below) — the form is remounted per page (`key={locationId}`), so its edits would otherwise vanish silently. No explicit dirty reset is needed there: the remounted `ItemForm` reports `onDirtyChange(false)` on mount (its `prevIsDirtyRef` starts `null`). **Removing** a location does need one — it swaps the form for the empty state, so nothing remounts to report the dirty state back down, and the tab guard would stay armed for edits that no longer exist
 - **Single location → no pager chrome at all** (no dots, no chevrons); `showPager = locations.length > 1` gates both the `LocationPager` and the `role="tabpanel"` wiring around the page
 
 *What Save writes in cloud:* `useUpdateItem({ id, updates, locationId })` splits the payload the way local mode does — configuration to `updateItem`, the five state fields to `upsertItemStock(itemId, locationId)`, **the location whose page is on screen**. The five fields are stripped from `updateItem` rather than sent to both — `toConfigInput` does it — and **since cloud locations PR 5 that strip is required for a new reason**. `UpdateItemInput` no longer declares the five, so sending them inline fails GraphQL validation outright and the save errors. Before PR 5 the reason was quieter and worse: `updateItem` had a server-side dual-write that targeted the caller's *default* location, so leaving them inline made a save in the Garage silently overwrite the Kitchen's row. The strip stays; only its failure mode changed, from silent corruption to a loud error.
@@ -142,7 +142,7 @@ an allow-list that forgot them would drop them here with no error. Since 2026-10
 
 The **cart rows themselves survive** (they are shared by every item in the location), other locations' logs and cart entries are untouched, and the global **`Item` persists**. An item removed from its *last* location becomes an **orphan**: gone from the pantry (`getStockedItems` filters on `ItemStock`) but still in the catalog (`getAllItems`), so the pantry Add combobox still finds it and can re-stock it via copy-on-add. Removing an item from *everywhere* is the Info tab's **Delete** button (`deleteItem`), not this. The Stock tab is also reachable for an orphan — every page just renders the not-stocked state.
 
-> Both the Info and Stock tabs are editable `ItemForm`s registering dirty state through `useItemLayout()`. The tab-row guard in `$id.tsx` (`isOnEditableTab`) shows the discard dialog when navigating away dirty from **either** tab. Tags, Vendors, Recipes and Log apply changes immediately and never go dirty.
+> Both the Info and Stock tabs are editable `ItemForm`s registering dirty state through `useItemLayout()`. The tab-row guard in `$id.tsx` (`isOnEditableTab`) shows the unsaved-changes dialog when navigating away dirty from **either** tab. Tags, Vendors, Recipes and Log apply changes immediately and never go dirty.
 
 **3. Tags (`/items/$id/tags`, `Tags` icon)**
 - Tag assignment interface with uppercase text styling for tag type names
@@ -194,9 +194,42 @@ The switch is a global setting: it lives on Info with `targetUnit`. Covered by `
 
 Each tab tracks unsaved changes independently:
 - Navigation guard prevents tab switching with unsaved changes
-- Confirmation dialog offers "Discard" or "Cancel" options
+- Confirmation dialog offers **Cancel · Discard · Save** (since 2026-11-25; see *The
+  unsaved-changes dialog* below)
 - Save button disabled when form is clean (no changes)
 - Logs tab never has unsaved changes (view-only)
+
+**The unsaved-changes dialog (since 2026-11-25).** Design:
+`docs/global/ui-polish/2026-11-25-unsaved-dialog-save-design.md`. Leaving Info or Stock with
+edits (a tab, Back, or another page of the Stock location pager) opens the shared
+`UnsavedChangesDialog` (`components/shared/`): **Cancel** (`neutral-outline`) stays,
+**Discard** (`destructive-outline`) leaves without saving, **Save** (`primary`) saves and then
+goes where the user pressed.
+
+- **Save is the same save as the top bar Save.** `ItemForm` hands the layout a
+  `SaveControl` (`{ canSave, save }`, `hooks/useSaveControl.ts`) through its
+  `onSaveControlChange` prop; the Info and Stock tabs pass `useItemLayout().registerSaveControl`.
+  `save()` calls the tab's own `handleSubmit`, which answers whether it worked
+  (`Promise<boolean>`). `canSave` is `ItemForm`'s `isSubmitDisabled` rule (and not read only),
+  so Save is off with a field error or a save in flight.
+- **The page moves only after `save()` answers `true`.** A failed save shows
+  `showSaveError` and the dialog stays open. While the save runs every button of the dialog
+  is off and Escape does nothing, so a Discard cannot race the save.
+- **The converted amounts dialog opens ON TOP** (owner's flow, brainstorming Q2). When an
+  Info save needs it, `handleSubmit` returns a promise that waits for that dialog
+  (`pendingAnswerRef` in `$id/index.tsx`). Confirm → the write → `true` → both close and the
+  page moves. Cancel → `false` → only the top dialog closes. A failed write → toast →
+  `false` → the top dialog is closed, the unsaved-changes dialog stays.
+- **Trap:** `handleConfirmAdjustments` takes the waiting answer out of the ref BEFORE its
+  first `await`. `AlertDialogAction` closes its dialog right after the click handler starts,
+  and that close runs `handleCancelAdjustments`, which would answer `false` first. Moving the
+  take after the write turns "user can confirm the converted amounts and then leave" red
+  (measured 2026-11-25).
+- Tests: `$id/unsavedDialogSave.test.tsx` (local: tab, Back, field error, Cancel, Discard and
+  its class, the stacked confirm and cancel, Stock tab, the location pager) and
+  `$id/unsavedDialogSave.cloud.test.tsx` (a held write: the page waits; a failed write: the
+  dialog stays; a failed converted amounts write; the pager failing and held). E2E:
+  `e2e/tests/unsaved-dialog-save.spec.ts`.
 
 **Navigation:**
 
@@ -211,7 +244,7 @@ Back button and post-action navigation use smart history tracking:
   at its end is gone. A failed save shows `showSaveError` and keeps the edit, as before.
   Tests: `$id/saveStays.test.tsx` (local) and `$id/saveStays.cloud.test.tsx` (cloud)
 - After successful delete: auto-navigate back
-- Back button respects dirty state guard (shows discard dialog if unsaved changes)
+- Back button respects dirty state guard (shows the unsaved-changes dialog if unsaved changes)
 
 Uses `useAppNavigation()` hook from `src/hooks/useAppNavigation.ts`.
 
@@ -227,7 +260,7 @@ Uses `useAppNavigation()` hook from `src/hooks/useAppNavigation.ts`.
 - `src/routes/items/$id/relation/index.tsx` and `relation/$.tsx` - redirects from the old `/items/$id/relation/…` addresses
 - `src/routes/items/$id/log.tsx` - History/logs tab (view-only); stories at `$id/log.stories.tsx`
 - `src/routes/items/$id.test.tsx` - Integration tests
-- `src/hooks/useItemLayout.tsx` - Dirty state context for tab coordination, and the top bar's Save slot (`saveSlot`, `setSaveSlot`)
+- `src/hooks/useItemLayout.tsx` - Dirty state context for tab coordination, the top bar's Save slot (`saveSlot`, `setSaveSlot`), and the form's `SaveControl` for the unsaved-changes dialog (`saveControl`, `registerSaveControl`)
 
 ### Manual Quantity Input
 

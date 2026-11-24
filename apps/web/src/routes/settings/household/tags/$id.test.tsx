@@ -207,7 +207,9 @@ describe('Tag Detail - Info Tab', () => {
       expect(
         screen.getByRole('heading', { name: /unsaved changes/i }),
       ).toBeInTheDocument()
-      expect(screen.getByText(/discard changes/i)).toBeInTheDocument()
+      expect(
+        screen.getByText(/save them before you leave, or discard them/i),
+      ).toBeInTheDocument()
     })
   })
 
@@ -402,7 +404,9 @@ describe('Tag Detail - Info Tab', () => {
       expect(
         screen.getByRole('heading', { name: /unsaved changes/i }),
       ).toBeInTheDocument()
-      expect(screen.getByText(/discard changes/i)).toBeInTheDocument()
+      expect(
+        screen.getByText(/save them before you leave, or discard them/i),
+      ).toBeInTheDocument()
     })
   })
 

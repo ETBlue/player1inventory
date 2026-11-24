@@ -10,16 +10,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LayoutInnerPages } from '@/components/shared/LayoutInnerPages'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+import { UnsavedChangesDialog } from '@/components/shared/UnsavedChangesDialog'
 import { useItem } from '@/hooks'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { ItemLayoutProvider, useItemLayout } from '@/hooks/useItemLayout'
@@ -37,7 +28,7 @@ function ItemLayoutInner() {
   const navigate = useNavigate()
   const router = useRouter()
   const { data: item, isLoading } = useItem(id)
-  const { isDirty, setSaveSlot } = useItemLayout()
+  const { isDirty, saveControl, setSaveSlot } = useItemLayout()
   const { goBack } = useAppNavigation('/')
   // Both the Info tab (index, exact `/items/$id`) and the Stock tab
   // (`/items/$id/stock`) render an editable ItemForm that registers dirty
@@ -185,25 +176,15 @@ function ItemLayoutInner() {
         <Outlet key={router.state.location.pathname} />
       </LayoutInnerPages>
 
-      {/* Discard Confirmation Dialog */}
-      <AlertDialog open={showDiscardDialog} onOpenChange={setShowDiscardDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('common.unsavedTitle')}</AlertDialogTitle>
-          </AlertDialogHeader>
-          <AlertDialogDescription>
-            {t('common.unsavedDescription')}
-          </AlertDialogDescription>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={cancelDiscard}>
-              {t('common.cancel')}
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDiscard}>
-              {t('common.discard')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Cancel · Discard · Save (design 2026-11-25). Save runs the Info
+          form's own save and goes where the user pressed only when it
+          worked. */}
+      <UnsavedChangesDialog
+        open={showDiscardDialog}
+        onCancel={cancelDiscard}
+        onLeave={confirmDiscard}
+        saveControl={saveControl}
+      />
     </>
   )
 }
