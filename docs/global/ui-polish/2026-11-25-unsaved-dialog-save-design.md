@@ -100,3 +100,23 @@ Fill in `apps/design/src/content/docs/patterns/forms.mdx` (empty today):
 - Guarding other ways out of a page (the sidebar, closing the browser tab).
 - The Tags, Vendors, Recipes and Log tabs of the item page: they save on each click and have
   no dialog.
+
+## As built (2026-11-25)
+
+Built on `feature/unsaved-dialog-save`. It follows the design above. What the outline left
+open, and the few places it differs:
+
+| Part | As built |
+|---|---|
+| Shared dialog | `components/shared/UnsavedChangesDialog/` (`open`, `onCancel`, `onLeave`, `saveControl`). Save is a plain `Button`, not an `AlertDialogAction`: an action closes the dialog on click, and a failed save must keep it open |
+| "Save now" and "can save" | one type, `SaveControl` = `{ canSave, save(): Promise<boolean> }`, in `hooks/useSaveControl.ts`. The five layout hooks expose `saveControl` and `registerSaveControl` beside `isDirty` |
+| Who registers it | the FORM, not the page: `ItemForm`, `TagInfoForm`, `VendorInfoForm` and `RecipeInfoForm` take an `onSaveControlChange` prop; the shelf Info page has its form inline and registers itself. The form holds the field values, so only the form can run the same submit |
+| No `goBack()` from the dialog | the settings forms take a new `onSaved` prop, called only after their OWN Save; the pages pass `goBack` there, and `onSave` no longer navigates. The shelf page's `saveShelf()` answers `true` or `false`; `handleSave` calls `goBack()` after `true` |
+| While the save runs | every button is off and Escape does nothing (the design said only "Save shows a spinner"). Without it a Discard pressed during the save would navigate, and the save's own success would then navigate a second time |
+| Info, the converted amounts dialog | as the owner's flow. `handleSubmit` returns a promise that waits for that dialog. The answer is taken out of its ref BEFORE the first `await` in Confirm, because Radix closes the dialog (and so calls Cancel) right after the click handler starts |
+| Dialog text | `common.unsavedDescription` asked "Discard changes?", which did not fit three buttons. It is now "You have unsaved changes. Save them before you leave, or discard them?" / 「您還沒存檔喔。離開前要存檔，還是丟掉改到一半的東西？」. Not in the design; please check the wording |
+| Vendor Info, a small fix on the way | `VendorInfoForm`'s submit had no guard: Enter with an empty or unchanged name sent a save. It now uses the same `canSave` rule as its button |
+
+Tests: `routes/items/$id/unsavedDialogSave.test.tsx` (8, local), `…/unsavedDialogSave.cloud.test.tsx`
+(5), `routes/settings/household/unsavedDialogSave.cloud.test.tsx` (24: 6 × 4 pages), the
+story smoke test (4), and `e2e/tests/unsaved-dialog-save.spec.ts` (5, in `local` and `cloud`).
