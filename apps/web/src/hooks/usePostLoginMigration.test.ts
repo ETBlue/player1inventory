@@ -433,6 +433,50 @@ describe('usePostLoginMigration — the Import button path', () => {
     // offers the copy
     expect(localStorage.getItem(MIGRATION_PROMPTED_KEY)).toBeNull()
   })
+  // Issue #402. Two presses before React has closed the question must start
+  // ONE copy, not two.
+  it('user pressing Copy here twice quickly starts one copy', async () => {
+    // Given a local pantry, so the user is prompted, and a copy that is
+    // slow to answer
+    vi.mocked(getAllItems).mockResolvedValue([
+      { id: 'item-1', name: 'Milk' },
+    ] as unknown as Awaited<ReturnType<typeof getAllItems>>)
+    mockFetchLocalPayload.mockResolvedValue(emptyPayload)
+    // Every copy started is answered by `finish`, so a second copy fails
+    // the count below, not a timeout.
+    const answers: Array<() => void> = []
+    const finish = () => {
+      for (const answer of answers) answer()
+    }
+    mockImportCloudData.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          answers.push(() => resolve(NOTHING_SKIPPED))
+        }),
+    )
+    const { result } = renderHook(() => usePostLoginMigration(SIGNED_IN), {
+      wrapper,
+    })
+    await waitFor(() => expect(result.current.state).toBe('prompting'))
+
+    // When the user presses twice, from the same render
+    const importData = result.current.importData
+    let first: Promise<void> = Promise.resolve()
+    let second: Promise<void> = Promise.resolve()
+    await act(async () => {
+      first = importData('append')
+      second = importData('append')
+    })
+    await waitFor(() => expect(mockImportCloudData).toHaveBeenCalled())
+    await act(async () => {
+      finish()
+      await Promise.all([first, second])
+    })
+
+    // Then one copy ran, and it finished
+    expect(mockImportCloudData).toHaveBeenCalledTimes(1)
+    expect(result.current.state).toBe('done')
+  })
 })
 
 // The CLOUD location list is server-generated: every id is a cuid. The local
@@ -536,7 +580,7 @@ describe('usePostLoginMigration — the copy names no location', () => {
     const call = elementAt(mockImportCloudData.mock.calls)
     expect(call[0]).toBe(emptyPayload)
     expect(call[1]).toBe('skip')
-    expect(call[3]).toBeUndefined()
+    expect(call[3]?.target).toBeUndefined()
   })
 
   it('user confirming the prompt sends the whole pantry, not one location', async () => {
@@ -559,7 +603,7 @@ describe('usePostLoginMigration — the copy names no location', () => {
     const call = elementAt(mockImportCloudData.mock.calls)
     expect(call[0]).toBe(emptyPayload)
     expect(call[1]).toBe('skip')
-    expect(call[3]).toBeUndefined()
+    expect(call[3]?.target).toBeUndefined()
   })
 })
 
@@ -946,7 +990,7 @@ describe('usePostLoginMigration — the copy asks where the local default goes',
     expect(result.current.state).toBe('done')
     const call = elementAt(mockImportCloudData.mock.calls)
     expect(call[1]).toBe('skip')
-    expect(call[3]).toEqual({ target: { locationId: CLOUD_HOME_ID } })
+    expect(call[3]?.target).toEqual({ locationId: CLOUD_HOME_ID })
     expect(localStorage.getItem(MIGRATION_PROMPTED_KEY)).toBe('1')
   })
 
@@ -973,7 +1017,7 @@ describe('usePostLoginMigration — the copy asks where the local default goes',
     // Then the copy ran with the stored strategy and that answer
     const call = elementAt(mockImportCloudData.mock.calls)
     expect(call[1]).toBe('replace')
-    expect(call[3]).toEqual({ target: { newLocationName: 'My Home' } })
+    expect(call[3]?.target).toEqual({ newLocationName: 'My Home' })
     expect(localStorage.getItem(MIGRATION_STRATEGY_KEY)).toBeNull()
   })
 
@@ -992,7 +1036,7 @@ describe('usePostLoginMigration — the copy asks where the local default goes',
     await waitFor(() => expect(result.current.state).toBe('done'))
     const call = elementAt(mockImportCloudData.mock.calls)
     expect(call[1]).toBe('clear')
-    expect(call[3]).toBeUndefined()
+    expect(call[3]?.target).toBeUndefined()
   })
 
   it('user cancelling the question is asked again whether to copy, and nothing is copied', async () => {
