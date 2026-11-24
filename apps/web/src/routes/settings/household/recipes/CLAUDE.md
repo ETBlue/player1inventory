@@ -32,7 +32,7 @@ This tab is a **global** assignment surface: rows carry `showStock={false}`, ord
 
 **Settings link**: the household sidebar (`src/components/global/Sidebar/HouseholdSidebar.tsx`) and the mobile `/settings` accordion (`src/routes/settings/index.tsx`), both with the `ChefHat` icon
 
-**Dirty state**: `src/hooks/useRecipeLayout.tsx` — navigation guard on parent layout applies only to the Info tab (recipe name editing); Items tab has no unsaved state.
+**Dirty state**: `src/hooks/useRecipeLayout.tsx` — navigation guard on parent layout applies only to the Info tab (recipe name editing); Items tab has no unsaved state. Leaving it with edits opens `UnsavedChangesDialog` (Cancel · Discard · Save); see `routes/settings/CLAUDE.md`, *The unsaved-changes dialog on the detail pages*.
 
 **Navigation:**
 
