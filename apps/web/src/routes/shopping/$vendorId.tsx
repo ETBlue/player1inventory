@@ -132,8 +132,14 @@ function VendorCart() {
 
   const { data: recipes = [], isLoading: isRecipesLoading } = useRecipes()
 
-  const { sortBy, sortDirection, setSortBy, setSortDirection } =
-    useSortFilter('shopping')
+  // A cart sorts by stock by default, low stock on top. With `'asc'` (the
+  // direction `useSortFilter` starts at), `'stock'` puts items below their
+  // refill level first, then items at it, then the rest (`sortItems`). A choice
+  // saved in `localStorage['shopping-sort-prefs']` still wins.
+  const { sortBy, sortDirection, setSortBy, setSortDirection } = useSortFilter(
+    'shopping',
+    { defaultSortBy: 'stock' },
+  )
   const { search, filterState, selectedRecipeIds } = useUrlSearchAndFilters()
 
   const allDataLoaded =
