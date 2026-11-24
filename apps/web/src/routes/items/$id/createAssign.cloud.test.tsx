@@ -20,6 +20,7 @@ import {
 } from '@/test/cloudFixtures'
 import {
   cloudServer,
+  holdMutation,
   resetCloudServer,
   seedCloudHousehold,
 } from '@/test/cloudServerStub'
@@ -33,6 +34,11 @@ import { watchUnhandledRejections } from '@/test/unhandledRejections'
 // Cloud sends two writes: the create, then `updateItem` with the item's tag
 // or vendor list plus the new id. `createTag` and `createVendor` take no item,
 // so one write would need a server change.
+//
+// Between the two writes the new tag or vendor is already in the list, but
+// the item does not have it yet. The page still shows it as selected from the
+// start (issue #402, part 1): the tests in the second `describe` hold the
+// assign with `holdMutation` and look at the badge while it is in flight.
 vi.mock('@/generated/graphql', async (importOriginal) => {
   const { stubGeneratedHooks } = await import('@/test/cloudServerStub')
   return stubGeneratedHooks(await importOriginal())
@@ -179,6 +185,274 @@ describe('Item page - a tag or vendor created there is assigned (cloud)', () => 
     // And the dialog has closed, with no error
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(toastError).not.toHaveBeenCalled()
+    await rejections.settle()
+    expect(rejections.list).toEqual([])
+  })
+})
+
+const SAVE_FAILED = 'Could not save the change. Please try again.'
+
+describe('Item page - a new tag or vendor shows as selected at once (cloud)', () => {
+  let rejections: ReturnType<typeof watchUnhandledRejections>
+  const FROZEN = cloudTag('tag-frozen', 'frozen', 'type-label')
+  const DAIRY = cloudTag('tag-dairy', 'dairy', 'type-label')
+  const COSTCO = cloudVendor('vendor-costco', 'Costco')
+  const ALDI = cloudVendor('vendor-aldi', 'Aldi')
+
+  beforeEach(() => {
+    localStorage.setItem('data-mode', 'cloud')
+    localStorage.setItem(activeLocationStorageKey('cloud'), LOC_A)
+    resetCloudServer()
+    seedCloudHousehold(CLOUD_LOCATIONS)
+    cloudServer.queries.useGetItemQuery = { item: FLOUR }
+    cloudServer.queries.useGetItemsQuery = { items: [FLOUR] }
+    cloudServer.queries.usePantryDataQuery = {
+      items: [FLOUR],
+      itemStocks: [FLOUR_A],
+    }
+    cloudServer.queries.useItemStocksForItemQuery = {
+      itemStocksForItem: [FLOUR_A],
+    }
+    cloudServer.queries.useGetRecipesQuery = { recipes: [] }
+    cloudServer.queries.useGetTagTypesQuery = {
+      tagTypes: [cloudTagType('type-label', 'Label')],
+    }
+    cloudServer.queries.useGetTagsQuery = { tags: [FROZEN] }
+    cloudServer.queries.useGetVendorsQuery = { vendors: [COSTCO] }
+    // The create's refetch: once the create has answered, the list shows
+    // the new tag or vendor. The item does NOT have it yet.
+    cloudServer.results.useCreateTagMutation = () => {
+      cloudServer.queries.useGetTagsQuery = { tags: [FROZEN, DAIRY] }
+      return { createTag: DAIRY }
+    }
+    cloudServer.results.useCreateVendorMutation = () => {
+      cloudServer.queries.useGetVendorsQuery = { vendors: [COSTCO, ALDI] }
+      return { createVendor: ALDI }
+    }
+    toastError.mockClear()
+    rejections = watchUnhandledRejections()
+  })
+
+  afterEach(() => {
+    rejections.stop()
+    localStorage.removeItem('data-mode')
+    localStorage.removeItem(activeLocationStorageKey('cloud'))
+  })
+
+  function renderPage(path: string) {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const router = createRouter({
+      routeTree,
+      history: createMemoryHistory({ initialEntries: [path] }),
+      context: { queryClient },
+    })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+  }
+
+  async function addTag(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(await screen.findByRole('button', { name: /new tag$/i }))
+    await user.type(screen.getByLabelText(/name/i), 'dairy')
+    await user.click(screen.getByRole('button', { name: /^add tag$/i }))
+  }
+
+  async function addVendor(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(await screen.findByRole('button', { name: /new vendor/i }))
+    await user.type(screen.getByLabelText(/name/i), 'Aldi')
+    await user.click(screen.getByRole('button', { name: /add vendor/i }))
+  }
+
+  it('user sees a new tag as selected while it is still being assigned', async () => {
+    const user = userEvent.setup()
+    // Given a server that holds the assign
+    const assign = holdMutation('useUpdateItemMutation')
+    renderPage('/items/item-flour/tags')
+
+    // When the user adds a tag named "dairy"
+    await addTag(user)
+
+    // Then the new badge shows as selected while the assign is in flight
+    const badge = await screen.findByRole('button', { name: 'dairy' })
+    await waitFor(() =>
+      expect(cloudServer.calls.useUpdateItemMutation).toHaveLength(1),
+    )
+    expect(badge).toHaveAttribute('aria-pressed', 'true')
+    expect(badge).toHaveAttribute('aria-busy', 'true')
+
+    // When the assign is saved (Apollo writes the answer to the item)
+    cloudServer.queries.useGetItemQuery = {
+      item: { ...FLOUR, tagIds: ['tag-frozen', 'tag-dairy'] },
+    }
+    assign.release()
+
+    // Then the badge stays selected and is no longer busy, with no error
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'dairy' })).toHaveAttribute(
+        'aria-busy',
+        'false',
+      ),
+    )
+    expect(screen.getByRole('button', { name: 'dairy' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(toastError).not.toHaveBeenCalled()
+    await rejections.settle()
+    expect(rejections.list).toEqual([])
+  })
+
+  it('user sees a new tag go back to not selected when the assign fails', async () => {
+    const user = userEvent.setup()
+    // Given a server that holds the assign, then refuses it
+    const assign = holdMutation('useUpdateItemMutation')
+    renderPage('/items/item-flour/tags')
+
+    // When the user adds a tag named "dairy"
+    await addTag(user)
+    const badge = await screen.findByRole('button', { name: 'dairy' })
+    expect(badge).toHaveAttribute('aria-pressed', 'true')
+
+    // And the server refuses the assign
+    cloudServer.failing.add('useUpdateItemMutation')
+    assign.release()
+
+    // Then the badge goes back to not selected, and a message says so
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'dairy' })).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      ),
+    )
+    expect(toastError).toHaveBeenCalledWith(SAVE_FAILED)
+    expect(cloudServer.calls.useUpdateItemMutation).toHaveLength(1)
+    await rejections.settle()
+    expect(rejections.list).toEqual([])
+  })
+
+  it('user cannot toggle another tag while a new tag is being assigned', async () => {
+    const user = userEvent.setup()
+    // Given a server that holds the assign of a new tag "dairy"
+    const assign = holdMutation('useUpdateItemMutation')
+    renderPage('/items/item-flour/tags')
+    await addTag(user)
+    await screen.findByRole('button', { name: 'dairy' })
+    await waitFor(() =>
+      expect(cloudServer.calls.useUpdateItemMutation).toHaveLength(1),
+    )
+
+    // When the user presses the old tag "frozen" before the assign is saved
+    await user.click(screen.getByRole('button', { name: 'frozen' }))
+
+    // Then no second write is sent: it would send the whole list too, and
+    // could undo the assign
+    expect(cloudServer.calls.useUpdateItemMutation).toHaveLength(1)
+    assign.release()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'dairy' })).toHaveAttribute(
+        'aria-busy',
+        'false',
+      ),
+    )
+    expect(cloudServer.calls.useUpdateItemMutation).toHaveLength(1)
+    await rejections.settle()
+    expect(rejections.list).toEqual([])
+  })
+
+  it('user sees a new vendor as selected while it is still being assigned', async () => {
+    const user = userEvent.setup()
+    // Given a server that holds the assign
+    const assign = holdMutation('useUpdateItemMutation')
+    renderPage('/items/item-flour/vendors')
+
+    // When the user adds a vendor named "Aldi"
+    await addVendor(user)
+
+    // Then the new badge shows as selected while the assign is in flight
+    const badge = await screen.findByRole('button', { name: 'Aldi' })
+    await waitFor(() =>
+      expect(cloudServer.calls.useUpdateItemMutation).toHaveLength(1),
+    )
+    expect(badge).toHaveAttribute('aria-pressed', 'true')
+    expect(badge).toHaveAttribute('aria-busy', 'true')
+
+    // When the assign is saved (Apollo writes the answer to the item)
+    cloudServer.queries.useGetItemQuery = {
+      item: { ...FLOUR, vendorIds: ['vendor-costco', 'vendor-aldi'] },
+    }
+    assign.release()
+
+    // Then the badge stays selected and is no longer busy, with no error
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Aldi' })).not.toHaveAttribute(
+        'aria-busy',
+      ),
+    )
+    expect(screen.getByRole('button', { name: 'Aldi' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(toastError).not.toHaveBeenCalled()
+    await rejections.settle()
+    expect(rejections.list).toEqual([])
+  })
+
+  it('user sees a new vendor go back to not selected when the assign fails', async () => {
+    const user = userEvent.setup()
+    // Given a server that holds the assign, then refuses it
+    const assign = holdMutation('useUpdateItemMutation')
+    renderPage('/items/item-flour/vendors')
+
+    // When the user adds a vendor named "Aldi"
+    await addVendor(user)
+    const badge = await screen.findByRole('button', { name: 'Aldi' })
+    expect(badge).toHaveAttribute('aria-pressed', 'true')
+
+    // And the server refuses the assign
+    cloudServer.failing.add('useUpdateItemMutation')
+    assign.release()
+
+    // Then the badge goes back to not selected, and a message says so
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Aldi' })).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      ),
+    )
+    expect(toastError).toHaveBeenCalledWith(SAVE_FAILED)
+    expect(cloudServer.calls.useUpdateItemMutation).toHaveLength(1)
+    await rejections.settle()
+    expect(rejections.list).toEqual([])
+  })
+
+  it('user cannot toggle another vendor while a new vendor is being assigned', async () => {
+    const user = userEvent.setup()
+    // Given a server that holds the assign of a new vendor "Aldi"
+    const assign = holdMutation('useUpdateItemMutation')
+    renderPage('/items/item-flour/vendors')
+    await addVendor(user)
+    await screen.findByRole('button', { name: 'Aldi' })
+    await waitFor(() =>
+      expect(cloudServer.calls.useUpdateItemMutation).toHaveLength(1),
+    )
+
+    // When the user presses the old vendor "Costco" before the assign is saved
+    await user.click(screen.getByRole('button', { name: 'Costco' }))
+
+    // Then no second write is sent: it would send the whole list too, and
+    // could undo the assign
+    expect(cloudServer.calls.useUpdateItemMutation).toHaveLength(1)
+    assign.release()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Aldi' })).not.toHaveAttribute(
+        'aria-busy',
+      ),
+    )
+    expect(cloudServer.calls.useUpdateItemMutation).toHaveLength(1)
     await rejections.settle()
     expect(rejections.list).toEqual([])
   })

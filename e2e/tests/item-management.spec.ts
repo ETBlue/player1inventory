@@ -217,6 +217,13 @@ test('user can assign a tag to an item', async ({ page }) => {
   await item.createAndAssignTag('Dairy')
 
   // Then the assigned tag badge is visible (aria-pressed="true" = assigned state)
+  const badge = page.getByRole('button', { name: 'Dairy', pressed: true })
+  await expect(badge).toBeVisible()
+  // The badge shows as selected while the assign is still being saved
+  // (issue #402), with aria-busy="true". Wait until it is saved, then read it
+  // again after a reload: that proves the item really has the tag.
+  await expect(badge).not.toHaveAttribute('aria-busy', 'true')
+  await page.reload()
   await expect(
     page.getByRole('button', { name: 'Dairy', pressed: true }),
   ).toBeVisible()
@@ -235,9 +242,18 @@ test('user can assign a vendor to an item', async ({ page }) => {
   // When user creates and assigns a vendor
   await item.createAndAssignVendor('Costco')
 
-  // Then the vendor badge is visible on the vendors tab (selected = neutral variant with X icon)
-  // The badge renders with the vendor name text on the vendors tab
-  await expect(page.getByRole('main').getByText('Costco')).toBeVisible()
+  // Then the vendor badge is visible on the vendors tab, selected
+  // (aria-pressed="true")
+  const badge = page.getByRole('button', { name: 'Costco', pressed: true })
+  await expect(badge).toBeVisible()
+  // The badge shows as selected while the assign is still being saved
+  // (issue #402), with aria-busy="true". Wait until it is saved, then read it
+  // again after a reload: that proves the item really has the vendor.
+  await expect(badge).not.toHaveAttribute('aria-busy', 'true')
+  await page.reload()
+  await expect(
+    page.getByRole('button', { name: 'Costco', pressed: true }),
+  ).toBeVisible()
 })
 
 test('user can set specific-date expiration on an item', async ({ page }) => {
