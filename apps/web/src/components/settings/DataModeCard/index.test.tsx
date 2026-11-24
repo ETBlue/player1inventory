@@ -2,7 +2,7 @@ import { useClerk } from '@clerk/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import { getLocations } from '@/db/operations'
 import {
@@ -679,5 +679,443 @@ describe('DataModeCard — cloud to local copy puts the cloud active location in
     expect(
       callArgs(vi.mocked(importLocalData).mock, 0)[2]?.homeLocationId,
     ).toBe(GARAGE)
+  })
+})
+
+// Issue #405: every question of a data mode switch can be backed out of, in
+// both directions. Cancel and Escape close the question with nothing copied
+// and the mode unchanged. A second question's Cancel goes back one step.
+//
+// The fixture can tell "nothing happened" from a choice: every choice either
+// writes `data-mode` (Start Fresh, Switch without copying, a strategy), calls
+// `fetchCloudPayload` / `importLocalData` (Copy and a conflict choice), or
+// calls `reload`. Each test checks all of them.
+describe('DataModeCard — backing out of a switch', () => {
+  let reloadMock: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    reloadMock = vi.fn()
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, reload: reloadMock },
+      writable: true,
+    })
+    vi.mocked(importLocalData).mockClear()
+    vi.mocked(fetchCloudPayload).mockClear()
+  })
+
+  afterEach(async () => {
+    localStorage.clear()
+    await db.locations.clear()
+  })
+
+  // Nothing was chosen: the mode is what it was, no copy ran, no reload.
+  function expectNothingChanged(mode: 'cloud' | null) {
+    expect(localStorage.getItem('data-mode')).toBe(mode)
+    expect(localStorage.getItem('migration-strategy')).toBeNull()
+    expect(localStorage.getItem('migration-prompted')).toBeNull()
+    expect(fetchCloudPayload).not.toHaveBeenCalled()
+    expect(importLocalData).not.toHaveBeenCalled()
+    expect(reloadMock).not.toHaveBeenCalled()
+  }
+
+  const COPY_DOWN_TITLE = 'Copy your cloud data to local storage?'
+  const CONFLICT_TITLE = 'Local storage already has items'
+  const COPY_UP_TITLE = 'Copy local data to cloud?'
+
+  // ── cloud → local ──────────────────────────────────────────────────────────
+
+  it('user can cancel the question about copying cloud data to this device', async () => {
+    // Given cloud mode, with the copy question open
+    localStorage.setItem('data-mode', 'cloud')
+    const user = userEvent.setup()
+    renderCard()
+    await user.click(screen.getByRole('button', { name: 'Switch...' }))
+    expect(
+      screen.getByRole('heading', { name: COPY_DOWN_TITLE }),
+    ).toBeInTheDocument()
+
+    // When the user clicks Cancel
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    // Then the question closes, and the app stays in cloud mode with
+    // nothing copied
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument(),
+    )
+    expectNothingChanged('cloud')
+    expect(screen.getByText('Cloud Mode')).toBeInTheDocument()
+  })
+
+  it('user can close the question about copying cloud data with Escape', async () => {
+    // Given cloud mode, with the copy question open
+    localStorage.setItem('data-mode', 'cloud')
+    const user = userEvent.setup()
+    renderCard()
+    await user.click(screen.getByRole('button', { name: 'Switch...' }))
+    expect(
+      screen.getByRole('heading', { name: COPY_DOWN_TITLE }),
+    ).toBeInTheDocument()
+
+    // When the user presses Escape
+    await user.keyboard('{Escape}')
+
+    // Then it is the same as Cancel
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument(),
+    )
+    expectNothingChanged('cloud')
+  })
+
+  it('user who presses Enter right after the copy question opens does not switch', async () => {
+    // Given cloud mode
+    localStorage.setItem('data-mode', 'cloud')
+    const user = userEvent.setup()
+    renderCard()
+
+    // When the copy question opens, focus is on Cancel
+    await user.click(screen.getByRole('button', { name: 'Switch...' }))
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus()
+
+    // And the user presses Enter
+    await user.keyboard('{Enter}')
+
+    // Then nothing is chosen. (Before issue #405 the focus was on Start
+    // Fresh, so Enter switched to local mode.)
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument(),
+    )
+    expectNothingChanged('cloud')
+  })
+
+  it('user can still start fresh in local mode without a copy', async () => {
+    // Given cloud mode, with the copy question open
+    localStorage.setItem('data-mode', 'cloud')
+    const user = userEvent.setup()
+    renderCard()
+    await user.click(screen.getByRole('button', { name: 'Switch...' }))
+
+    // When the user clicks Start Fresh
+    await user.click(screen.getByRole('button', { name: 'Start Fresh' }))
+
+    // Then the app switches to local mode with nothing copied
+    expect(localStorage.getItem('data-mode')).toBe('local')
+    expect(reloadMock).toHaveBeenCalledOnce()
+    expect(fetchCloudPayload).not.toHaveBeenCalled()
+    expect(importLocalData).not.toHaveBeenCalled()
+  })
+
+  it('user can go back from the conflict question to the copy question', async () => {
+    // Given cloud mode, with the conflict question open
+    localStorage.setItem('data-mode', 'cloud')
+    const user = userEvent.setup()
+    renderCard()
+    await user.click(screen.getByRole('button', { name: 'Switch...' }))
+    await user.click(screen.getByRole('button', { name: 'Copy' }))
+    expect(
+      screen.getByRole('heading', { name: CONFLICT_TITLE }),
+    ).toBeInTheDocument()
+
+    // When the user clicks Cancel
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    // Then the copy question shows again, and nothing was copied
+    expect(
+      await screen.findByRole('heading', { name: COPY_DOWN_TITLE }),
+    ).toBeInTheDocument()
+    expectNothingChanged('cloud')
+  })
+
+  it('user who presses Escape on the conflict question goes back to the copy question', async () => {
+    // Given cloud mode, with the conflict question open
+    localStorage.setItem('data-mode', 'cloud')
+    const user = userEvent.setup()
+    renderCard()
+    await user.click(screen.getByRole('button', { name: 'Switch...' }))
+    await user.click(screen.getByRole('button', { name: 'Copy' }))
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus()
+
+    // When the user presses Escape
+    await user.keyboard('{Escape}')
+
+    // Then it is the same as Cancel
+    expect(
+      await screen.findByRole('heading', { name: COPY_DOWN_TITLE }),
+    ).toBeInTheDocument()
+    expectNothingChanged('cloud')
+  })
+
+  // ── local → cloud ──────────────────────────────────────────────────────────
+
+  it('user can close the switch-to-cloud question with Escape', async () => {
+    // Given local mode, with the first question open
+    const user = userEvent.setup()
+    renderCard()
+    await user.click(screen.getByRole('button', { name: 'Switch...' }))
+    expect(
+      screen.getByRole('heading', { name: 'Switch to cloud mode?' }),
+    ).toBeInTheDocument()
+
+    // When the user presses Escape
+    await user.keyboard('{Escape}')
+
+    // Then it closes, and the app stays in local mode
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument(),
+    )
+    expectNothingChanged(null)
+  })
+
+  it('user can cancel the question about copying local data to the cloud', async () => {
+    // Given local mode, with the copy question open
+    const user = userEvent.setup()
+    renderCard()
+    await user.click(screen.getByRole('button', { name: 'Switch...' }))
+    await user.click(screen.getByRole('button', { name: /switch to cloud/i }))
+    expect(
+      screen.getByRole('heading', { name: COPY_UP_TITLE }),
+    ).toBeInTheDocument()
+
+    // When the user clicks Cancel
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    // Then it closes, and the app stays in local mode
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument(),
+    )
+    expectNothingChanged(null)
+  })
+
+  it('user can close the question about copying local data with Escape', async () => {
+    // Given local mode, with the copy question open
+    const user = userEvent.setup()
+    renderCard()
+    await user.click(screen.getByRole('button', { name: 'Switch...' }))
+    await user.click(screen.getByRole('button', { name: /switch to cloud/i }))
+    expect(
+      screen.getByRole('heading', { name: COPY_UP_TITLE }),
+    ).toBeInTheDocument()
+
+    // When the user presses Escape
+    await user.keyboard('{Escape}')
+
+    // Then it is the same as Cancel
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument(),
+    )
+    expectNothingChanged(null)
+  })
+
+  it('user who presses Enter right after the local copy question opens does not switch', async () => {
+    // Given local mode
+    const user = userEvent.setup()
+    renderCard()
+    await user.click(screen.getByRole('button', { name: 'Switch...' }))
+
+    // When the copy question opens, focus is on Cancel
+    await user.click(screen.getByRole('button', { name: /switch to cloud/i }))
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus()
+
+    // And the user presses Enter
+    await user.keyboard('{Enter}')
+
+    // Then nothing is chosen. (Before issue #405 the focus was on "Switch
+    // without copying", so Enter switched to cloud mode.)
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument(),
+    )
+    expectNothingChanged(null)
+  })
+
+  it('user who presses Escape on the conflict strategy question goes back to the copy question', async () => {
+    // Given local mode, with the strategy question open
+    const user = userEvent.setup()
+    renderCard()
+    await user.click(screen.getByRole('button', { name: 'Switch...' }))
+    await user.click(screen.getByRole('button', { name: /switch to cloud/i }))
+    await user.click(screen.getByRole('button', { name: 'Yes, copy data' }))
+    expect(
+      screen.getByRole('heading', { name: 'How to handle conflicts?' }),
+    ).toBeInTheDocument()
+
+    // When the user presses Escape
+    await user.keyboard('{Escape}')
+
+    // Then it is the same as its Cancel: back to the copy question
+    expect(
+      await screen.findByRole('heading', { name: COPY_UP_TITLE }),
+    ).toBeInTheDocument()
+    expectNothingChanged(null)
+  })
+})
+
+// The sign-out question "Switch to offline mode?" (owner, 2026-11-24, after
+// issue #405). Radix focuses the LAST `AlertDialogCancel` when an
+// `AlertDialog` opens. "Just sign out" was one, so Enter right after the
+// question opened signed the person out.
+describe('DataModeCard — backing out of signing out', () => {
+  let reloadMock: ReturnType<typeof vi.fn>
+  const signOutMock = vi.fn(async () => {})
+
+  beforeEach(() => {
+    reloadMock = vi.fn()
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, reload: reloadMock },
+      writable: true,
+    })
+    signOutMock.mockClear()
+    vi.mocked(useClerk).mockReturnValue({
+      signOut: signOutMock,
+    } as unknown as ReturnType<typeof useClerk>)
+    vi.mocked(importLocalData).mockClear()
+    vi.mocked(fetchCloudPayload).mockClear()
+  })
+
+  afterEach(() => {
+    localStorage.clear()
+    vi.mocked(useClerk).mockReset()
+    vi.mocked(useClerk).mockImplementation(
+      () => ({ signOut: vi.fn() }) as unknown as ReturnType<typeof useClerk>,
+    )
+  })
+
+  // Nothing was chosen: still cloud, not signed out, nothing copied.
+  function expectStillSignedIn() {
+    expect(localStorage.getItem('data-mode')).toBe('cloud')
+    expect(signOutMock).not.toHaveBeenCalled()
+    expect(fetchCloudPayload).not.toHaveBeenCalled()
+    expect(importLocalData).not.toHaveBeenCalled()
+    expect(reloadMock).not.toHaveBeenCalled()
+  }
+
+  it('user who presses Enter right after the sign-out question opens is not signed out', async () => {
+    // Given cloud mode
+    localStorage.setItem('data-mode', 'cloud')
+    const user = userEvent.setup()
+    renderCard()
+
+    // When the sign-out question opens, focus is on Cancel
+    await user.click(screen.getByRole('button', { name: 'Sign Out' }))
+    expect(
+      screen.getByRole('heading', { name: 'Switch to offline mode?' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus()
+
+    // And the user presses Enter
+    await user.keyboard('{Enter}')
+
+    // Then the question closes and nothing happens
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument(),
+    )
+    expectStillSignedIn()
+  })
+
+  it('user can close the sign-out question with Escape', async () => {
+    // Given cloud mode, with the sign-out question open
+    localStorage.setItem('data-mode', 'cloud')
+    const user = userEvent.setup()
+    renderCard()
+    await user.click(screen.getByRole('button', { name: 'Sign Out' }))
+
+    // When the user presses Escape
+    await user.keyboard('{Escape}')
+
+    // Then it is the same as Cancel
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument(),
+    )
+    expectStillSignedIn()
+  })
+
+  // The second question, "Copy cloud data to this device?" (owner,
+  // 2026-11-24): Cancel cancels the whole sign-out, not just this step.
+  async function openCopyQuestion(user: ReturnType<typeof userEvent.setup>) {
+    localStorage.setItem('data-mode', 'cloud')
+    renderCard()
+    await user.click(screen.getByRole('button', { name: 'Sign Out' }))
+    await user.click(screen.getByRole('button', { name: 'Switch to offline' }))
+    expect(
+      screen.getByRole('heading', { name: 'Copy cloud data to this device?' }),
+    ).toBeInTheDocument()
+  }
+
+  it('user who presses Enter right after the sign-out copy question opens is not signed out', async () => {
+    // Given the sign-out copy question is open
+    const user = userEvent.setup()
+    await openCopyQuestion(user)
+
+    // Then the focus is on Cancel
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus()
+
+    // When the user presses Enter
+    await user.keyboard('{Enter}')
+
+    // Then the whole sign-out is cancelled
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument(),
+    )
+    expectStillSignedIn()
+  })
+
+  it('user can cancel signing out from the sign-out copy question', async () => {
+    // Given the sign-out copy question is open
+    const user = userEvent.setup()
+    await openCopyQuestion(user)
+
+    // When the user clicks Cancel
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    // Then no question is open (not even "Switch to offline mode?"), and
+    // the person is still signed in, in cloud mode
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument(),
+    )
+    expectStillSignedIn()
+  })
+
+  it('user can close the sign-out copy question with Escape', async () => {
+    // Given the sign-out copy question is open
+    const user = userEvent.setup()
+    await openCopyQuestion(user)
+
+    // When the user presses Escape
+    await user.keyboard('{Escape}')
+
+    // Then it is the same as Cancel
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument(),
+    )
+    expectStillSignedIn()
+  })
+
+  it('user can still skip the copy and switch to offline', async () => {
+    // Given the sign-out copy question is open
+    const user = userEvent.setup()
+    await openCopyQuestion(user)
+
+    // When the user clicks Skip
+    await user.click(screen.getByRole('button', { name: 'Skip' }))
+
+    // Then they are signed out and switched to local mode, with no copy
+    await waitFor(() => expect(reloadMock).toHaveBeenCalledOnce())
+    expect(signOutMock).toHaveBeenCalledOnce()
+    expect(localStorage.getItem('data-mode')).toBe('local')
+    expect(fetchCloudPayload).not.toHaveBeenCalled()
+    expect(importLocalData).not.toHaveBeenCalled()
+  })
+
+  it('user can still just sign out', async () => {
+    // Given cloud mode, with the sign-out question open
+    localStorage.setItem('data-mode', 'cloud')
+    const user = userEvent.setup()
+    renderCard()
+    await user.click(screen.getByRole('button', { name: 'Sign Out' }))
+
+    // When the user clicks "Just sign out"
+    await user.click(screen.getByRole('button', { name: 'Just sign out' }))
+
+    // Then they are signed out, and the mode stays cloud
+    await waitFor(() => expect(signOutMock).toHaveBeenCalledOnce())
+    expect(localStorage.getItem('data-mode')).toBe('cloud')
   })
 })

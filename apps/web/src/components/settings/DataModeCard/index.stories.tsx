@@ -114,3 +114,20 @@ export const SignOutDialog: Story = {
     return () => localStorage.removeItem('data-mode')
   },
 }
+
+// Cloud → local: the copy question, with Cancel, Start Fresh and Copy
+// (issue #405 added Cancel).
+export const SwitchToLocalCopyDialog: Story = {
+  name: 'CloudMode — copy to this device dialog open',
+  play: async ({ canvasElement }) => {
+    const buttons = canvasElement.querySelectorAll('button')
+    const switchBtn = Array.from(buttons).find(
+      (b) => b.textContent?.trim() === 'Switch...',
+    ) as HTMLButtonElement | undefined
+    switchBtn?.click()
+  },
+  beforeEach() {
+    localStorage.setItem('data-mode', 'cloud')
+    return () => localStorage.removeItem('data-mode')
+  },
+}

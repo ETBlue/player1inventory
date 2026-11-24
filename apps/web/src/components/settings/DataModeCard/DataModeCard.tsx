@@ -185,10 +185,17 @@ function CloudModeSection({ signOut }: CloudModeSectionProps) {
 
       {/* ── Switch flow dialogs ─────────────────────────────────────────── */}
 
-      {/* Copy cloud data dialog */}
-      {/* No onOpenChange: buttons drive all state transitions */}
+      {/* Copy cloud data dialog. Cancel and Escape back out of the switch:
+          nothing is copied and the mode stays cloud (issue #405). Radix
+          `AlertDialog` never closes on a click outside. */}
+      {/* No onOpenChange: Radix calls it for EVERY button (Action and Cancel
+          both close the dialog), so it cannot tell Cancel from a choice. The
+          buttons and `onEscapeKeyDown` drive all state transitions. */}
+      {/* Cancel is the ONLY `AlertDialogCancel` here, on purpose: Radix moves
+          the focus to the last `AlertDialogCancel` when the dialog opens.
+          Start Fresh was one until issue #405, so Enter switched to local. */}
       <AlertDialog open={switchFlow === 'copy'}>
-        <AlertDialogContent>
+        <AlertDialogContent onEscapeKeyDown={() => setSwitchFlow('idle')}>
           <AlertDialogHeader>
             <AlertDialogTitle>
               {t('settings.dataMode.copyDialog.title')}
@@ -197,10 +204,16 @@ function CloudModeSection({ signOut }: CloudModeSectionProps) {
           <AlertDialogDescription>
             {t('settings.dataMode.copyDialog.description')}
           </AlertDialogDescription>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => doSwitch('skip')}>
-              {t('settings.dataMode.copyDialog.startFresh')}
+          <AlertDialogFooter className="flex-wrap">
+            <AlertDialogCancel onClick={() => setSwitchFlow('idle')}>
+              {t('common.cancel')}
             </AlertDialogCancel>
+            <AlertDialogAction
+              variant="neutral-outline"
+              onClick={() => doSwitch('skip')}
+            >
+              {t('settings.dataMode.copyDialog.startFresh')}
+            </AlertDialogAction>
             <AlertDialogAction onClick={() => setSwitchFlow('conflict')}>
               {t('settings.dataMode.copyDialog.copy')}
             </AlertDialogAction>
@@ -208,12 +221,12 @@ function CloudModeSection({ signOut }: CloudModeSectionProps) {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Conflict resolution dialog */}
-      <AlertDialog
-        open={switchFlow === 'conflict'}
-        onOpenChange={(open) => !open && setSwitchFlow('idle')}
-      >
-        <AlertDialogContent>
+      {/* Conflict resolution dialog. Cancel and Escape go back one step, to
+          the copy question, like the strategy question of the other
+          direction. No onOpenChange, for the reason given above: with it,
+          Cancel's "back" would be overwritten by the close. */}
+      <AlertDialog open={switchFlow === 'conflict'}>
+        <AlertDialogContent onEscapeKeyDown={() => setSwitchFlow('copy')}>
           <AlertDialogHeader>
             <AlertDialogTitle>
               {t('settings.dataMode.conflictDialog.title')}
@@ -222,11 +235,27 @@ function CloudModeSection({ signOut }: CloudModeSectionProps) {
           <AlertDialogDescription>
             {t('settings.dataMode.conflictDialog.description')}
           </AlertDialogDescription>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => doSwitch('copy', 'append')}>
-              {t('settings.dataMode.conflictDialog.append')}
+          <AlertDialogFooter className="flex-wrap">
+            <AlertDialogCancel onClick={() => setSwitchFlow('copy')}>
+              {t('common.cancel')}
             </AlertDialogCancel>
-            <AlertDialogAction onClick={() => doSwitch('copy', 'replace')}>
+            {/* Each choice closes the dialog first, so it cannot be pressed
+                twice while the copy runs. */}
+            <AlertDialogAction
+              variant="neutral-outline"
+              onClick={() => {
+                setSwitchFlow('idle')
+                void doSwitch('copy', 'append')
+              }}
+            >
+              {t('settings.dataMode.conflictDialog.append')}
+            </AlertDialogAction>
+            <AlertDialogAction
+              onClick={() => {
+                setSwitchFlow('idle')
+                void doSwitch('copy', 'replace')
+              }}
+            >
               {t('settings.dataMode.conflictDialog.replace')}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -235,10 +264,14 @@ function CloudModeSection({ signOut }: CloudModeSectionProps) {
 
       {/* ── Sign out flow dialogs ───────────────────────────────────────── */}
 
-      {/* Dialog 1: askOffline — offer to switch to offline or just sign out */}
-      {/* No onOpenChange: all state transitions are driven by the buttons */}
+      {/* Dialog 1: askOffline — offer to switch to offline or just sign out.
+          Cancel and Escape close it: still signed in, still cloud. Cancel is
+          its only `AlertDialogCancel`, so the focus starts there. "Just sign
+          out" was one too until 2026-11-24, and Radix focused it, so Enter
+          signed the person out. No onOpenChange: Radix calls it for every
+          button, so it cannot tell Cancel from a choice. */}
       <AlertDialog open={signOutFlow === 'askOffline'}>
-        <AlertDialogContent>
+        <AlertDialogContent onEscapeKeyDown={() => setSignOutFlow('idle')}>
           <AlertDialogHeader>
             <AlertDialogTitle>
               {t('settings.dataMode.signOutOfflineDialog.title')}
@@ -251,9 +284,12 @@ function CloudModeSection({ signOut }: CloudModeSectionProps) {
             <AlertDialogCancel onClick={() => setSignOutFlow('idle')}>
               {t('common.cancel')}
             </AlertDialogCancel>
-            <AlertDialogCancel onClick={() => doSignOut(false)}>
+            <AlertDialogAction
+              variant="neutral-outline"
+              onClick={() => doSignOut(false)}
+            >
               {t('settings.dataMode.signOutOfflineDialog.justSignOut')}
-            </AlertDialogCancel>
+            </AlertDialogAction>
             <AlertDialogAction onClick={() => setSignOutFlow('askMigrate')}>
               {t('settings.dataMode.signOutOfflineDialog.switchToOffline')}
             </AlertDialogAction>
@@ -261,12 +297,26 @@ function CloudModeSection({ signOut }: CloudModeSectionProps) {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Dialog 2: askMigrate — offer to copy data before switching */}
-      {/* No onOpenChange: all state transitions are driven by the buttons */}
+      {/* Dialog 2: askMigrate — offer to copy data before switching.
+          Cancel and Escape cancel the whole sign-out (owner, 2026-11-24:
+          Cancel cancels the action the person is trying to do). They close
+          the flow, not go back to askOffline: still signed in, still cloud,
+          nothing copied. Cancel is the only `AlertDialogCancel`, so the focus
+          starts there; Skip was one until 2026-11-24, so Enter switched to
+          offline and signed out. Both are off while the copy runs. No
+          onOpenChange: Radix calls it for every button. */}
       <AlertDialog
         open={signOutFlow === 'askMigrate' || signOutFlow === 'migrating'}
       >
-        <AlertDialogContent>
+        <AlertDialogContent
+          onEscapeKeyDown={(event) => {
+            if (signOutFlow === 'migrating') {
+              event.preventDefault()
+              return
+            }
+            setSignOutFlow('idle')
+          }}
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>
               {t('settings.dataMode.signOutMigrateDialog.title')}
@@ -275,13 +325,20 @@ function CloudModeSection({ signOut }: CloudModeSectionProps) {
           <AlertDialogDescription>
             {t('settings.dataMode.signOutMigrateDialog.description')}
           </AlertDialogDescription>
-          <AlertDialogFooter>
+          <AlertDialogFooter className="flex-wrap">
             <AlertDialogCancel
+              disabled={signOutFlow === 'migrating'}
+              onClick={() => setSignOutFlow('idle')}
+            >
+              {t('common.cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="neutral-outline"
               disabled={signOutFlow === 'migrating'}
               onClick={() => doSignOut(true, false)}
             >
               {t('settings.dataMode.signOutMigrateDialog.skip')}
-            </AlertDialogCancel>
+            </AlertDialogAction>
             <AlertDialogAction
               disabled={signOutFlow === 'migrating'}
               onClick={() => doSignOut(true, true)}
@@ -389,9 +446,16 @@ export function DataModeCard({ compact = false }: DataModeCardProps) {
         </CardContent>
       </Card>
 
-      {/* ① Confirm dialog — no onOpenChange: buttons drive transitions */}
+      {/* The three questions of the local → cloud switch. Each one's Cancel
+          and Escape do the same thing (issue #405): ① and ② close, nothing
+          is stored and the mode stays local; ③ goes back to ②. No
+          onOpenChange on any of them: Radix calls it for every button, so it
+          cannot tell Cancel from a choice. */}
+      {/* ① Confirm dialog */}
       <AlertDialog open={enableFlow.kind === 'confirm'}>
-        <AlertDialogContent>
+        <AlertDialogContent
+          onEscapeKeyDown={() => setEnableFlow({ kind: 'idle' })}
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>
               {t('settings.dataMode.enableDialog.title')}
@@ -413,9 +477,13 @@ export function DataModeCard({ compact = false }: DataModeCardProps) {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* ② Copy local data? dialog — no onOpenChange: buttons drive transitions */}
+      {/* ② Copy local data? dialog. Cancel is its only `AlertDialogCancel`,
+          so the focus starts there. "Switch without copying" was one too
+          until issue #405, and Radix focused it, so Enter switched. */}
       <AlertDialog open={enableFlow.kind === 'copyAsk'}>
-        <AlertDialogContent>
+        <AlertDialogContent
+          onEscapeKeyDown={() => setEnableFlow({ kind: 'idle' })}
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>
               {t('settings.dataMode.enableCopyDialog.title')}
@@ -428,14 +496,15 @@ export function DataModeCard({ compact = false }: DataModeCardProps) {
             <AlertDialogCancel onClick={() => setEnableFlow({ kind: 'idle' })}>
               {t('common.cancel')}
             </AlertDialogCancel>
-            <AlertDialogCancel
+            <AlertDialogAction
+              variant="neutral-outline"
               onClick={() => {
                 localStorage.setItem(MIGRATION_PROMPTED_KEY, '1')
                 doEnableSwitch()
               }}
             >
               {t('settings.dataMode.enableCopyDialog.no')}
-            </AlertDialogCancel>
+            </AlertDialogAction>
             <AlertDialogAction
               onClick={() => setEnableFlow({ kind: 'strategyAsk' })}
             >
@@ -445,9 +514,11 @@ export function DataModeCard({ compact = false }: DataModeCardProps) {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* ③ Strategy dialog — no onOpenChange: buttons drive transitions */}
+      {/* ③ Strategy dialog */}
       <AlertDialog open={enableFlow.kind === 'strategyAsk'}>
-        <AlertDialogContent>
+        <AlertDialogContent
+          onEscapeKeyDown={() => setEnableFlow({ kind: 'copyAsk' })}
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>
               {t('settings.dataMode.enableStrategyDialog.title')}
