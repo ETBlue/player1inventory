@@ -137,6 +137,8 @@ export class ItemPage {
       .getByRole('button', { name: /add tag/i })
       .click()
     // Tag is created and immediately assigned (pressed: true) — no extra click needed.
+    // It shows as pressed while the assign is still being saved; it carries
+    // aria-busy="true" until the save is done (issue #402).
   }
 
   async ensureStockTab() {
