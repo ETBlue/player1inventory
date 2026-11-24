@@ -39,6 +39,50 @@ dashboards. "Main session" is the Claude session in the worktree. Never a subage
 
 ---
 
+## Results (recorded 2026-11-24, step A.3)
+
+**The households release is deployed to production.** Dates are UTC.
+
+| Release PR | `develop` into `main` | Merge | Merged | What went in |
+|---|---|---|---|---|
+| #403 | "release: households" | `16929909` | 2026-11-23 | households H3a to H7b, the E2E speed plan, #400 (settings layout), #401 (the invite link after sign-up). `develop` was at `e05ec1e7`, the commit B.7 tested |
+| #409 | "release: join page, fallback name and page height fixes" | `56d7de3a` | 2026-11-24 | #406, #407, #408. No migration |
+
+| Step | Result |
+|---|---|
+| B.5 rehearsal | all seven migrations applied on a fresh Neon branch of production; every check as expected; H6b-O36 = 0 |
+| B.6 `verify:migration` | 284 lines `ok`, 0 `FAIL:`, "Migration verified." |
+| B.7 E2E on Neon | all rows green on `e05ec1e7` |
+| D.5 Railway | **Railway did not start the deploy of #403 on its own.** The owner started it by hand. 7 migrations applied, server ready. The cause is not confirmed: the owner thinks the server may have been asleep at the time (Railway sleeping). Release #409 deployed on its own |
+| D.6 to D.12 | all passed. D.12 (H6b-O36) = 0 |
+| A.2 | replaced: `develop` was deleted on 2026-11-24 |
+
+**Lesson for the next release: after every merge to `main`, check that Railway really
+started a new deploy of that commit.** The merge alone does not prove it.
+
+Issues found during the release:
+
+| Issue or PR | What | State |
+|---|---|---|
+| #402 | item page: assign a new tag or vendor to the item; show a spinner while local data is copied to cloud | open, filed for later |
+| #404 | cooking: the quantity bar of a cooked item does not update until the page is opened again. Seen in D.8 (old bundle) and again in D.10 (new bundle) | open |
+| #405 | a Cancel button for the "Copy your cloud data to local storage?" dialog | open |
+| #406 (merge `5b3e6c7f`) | the join page said "User invited you." Bug doc `docs/global/bugs/2026-11-24-bug-fallback-display-name-never-fixed.md` | fixed in #409 |
+| #407 (merge `019299ae`) | a clearer role list on the join page (owner request) | shipped in #409 |
+| #408 (merge `b6286e84`) | extra space at the bottom of pages in iOS home-screen mode. Bug doc `docs/global/bugs/2026-11-24-bug-page-height-vh.md` | fixed in #409 |
+
+The owner checked #409 in production: page heights are fixed, the join page cards look
+right, and the inviter's real name is shown.
+
+**After this release, PRs still collect in `develop`.** The owner deleted `develop` on
+2026-11-24 and brought it back the same day, made again from `main` at `56d7de3a`, so that
+several PRs can be tested together on a local server before they go out. Every PR targets
+`develop`, and `develop` goes into `main` in batch releases. A merge to `main` deploys:
+Cloudflare builds the web, and Railway deploys the server. The rollback Neon branch
+`prod-before-households-2026-11-23` is kept until F.1 is deployed (A.4).
+
+---
+
 ## Summary
 
 ### Where this sits
@@ -165,20 +209,23 @@ Then the **follow-up release** (F).
 
 - [x] **Step 1 (owner):** answer R1 to R7 at the end of this file. R1 and R2 change steps
   below. **Answered 2026-11-23: all seven A.**
-- [ ] **Step 2 (owner):** merge this plan's PR into `develop`. Write down the new `develop`
+- [x] **Step 2 (owner):** merge this plan's PR into `develop`. Write down the new `develop`
   tip. Call it the **release commit**. Any later commit into `develop` that changes code
   (not only docs) makes B.6 and B.7 owed again.
 
-Result: release commit `TBD`.
+Result: this plan merged as #399 (`411a744a`). Two code PRs merged after it: #400
+(`4f9f5df8`) and #401 (`e05ec1e7`, the invite link after sign-up). So the release commit is
+**`e05ec1e7`**. B.7 ran on it. B.6 ran on `4f9f5df8`, and #401 changed no migration and no
+server script (`git diff --stat 4f9f5df8 e05ec1e7 -- apps/server/prisma/migrations apps/server/scripts` is empty).
 
 #### B.2 Check the live web build (H3a 2.1, extended)
 
 **Owner.** The shim was proved against `main`'s documents at `351d22ad`
 (`apps/server/src/test/fixtures/main-web-operations/`, `main-server-schema.graphql`).
 
-- [ ] **Step 1:** in the Cloudflare Pages dashboard, read the commit SHA of the live
+- [x] **Step 1:** in the Cloudflare Pages dashboard, read the commit SHA of the live
   production deployment of the web.
-- [ ] **Step 2 (main session, no database):**
+- [x] **Step 2 (main session, no database):**
 
   ```bash
   git merge-base --is-ancestor 8465406b <live-sha> && echo "OK: no userId selected"
@@ -190,15 +237,15 @@ documents the shim test checks). **If the diff is not 0**, the shim test does no
 live bundle. Stop and decide with the main session (run `oldBundleCompat.test.ts` against
 the live documents, or redeploy the web from `351d22ad` first).
 
-Result: live SHA `TBD`; OK / STOP; diff lines `TBD`.
+Result (2026-11-23): live SHA `351d22ad` (confirmed by the owner); OK; diff lines `0`.
 
 #### B.3 Count the devices (H3a 2.2 and H3b 2.1)
 
-- [ ] **Owner:** list every browser and home-screen PWA, in cloud mode AND in local mode.
+- [x] **Owner:** list every browser and home-screen PWA, in cloud mode AND in local mode.
   D.10 visits each one. Local mode matters because the new bundle runs Dexie versions 19 and
   20, which cannot be undone (H3b 1.4).
 
-Result: `TBD`.
+Result (2026-11-23): the owner said B.3 is done. The device list itself is not recorded.
 
 #### B.4 Settings outside the code
 
@@ -230,12 +277,15 @@ So the owner checks both again.
 About the Preview environment for row 1: not needed. The preview tier is not built, and a
 preview cannot sign in to the production Clerk instance (`docs/INDEX.md`, *environments*).
 
-- [ ] **Step 1 (main session, optional):** the "before" socket answer, H3c-1 2.2. Expected
+- [ ] **Step 1 (main session, optional, not run):** the "before" socket answer, H3c-1 2.2. Expected
   now: `error: no WebSocket answer`, then `closed 1006`. Type the host by hand; print
   nothing that shows it.
 
 Result: row 3 checked (four events, see above); row 6 done (automatic `main` deployments
-off since 2026-11-23); rows 1, 2, 4, 5 `TBD`; socket before `TBD`.
+off since 2026-11-23); rows 1 and 2 checked by the owner on 2026-11-23 ("all good"); row 4
+not recorded as a dashboard check (the sign-up redirect was fixed in code instead, #401, and
+the join page was later checked in production); row 5 not set, as R6-A decided; socket
+before not recorded (step 1 was not run).
 
 #### B.5 Rehearse all seven migrations on ONE fresh Neon branch of production
 
@@ -256,11 +306,11 @@ So on the rehearsal branch: `prisma migrate deploy`, `migrate status`, `migrate 
 read-only SQL. Nothing else. `verify:migration` and `migrate reset` run only against the
 `TEST_*` variables (B.6).
 
-- [ ] **Step 1 (owner):** in the Neon console, create a branch of the production branch, at
+- [x] **Step 1 (owner):** in the Neon console, create a branch of the production branch, at
   the current time, named `prod-rehearsal-households-<date>`. Put its pooled and direct
   connection strings into `PROD_COPY_DATABASE_URL` and `PROD_COPY_DIRECT_URL` in
   `apps/server/.env`. Nowhere else.
-- [ ] **Step 2 (main session): prove the override** (H3a 3.1). Run `migrate status` with and
+- [x] **Step 2 (main session): prove the override** (H3a 3.1). Run `migrate status` with and
   without the override. Record "different" or "same", never a host.
 
   ```bash
@@ -272,9 +322,9 @@ read-only SQL. Nothing else. `verify:migration` and `migrate reset` run only aga
 
   Success: hosts different, and the pending list is **exactly the seven** folders above. More
   than seven means production is behind `main`: S1.
-- [ ] **Step 3 (main session): before any migration**, run H3a 3.2 (A, B, C) and H3b 3.2
+- [x] **Step 3 (main session): before any migration**, run H3a 3.2 (A, B, C) and H3b 3.2
   (H3b-A to H3b-D). Keep the output.
-- [ ] **Step 4: park migrations 2 to 7, apply migration 1 only.**
+- [x] **Step 4: park migrations 2 to 7, apply migration 1 only.**
 
   ```bash
   cd apps/server
@@ -289,7 +339,7 @@ read-only SQL. Nothing else. `verify:migration` and `migrate reset` run only aga
 
   Then H3a 3.4 (queries 1 to 6) and H3a 3.5 (the cleanup counts). Any 3.5 count above 0 is
   production data that `drop_user_scope` will change: tell the owner before going on.
-- [ ] **Step 5: restore and apply migration 2.**
+- [x] **Step 5: restore and apply migration 2.**
 
   ```bash
   mv .migration-under-test/20261111000000_drop_user_scope prisma/migrations/
@@ -298,11 +348,11 @@ read-only SQL. Nothing else. `verify:migration` and `migrate reset` run only aga
 
   Then H3a 3.6, except the `migrate diff` row: with migrations 3 to 7 parked, the schema
   differs, and that is expected (H3b 3.3 says the same).
-- [ ] **Step 6: restore and apply migration 3.** Same pattern with
+- [x] **Step 6: restore and apply migration 3.** Same pattern with
   `20261114000000_shared_carts`. Then H3b 3.5 (queries 1 to 4, the H3b-B rows by hand, H3b-C
   again), and H4 3 (H4-A, H4-B, H4-C; H4 says to run them after the H3a and H3b
   migrations).
-- [ ] **Step 7: restore and apply migrations 4 to 7.**
+- [x] **Step 7: restore and apply migrations 4 to 7.**
 
   ```bash
   for m in 20261118000000_add_household_invites 20261120000000_add_household_activity \
@@ -317,15 +367,15 @@ read-only SQL. Nothing else. `verify:migration` and `migrate reset` run only aga
 
   Success: deploy exit 0 and four migrations applied; "Database schema is up to date!";
   `migrate diff` exit 0, "No difference detected."
-- [ ] **Step 8: the read-only checks after all seven.** H4 9.3 (H5b-1 to H5b-4), 11.3 (H6a-1
+- [x] **Step 8: the read-only checks after all seven.** H4 9.3 (H5b-1 to H5b-4), 11.3 (H6a-1
   to H6a-4), 12.3 (H6b-1 to H6b-4), 14.3 (H7b-1 to H7b-5). Run H7b-4 now: it is true only
   before any server points at the branch. Also the H3a 3.4 queries 1 and 3, and query C of
   H3a 3.2, again.
-- [ ] **Step 9: the deleted accounts.** H4 12.6 (H6b-O36) and H4 11.6 (all deleted
+- [x] **Step 9: the deleted accounts.** H4 12.6 (H6b-O36) and H4 11.6 (all deleted
   accounts), on this branch. Expected 0 for H6b-O36. **If H6b-O36 is not 0**, the one-off
   hand-over script of H4 12.6 does not exist yet. It must be written, reviewed and dry-run
   before the deploy day. S1 until then.
-- [ ] **Step 10 (owner):** H3a 3.8. Delete the rehearsal branch. Clear
+- [x] **Step 10 (owner):** H3a 3.8. Delete the rehearsal branch. Clear
   `PROD_COPY_DATABASE_URL` and `PROD_COPY_DIRECT_URL`.
 
 **Put every parked folder back even if a step fails.** Check with
@@ -334,6 +384,25 @@ later commit.
 
 Record every result in the runbook section it belongs to. Write the date and "rehearsal of
 the households release" beside each.
+
+**Result (rehearsal of the households release, 2026-11-23, run by the main session).** The
+branch was `prod-rehearsal-households-2026-11-23`. Only `migrate deploy`, `migrate status`,
+`migrate diff` and read-only SQL ran on it.
+
+| Step | Result |
+|---|---|
+| 2 | production, the copy, TEST and the local E2E database are 4 different databases. Exactly the 7 expected migrations were pending |
+| 3 | 1 old account had data but no `User` row. 0 duplicate cart rows, 0 bare-id carts |
+| 4 | 2 users, 2 households, 2 owner rows; 0 locations without an organizer; all 13 H3a 3.5 cleanup counts 0 |
+| 5 | row counts unchanged after `drop_user_scope`, except `User` 1 → 2 (expected). Counts: `User` 2, `Location` 5, `Item` 190, `Tag` 61, `TagType` 3, `Vendor` 23, `Recipe` 9, `Shelf` 13, `ItemStock` 193, `Cart` 42, `CartItem` 7, `InventoryLog` 1549, `ItemTag` 504, `ItemVendor` 401, `RecipeItem` 74 |
+| 6 | 0 duplicate pairs; 42 carts, 7 cart items, quantity sum 1; index `CartItem_cartId_itemId_key`; only `CartItem.userId` left; H3b-C 0; H4-A 0, H4-B 0, H4-C no rows |
+| 7 | 4 migrations applied; "Database schema is up to date!"; `migrate diff` exit 0, "No difference detected." |
+| 8 | H5b-1 to H5b-4, H6a-1 to H6a-4, H6b-1 to H6b-4, H7b-1 to H7b-5: all as expected (values in the H4 runbook, 9.3, 11.3, 12.3, 14.3) |
+| 9 | H6b-O36 = 0; H4 11.6 (all deleted accounts) = 0. No hand-over script is needed |
+| 10 | the owner deleted the rehearsal branch and cleared `PROD_COPY_*` (2026-11-23) |
+
+The results are written into the H4 runbook. The H3a and H3b runbooks' own result cells for
+this rehearsal are not filled; the numbers above are the record.
 
 #### B.6 `verify:migration` on the TEST database
 
@@ -348,7 +417,7 @@ speed plan S.6) moved the database guard to `src/lib/databaseUrl.ts`, and
 `scripts/databaseIsolation.ts` now re-exports it. So the script that guards the drop has not
 run since its guard moved.
 
-- [ ] **Step 1:**
+- [x] **Step 1:**
 
   ```bash
   pnpm --filter server exec tsx --env-file=<absolute path>/apps/server/.env scripts/verify-migration.ts
@@ -357,7 +426,9 @@ run since its guard moved.
   Success: "Migration verified.", every line `ok`, 0 `FAIL:`. This drops and rebuilds the
   TEST database's schema. It never touches production or its copy.
 
-Result: `TBD`.
+Result (2026-11-23, main session, with the owner's consent): exit 0, **284 lines `ok`, 0
+`FAIL:`**, "Migration verified." Run on a checkout of `4f9f5df8`. #401, merged after it,
+changed no migration and no server script.
 
 #### B.7 The whole cloud E2E suite on Neon (H4 15)
 
@@ -365,25 +436,39 @@ Result: `TBD`.
 `verify:migration` rebuilds the TEST schema the E2E server starts on. On a checkout of the
 release commit.
 
-- [ ] **Step 1:** `pnpm test:e2e:all:neon`
+- [x] **Step 1:** `pnpm test:e2e:all:neon`
 
 Success: every row green, 0 failed; the `cloud-neon` row collects the same tests as the last
 per-PR `cloud` row (220 on 2026-11-23); the commit is the release commit. Last measured
 2026-11-23 at `aa327e69`: 44m33s. Failure: S2.
 
-Result: `TBD` (rows, counts, commit, time).
+Result (2026-11-23, main session): commit `e05ec1e7` (the release commit), exit 0, every row
+green.
 
-#### B.8 One code check on the local stack (H3a 3.7, still `TBD`)
+| Row | Result | Time |
+|---|---|---|
+| `local` | 179 passed, 11 skipped | 3m48s |
+| `cloud-neon` (the whole cloud list) | 212 passed, 8 skipped (220 collected, the same as the last per-PR `cloud` row) | 36m13s |
+| `pwa` | 73 passed | 1m36s |
+
+The total wall-clock time is not recorded.
+
+#### B.8 One code check on the local stack (H3a 3.7)
 
 **Main session, local dev stack, cloud mode.** H3a 3.7 tests a `replace` import with
 name-only conflicts. It tests code, not production data. It was never filled in. Do it once
 before the release, as written there, and record the result. Optional only if the owner says
 so.
 
+- [x] Result (2026-11-23): the owner ran it on the local dev server and said "it works
+  well". The details (shelf names, cart item) are not recorded.
+
 #### B.9 Pick the deploy time
 
-- [ ] **Owner:** a time when nobody uses the app, with about two hours free. Tell any other
+- [x] **Owner:** a time when nobody uses the app, with about two hours free. Tell any other
   user to stop. Have the device list of B.3 at hand.
+
+  Result: the owner chose 2026-11-23 ("available all day today").
 
 ---
 
@@ -392,19 +477,24 @@ so.
 This is the order of H4 8.3 ("server first, then the web"), with the way to hold the two
 apart that R1 chooses. The steps below assume **R1 option A** (pause the Cloudflare build).
 
-- [ ] **D.1 (owner): the rollback branch** (H3a 4.1). In Neon, create a branch of production
+- [x] **D.1 (owner): the rollback branch** (H3a 4.1). In Neon, create a branch of production
   at the current time, named `prod-before-households-<date>`. Write the name down. Do not
   skip this because the rehearsal passed.
-- [ ] **D.2 (owner): pause the web.** In Cloudflare Pages, turn off automatic production
+  Result (2026-11-23): `prod-before-households-2026-11-23`.
+- [x] **D.2 (owner): pause the web.** In Cloudflare Pages, turn off automatic production
   builds from `main` (R1-A). The owner already did this on 2026-11-23 (B.4 row 6), so on
   the deploy day only check the setting still shows it off. Success: a push to `main` will
-  not start a production build.
-- [ ] **D.3 (owner): Railway stays on automatic deploy from `main`** under R1-A. (H3a 4.2
+  not start a production build. Result: still off on 2026-11-23.
+- [x] **D.3 (owner): Railway stays on automatic deploy from `main`** under R1-A. (H3a 4.2
   turned it off, to make the web go first. That reason is gone: see C1.) Check it is on.
-- [ ] **D.4 (owner): merge `develop` into `main`** with the method R2 chooses (R2-A: a PR
+  Result: on (owner, 2026-11-23). It still did not start the deploy; see D.5.
+- [x] **D.4 (owner): merge `develop` into `main`** with the method R2 chooses (R2-A: a PR
   from `develop` to `main`, "Create a merge commit"). **Never pass `--delete-branch`:**
   `develop` must stay. Write down the merge commit SHA.
-- [ ] **D.5 (owner): watch the Railway deploy.**
+  Result: the main session did it at the owner's request. PR #403, merged 2026-11-23 with a
+  merge commit, **`16929909`**. `develop` was at `e05ec1e7` (the B.7 commit), `main` at `351d22ad`. The PR
+  added exactly the 7 migrations of B.5.
+- [x] **D.5 (owner): watch the Railway deploy.**
   1. The build log ends with the start check passing. `start check FAILED:` means the build
      failed before the release command: no migration ran, the old server serves, the web is
      still paused. Stop and decide with the main session (H3a 4.4).
@@ -426,31 +516,70 @@ apart that R1 chooses. The steps below assume **R1 option A** (pause the Cloudfl
   4. A failed release command: S3 or S4.
   5. Wait until Railway shows the new deployment as active.
 
-  Result: build ok; seven lines seen; time taken.
-- [ ] **D.6 (owner or main session): the socket** (H3c-1 4). Run the H3c-1 2.2 command
+  Result (2026-11-23): **Railway did not start a deploy for `16929909` on its own.** Its
+  GitHub app had made a deployment for every earlier production release (the last one
+  `351d22ad`, 2026-11-04), but none for this merge. `railway.toml` had not changed. The
+  owner started the deploy by hand in the Railway dashboard. Then: build ok, "7 migrations
+  applied", server ready (owner). Time taken: not recorded.
+
+  The cause is not confirmed. The owner thinks the server may have been asleep at the time
+  (Railway sleeping). Release #409 on 2026-11-24 deployed on its own. **After every merge to
+  `main`, check that Railway started a new deploy of that commit.**
+- [x] **D.6 (owner or main session): the socket** (H3c-1 4). Run the H3c-1 2.2 command
   again. Success: `closed 4401 …`. This is the first proof that Railway passes the WebSocket
   upgrade. Failure: H3c-1 7.1. It does not block the release (live updates are extra), but
   write it down.
-- [ ] **D.7 (owner or main session, read-only, in the Neon SQL Editor on production):**
+  Result (2026-11-23, main session): `closed 4401 Unauthorized`. The first proof that
+  Railway passes the WebSocket upgrade.
+- [x] **D.7 (owner or main session, read-only, in the Neon SQL Editor on production):**
   H3a 5 with query 1 at `LIMIT 8` (all seven new migrations have `finished_at`, none
   `rolled_back_at`), queries 2 to 5, and the H3a 3.5 queries again; H3b 5 (checks 2 to 4).
   Do NOT run H7b-4 here: the new server already moves `dataUpdatedAt`.
-- [ ] **D.8 (owner): the old bundle on the new server** (H4 8.3, *What to check after the
+  Result (2026-11-23, run by the owner as one 24-row read-only query): all as expected.
+
+  | Check | Result |
+  |---|---|
+  | the 7 new migrations finished, none rolled back | 7 |
+  | users / households / owner rows | 2 / 2 / 2 |
+  | locations without an organizer; households without a location; dropped columns still there | 0, 0, 0 |
+  | the 13 H3a 3.5 cleanup counts | all 0 |
+  | H3b: duplicate pairs; cart index; `userId` columns left | 0; `CartItem_cartId_itemId_key`; `CartItem.userId` |
+  | H3b: carts / cart items / quantity sum | 42 / 7 / 1 (the same as the rehearsal) |
+  | H3b-C | 0 |
+
+  One row of the query, "migrations unfinished or rolled back (all)", gave 1, not 0. That
+  row was written too broadly: it counted the June row of
+  `20260609100000_permanent_vendor_carts`, rolled back on 2026-06-13 with
+  `migrate resolve --rolled-back` and applied again later. A second query confirmed
+  `applied_again_later = true`. Next time, leave out rows whose migration has a later
+  finished row.
+- [x] **D.8 (owner): the old bundle on the new server** (H4 8.3, *What to check after the
   server deploy, before the web deploy*). On a device that still has the OLD bundle:
   pantry and switcher load; Settings, Locations shows the lock on the first location; a
   checkout raises the stock by the cart amount; cooking one recipe lowers it. Failure: S5.
-- [ ] **D.9 (owner): resume the web.** Turn automatic production builds back on in
+  Result (2026-11-23): all works. One display bug: after cooking, the quantity bar of the
+  cooked item did not update until the page was opened again. The stock was right. Filed as
+  #404; it does not block the release.
+- [x] **D.9 (owner): resume the web.** Turn automatic production builds back on in
   Cloudflare, and start a production build of `main` at the merge commit (for example
   "Retry deployment" on the latest one, or a new deployment of `main`). Success: the
   production deployment's SHA is the merge commit.
-- [ ] **D.10 (owner): every device of B.3.**
+  Result (2026-11-23): done; automatic production builds are on again. The owner said the
+  Cloudflare deployment was done; its SHA is not recorded.
+- [x] **D.10 (owner): every device of B.3.**
   1. Cloud devices: open the app, accept the update prompt, reload. Last resort:
      `window.__unregisterServiceWorkers()` in the DevTools console. In the network tab, the
      `GetLocations` request must not contain `isDefault` (the new bundle). The 🏠 label shows
      the household name, not "My data" (the server is already new; see C4).
   2. Local-mode devices: accept the update, reload, open Shopping and one cart. DevTools,
      Application, IndexedDB, `Player1Inventory` shows version **200** (H3b 4.1).
-- [ ] **D.11 (owner): the smoke tests**, on the real account first, then on TEST accounts
+
+  Result (2026-11-23, owner): the 🏠 label shows the household name; `GetLocations` has no
+  `isDefault`; IndexedDB is at version 200; local data is still there; Shopping updates after
+  checkout (with a short delay). The cooking quantity still does not update in place with the
+  new bundle (#404, still open). The owner also asked for a Cancel button on the "Copy your
+  cloud data to local storage?" dialog (#405).
+- [x] **D.11 (owner): the smoke tests**, on the real account first, then on TEST accounts
   and a TEST household for anything that writes roles, offers or purges. Record each in its
   runbook.
 
@@ -469,10 +598,26 @@ apart that R1 chooses. The steps below assume **R1 option A** (pause the Cloudfl
   | H4 13.3 | switch, stale tab, Create new | needs one TEST person in two TEST households |
   | H4 14.5 | personal order, the four sorts | — |
 
-- [ ] **D.12 (main session, read-only, with consent): deleted accounts again.** H4 12.6 says
+  Result (2026-11-23 and 2026-11-24, owner): done. The result of each row above is not
+  recorded. What was found:
+
+  | Found | Fixed by |
+  |---|---|
+  | the join page said "User invited you." (a fallback display name that was never replaced) | #406, merge `5b3e6c7f`; bug doc `docs/global/bugs/2026-11-24-bug-fallback-display-name-never-fixed.md` |
+  | the owner asked for a clearer role list on the join page | #407, merge `019299ae` |
+  | extra space at the bottom of pages in iOS home-screen mode | #408, merge `b6286e84`; bug doc `docs/global/bugs/2026-11-24-bug-page-height-vh.md` |
+
+  All three went to production in release #409 (`develop` into `main`, merge `56d7de3a`,
+  2026-11-24, no migration; Railway started on its own). The owner checked in production:
+  page heights fixed, join page cards good, the inviter's real name shown.
+
+- [x] **D.12 (main session, read-only, with consent): deleted accounts again.** H4 12.6 says
   to count H6b-O36 again right after the server deploy, and also says "never on production
   itself". So the owner makes a new Neon branch of production now, the main session runs
   H6b-O36 there, and the owner deletes that branch. Expected 0.
+  Result (2026-11-24): **0**. The owner ran the query in the Neon SQL Editor on a fresh
+  branch of production, not the main session (that saved passing a connection string). No
+  hand-over script is needed.
 
 ---
 
@@ -487,15 +632,25 @@ apart that R1 chooses. The steps below assume **R1 option A** (pause the Cloudfl
   | browser DevTools, WS tab | close codes `4401` on a signed-in tab (H3c-1 7.2), `1013` repeating |
   | the app | a tab that reloads again and again (H4 13.4), the `HouseholdChangedNotice` after every load |
 
-- [ ] **A.2 (owner): bring `develop` level with `main`.** Under R2-A, `main` has one merge
+- [x] **A.2 (owner): bring `develop` level with `main`.** **Replaced (2026-11-24).** Under R2-A, `main` has one merge
   commit that `develop` lacks. Fast-forward `develop` to `main`
   (`git push origin origin/main:develop`, a fast-forward, no force) or open a PR, as R3
   decides. Check `git log origin/develop..origin/main --oneline` prints nothing.
-- [ ] **A.3 (main session): docs.** Fill every `TBD` the rehearsal and the deploy wrote. Mark
+
+  What happened instead: on 2026-11-24 the owner first deleted `develop` (it had no commit
+  that `main` lacked; no Cloudflare or Railway setting was tied to it, owner checked). Later
+  the same day the owner asked for it back, to test several PRs together on a local server
+  before a batch release. It was made again from `main` at `56d7de3a`, so `develop` and
+  `main` were level again. PRs target `develop`; `develop` goes into `main` in batch
+  releases.
+- [x] **A.3 (main session): docs.** Fill every `TBD` the rehearsal and the deploy wrote. Mark
   the households rows in `docs/INDEX.md` as deployed, with the date and the merge SHA. Close
   issue #359 (it stays open "until H3a merges and deploys").
+  Result (2026-11-24): this file, the H4 runbook, `docs/INDEX.md` and the root `CLAUDE.md`
+  are updated on `docs/households-release-results`. Issue #359 is left for the owner to
+  close. A value the session record does not hold is written as "not recorded".
 - [ ] **A.4 (owner): keep the rollback branch** of D.1 until F.1 is deployed, then delete
-  it.
+  it. Status 2026-11-24: `prod-before-households-2026-11-23` is kept.
 
 ---
 

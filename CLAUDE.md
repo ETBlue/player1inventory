@@ -109,6 +109,10 @@ that really set up that role.
 
 ## Authorization (cloud)
 
+**All of H3a, H3b, H3c-1, H3c-2, H4, H5a, H5b, H5c, H6a, H6b, H7a and H7b are deployed to
+production** (2026-11-23, release #403, merge `16929909`). Where a paragraph below says
+"merged into `develop` … not deployed", it describes the state before that release.
+
 > See `docs/global/permissions/2026-10-04-households-design.md` (which replaces the role table of `docs/global/permissions/2026-08-29-design-location-rbac.md`). Rights come from roles, not from having created the row. **Households are built in H3a** (merged into `develop` in #375, not deployed; deploy steps in `docs/global/backend/2026-11-11-deploy-runbook-households-h3a.md`). **Shared carts are built in H3b** (merged into `develop` in #377, not deployed; deploy steps in `docs/global/backend/2026-11-15-deploy-runbook-households-h3b.md`): a cart belongs to its location, every cart read and write is scoped by location role, `Cart.userId` is dropped, and `CartItem.userId` means only "added by". **Import and export are built in H4** (merged into `develop` in #382, merge `bf87e839`, not deployed; deploy steps in `docs/global/backend/2026-11-17-deploy-runbook-households-h4.md`). H4 needs the **server before the web**, the opposite of H3a; that runbook says how the two rules fit in one release. Each person still has exactly one household until H5b (invites), so nothing is shared yet in production.
 >
 > **Roles in the web, read-only views and empty households are built in H5a** (merged into `develop` in #384, merge `4307d30a`, 2026-11-18; not deployed; plan `docs/global/permissions/2026-11-17-households-plan-h5.md`; deploy notes in section 8 of the H4 runbook). **The households release deploys the SERVER first, then the web** (owner decision 2026-11-17, option 4; runbook section 8.3). For that, the server keeps a one-release shim: see *Old-bundle shim* below. What H5a adds:
@@ -494,7 +498,7 @@ that really set up that role.
 > `docs/global/backend/2026-11-16-deploy-runbook-households-h3c-1.md` (section 9 is H3c-2).
 >
 > **Built in households H3c-1 and H3c-2 (2026-11-16).** H3c-1 is merged into `develop`
-> (#379), and so is H3c-2 (#380). Neither is deployed. A change in one
+> (#379), and so is H3c-2 (#380). Both are deployed (release #403, 2026-11-23). A change in one
 > tab reaches the other open tabs of the same household within about a second. The event
 > says only "this changed" (`kind`, `locationId`); the web refetches.
 >
@@ -1633,18 +1637,41 @@ Use git worktrees by default for feature work. Create isolated workspaces in `.w
 
 **Worktree before implementation (mandatory):** After brainstorming is complete and the branch name is derived, before writing the design doc, always create a git worktree using `superpowers:using-git-worktrees` (or follow the manual steps in "Advanced: Git Worktrees" below if the skill is unavailable). All subsequent work — design doc, implementation plan, and code — happens inside the worktree. Branch name is derived from the brainstorming topic: choose `feature/`, `fix/`, `refactor/`, or `docs/` prefix based on context, then add a short kebab-case topic (e.g. brainstorming about cooking expand/collapse → `feature/cooking-expand`).
 
-**Households work targets `develop`, not `main` (since 2026-11-12).** A merge to `main`
-deploys to production: Cloudflare Pages builds the web, and Railway deploys the server. So
-until the households feature is done, households phase PRs (H3a onward) use `develop` as their
-base, and `develop` is merged into `main` only at planned **checkpoint releases**. Each
-checkpoint has its own deploy runbook and a fresh rehearsal on a Neon branch of production.
-Base a households branch on `origin/develop` and rebase onto it. **No changes go to `main`
-until households is done.** The owner decided this on 2026-11-13 ("I'll not touch branch main
-before the household feature is done"). So the question of how a `main` hotfix reaches
-`develop` is closed. If that ever changes, ask the owner first: rebasing `develop` onto `main`
-rewrites a shared branch and needs a force-push, and merging `main` into `develop` breaks the
-rebase rule below. See `docs/global/permissions/2026-10-31-households-plan.md`, *How this plan
-is split*.
+**Every PR targets `develop`. `develop` goes into `main` in batch releases.** A merge to
+`main` deploys to production: Cloudflare Pages builds the web, and Railway deploys the
+server (and runs `prisma migrate deploy`). A merge to `develop` deploys nothing, so the owner
+can test several PRs together on a local server first. Base every branch on
+`origin/develop` and rebase onto it. A release is a PR from `develop` to `main`, merged with
+"Create a merge commit", never with `--delete-branch`.
+
+History: from 2026-11-12 to 2026-11-23 the households phases (H3a to H7b) collected in
+`develop` and went to production together in release #403 (merge `16929909`). On 2026-11-24
+the owner deleted `develop`, then asked for it back the same day for batch testing. It was
+made again from `main` at `56d7de3a`. See `docs/global/backend/2026-11-23-households-release-plan.md`,
+*Results*.
+
+**After a release, bring `develop` level with `main`.** The release merge commit is on
+`main` only. Fast-forward `develop` with `git push origin origin/main:develop` (no force),
+when no PR has merged into `develop` since the release. Check that
+`git log origin/develop..origin/main --oneline` prints nothing.
+
+**When the web needs a server change first, put them in two releases.** For example, the web
+selects a new field or sends a new argument that today's server does not know. One release
+deploys both apps at about the same time, so the new web would talk to the old server for a
+while and fail GraphQL validation.
+
+1. Release the server change first: the schema, the resolvers and their tests.
+2. Wait until Railway shows the new deployment of that commit as active.
+3. Release the web change after that.
+
+The server change must keep today's web documents valid: add fields and OPTIONAL arguments
+only. A new required argument that a web document omits makes `pnpm codegen` write nothing
+(see *`pnpm codegen` is all-or-nothing* above), and the old web would fail on it anyway.
+
+**After every merge to `main`, check that Railway started a new deploy of that commit.** In
+release #403 it did not, and the owner had to start the deploy by hand. The cause is not
+confirmed (the owner thinks the server may have been asleep). Release #409 deployed on its
+own.
 
 **Absorbing upstream changes: always rebase, never merge**
 
