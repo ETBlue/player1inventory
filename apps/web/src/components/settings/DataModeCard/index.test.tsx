@@ -1027,6 +1027,83 @@ describe('DataModeCard — backing out of signing out', () => {
     expectStillSignedIn()
   })
 
+  // The second question, "Copy cloud data to this device?" (owner,
+  // 2026-11-24): Cancel cancels the whole sign-out, not just this step.
+  async function openCopyQuestion(user: ReturnType<typeof userEvent.setup>) {
+    localStorage.setItem('data-mode', 'cloud')
+    renderCard()
+    await user.click(screen.getByRole('button', { name: 'Sign Out' }))
+    await user.click(screen.getByRole('button', { name: 'Switch to offline' }))
+    expect(
+      screen.getByRole('heading', { name: 'Copy cloud data to this device?' }),
+    ).toBeInTheDocument()
+  }
+
+  it('user who presses Enter right after the sign-out copy question opens is not signed out', async () => {
+    // Given the sign-out copy question is open
+    const user = userEvent.setup()
+    await openCopyQuestion(user)
+
+    // Then the focus is on Cancel
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus()
+
+    // When the user presses Enter
+    await user.keyboard('{Enter}')
+
+    // Then the whole sign-out is cancelled
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument(),
+    )
+    expectStillSignedIn()
+  })
+
+  it('user can cancel signing out from the sign-out copy question', async () => {
+    // Given the sign-out copy question is open
+    const user = userEvent.setup()
+    await openCopyQuestion(user)
+
+    // When the user clicks Cancel
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    // Then no question is open (not even "Switch to offline mode?"), and
+    // the person is still signed in, in cloud mode
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument(),
+    )
+    expectStillSignedIn()
+  })
+
+  it('user can close the sign-out copy question with Escape', async () => {
+    // Given the sign-out copy question is open
+    const user = userEvent.setup()
+    await openCopyQuestion(user)
+
+    // When the user presses Escape
+    await user.keyboard('{Escape}')
+
+    // Then it is the same as Cancel
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument(),
+    )
+    expectStillSignedIn()
+  })
+
+  it('user can still skip the copy and switch to offline', async () => {
+    // Given the sign-out copy question is open
+    const user = userEvent.setup()
+    await openCopyQuestion(user)
+
+    // When the user clicks Skip
+    await user.click(screen.getByRole('button', { name: 'Skip' }))
+
+    // Then they are signed out and switched to local mode, with no copy
+    await waitFor(() => expect(reloadMock).toHaveBeenCalledOnce())
+    expect(signOutMock).toHaveBeenCalledOnce()
+    expect(localStorage.getItem('data-mode')).toBe('local')
+    expect(fetchCloudPayload).not.toHaveBeenCalled()
+    expect(importLocalData).not.toHaveBeenCalled()
+  })
+
   it('user can still just sign out', async () => {
     // Given cloud mode, with the sign-out question open
     localStorage.setItem('data-mode', 'cloud')
