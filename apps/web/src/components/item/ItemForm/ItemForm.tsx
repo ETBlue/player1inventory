@@ -5,7 +5,8 @@ import {
   Package,
   PackageOpen,
 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { QuantityStepper } from '@/components/item/QuantityStepper'
 import { StockProgressRow } from '@/components/item/StockProgressRow'
@@ -114,6 +115,16 @@ interface ItemFormProps {
    * steppers, Pack, Unpack, Clear and Fill to Full are disabled.
    */
   readOnly?: boolean
+  /**
+   * Where Save goes (owner decision 2026-11-25). Left out: Save is the last
+   * row of the form, full width. An element: Save is rendered into it with a
+   * React portal, as a `<button type="submit" form={id}>` linked to this form
+   * by the HTML `form` attribute, so a click, Enter in a field, the
+   * validation and `isPending` work as before. `null`: the element is not
+   * there yet (the item page's top bar mounts first), so no Save shows.
+   * The item page's Info and Stock tabs pass the top bar's slot.
+   */
+  submitSlot?: HTMLElement | null
 }
 
 export function ItemForm({
@@ -125,8 +136,10 @@ export function ItemForm({
   submitLabel,
   isPending = false,
   readOnly = false,
+  submitSlot,
 }: ItemFormProps) {
   const { t } = useTranslation()
+  const formId = useId()
   const merged = { ...DEFAULT_VALUES, ...initialValues }
 
   const [packedQuantity, setPackedQuantity] = useState(merged.packedQuantity)
@@ -457,6 +470,7 @@ export function ItemForm({
 
   return (
     <form
+      id={formId}
       onSubmit={handleSubmit}
       className="space-y-4 max-w-2xl mx-auto"
       noValidate
@@ -1002,7 +1016,7 @@ export function ItemForm({
         </div>
       )}
 
-      {!readOnly && (
+      {!readOnly && submitSlot === undefined && (
         <div className="space-y-2">
           <Button
             type="submit"
@@ -1014,6 +1028,24 @@ export function ItemForm({
           </Button>
         </div>
       )}
+      {/* In the top bar: a visible label, not an icon. "Save" (儲存) is one
+          short word, so it fits beside the back button and the truncated
+          item name at 390 px, and it reads more clearly than an icon. The
+          default size has the back button's height (h-8). */}
+      {!readOnly &&
+        submitSlot &&
+        createPortal(
+          <Button
+            type="submit"
+            form={formId}
+            disabled={isSubmitDisabled}
+            isLoading={!!isPending}
+            className="shrink-0"
+          >
+            {submitLabel ?? t('common.save')}
+          </Button>,
+          submitSlot,
+        )}
     </form>
   )
 }

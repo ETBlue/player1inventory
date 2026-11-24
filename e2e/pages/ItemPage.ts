@@ -62,8 +62,13 @@ export class ItemPage {
     // docs/features/items/2026-11-24-item-tabs-flat-design.md, part A): it
     // shows the toast "Saved" (`items.detail.saved`, routes/items/$id/index.tsx
     // and stock.tsx) and disables Save again. Wait for both, so the caller can
-    // rely on the write having finished.
-    const saveButton = this.page.getByRole('button', { name: /save/i })
+    // rely on the write having finished. Since 2026-11-25 Save is in the
+    // item page's top bar, outside the <form> (owner decision; ItemForm's
+    // `submitSlot`, routes/items/$id.tsx).
+    const saveButton = this.page.getByRole('button', {
+      name: 'Save',
+      exact: true,
+    })
     await saveButton.click()
     await this.page
       .getByText('Saved', { exact: true })

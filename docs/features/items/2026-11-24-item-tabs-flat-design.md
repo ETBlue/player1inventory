@@ -43,6 +43,22 @@ Not changed:
 ## B. One flat tab row
 
 - Row 1 (top bar): back, the item name, and the current tab's Save when it has one.
+  - **Update 2026-11-25.** PR #417 shipped with Save still at the bottom of each form. The
+    owner then chose to move it into the top bar ("I prefer moving the save button to top
+    bar", brainstorming Q4). Since branch `feature/item-save-top-bar`, Save on Info and
+    Stock is in row 1 and no longer at the bottom of the form. Tags, Vendors, Recipes and
+    Log have no Save, so row 1 shows none there.
+  - How: `$id.tsx` puts an empty slot element at the end of row 1 (`toolbarEnd`) and shares
+    it through `useItemLayout()` (`saveSlot`). The Info and Stock tabs pass it to `ItemForm`
+    as `submitSlot`, and `ItemForm` renders its Save there with a React portal, as
+    `<button type="submit" form="<form id>">`. The HTML `form` attribute links the button to
+    the form, so a click, Enter in a field, the validation, the spinner and the unit-switch
+    dialog work as before. A read-only person (household `member` on Info, location
+    `viewer` on Stock) gets no Save, as before.
+  - On a phone (390 px) row 1 is back, the item name (truncated) and Save with its visible
+    label "Save" (「儲存」). A short word is clearer than an icon and fits. The button has the
+    default size (`h-8`), the same height as the back button.
+  - **Delete item** did not move.
 - Row 2: Info · Stock · Tags · Vendors · Recipes · Log.
   - Below the `sm` width: icons only. Each tab keeps its name as its accessible name
     (`aria-label`, or visually hidden text).
@@ -72,6 +88,11 @@ Not changed:
 - E2E: update the item page object and every spec that clicks Relation or expects Save to
   leave the page. Add axe scans of the item page tab row in light and dark mode, at 390 px
   and at desktop width (`a11y.spec.ts`).
+- Since 2026-11-25: Save is in the top bar on Info and Stock and submits the form; it is
+  absent on Tags, Vendors, Recipes and Log and for a read-only person; disabled while the
+  form is clean (`$id/saveTopBar.test.tsx`, `ItemForm.test.tsx`). Enter in a field still
+  saves (E2E only, `item-management.spec.ts`: jsdom's user-event does not follow the `form`
+  attribute). The tab row a11y scans also check that Save fits row 1 and scan it enabled.
 
 ## Not in this design
 
