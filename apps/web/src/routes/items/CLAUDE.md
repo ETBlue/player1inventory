@@ -119,8 +119,10 @@ The **cart rows themselves survive** (they are shared by every item in the locat
 - Tag assignment interface with uppercase text styling for tag type names
 - Click badges to toggle tag assignment (selected tags show X icon)
 - Visual dividers between tag type sections
-- Inline tag creation via "New Tag" buttons (opens `AddNameDialog`)
+- Inline tag creation via "New Tag" buttons (opens `AddNameDialog`): creates the tag and immediately assigns it to this item
 - Changes apply immediately without save button
+
+**A tag or vendor created on this page is assigned to the item, in both modes** (since 2026-03-23 for tags, `e6253d2e`; checked again for issue #402 on 2026-11-24). It is two writes: the create (`useCreateTag` / `useCreateVendor`), then `useUpdateItem` with the item's list plus the new id. Cloud has no single write for this: `createTag` and `createVendor` take no item, and adding that would be a server change. When the create succeeds and the assign fails, the dialog closes (trying again would create a second tag or vendor), the new row exists but is not on the item, and `showSaveError` shows "Could not save the change. Please try again." The user can press the new badge to assign it. Tests: local `tags.test.tsx` "… automatically assigned to the item" and `vendors.test.tsx` "user can create a new vendor from the vendors tab"; cloud `relation/createAssign.cloud.test.tsx` (the assign is sent with the old ids kept); the failed assign in `$id/saveFailed.cloud.test.tsx` and in both local files. Removing the assign call turns all four success tests red. The settings pages' create flows assign nothing; they have no item.
 
 **3b. Vendors (`/items/$id/relation/vendors`)**
 - Vendor assignment interface: click-to-toggle badges, immediate save

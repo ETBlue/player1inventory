@@ -172,6 +172,10 @@ describe('PostLoginMigrationDialog stories smoke tests', () => {
       expect(
         await screen.findByText('Copying local data to cloud…'),
       ).toBeInTheDocument()
+      // And the spinner shows while it runs (issue #402)
+      expect(
+        screen.getByRole('status', { name: 'Copying local data to cloud…' }),
+      ).toBeInTheDocument()
     })
 
     it('AskBeforeClear asks for the household name before a clear copy', async () => {
