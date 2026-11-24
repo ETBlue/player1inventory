@@ -8,12 +8,12 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   useCreateTag,
+  useCreateTagType,
   useItem,
   useTagsWithDepth,
   useTagTypes,
   useUpdateItem,
 } from '@/hooks'
-import { useAddTagType } from '@/hooks/useAddTagType'
 import { usePermissions } from '@/hooks/usePermissions'
 import { showSaveError } from '@/lib/saveError'
 import type { TagColor } from '@/types'
@@ -137,7 +137,7 @@ function TagsTab() {
   const createTag = useCreateTag()
   const [newTagTypeOpen, setNewTagTypeOpen] = useState(false)
   const [newTagTypeName, setNewTagTypeName] = useState('')
-  const addTagType = useAddTagType()
+  const createTagType = useCreateTagType()
   const [loadingTagId, setLoadingTagId] = useState<string | null>(null)
   // Issue #402: a new tag is created, then assigned to the item in a second
   // write. Between the two, the tag list already shows the new tag but the
@@ -286,11 +286,12 @@ function TagsTab() {
         title={t('items.tags.newTagType.dialogTitle')}
         submitLabel={t('common.add')}
         name={newTagTypeName}
+        isPending={createTagType.isPending}
         onNameChange={setNewTagTypeName}
         onAdd={async () => {
           if (!newTagTypeName.trim()) return
           try {
-            await addTagType({ name: newTagTypeName.trim() })
+            await createTagType.mutateAsync({ name: newTagTypeName.trim() })
           } catch (err) {
             // The dialog stays open with the name, so the user can try again
             showSaveError(err)

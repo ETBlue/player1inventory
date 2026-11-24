@@ -456,4 +456,38 @@ describe('Item page - a new tag or vendor shows as selected at once (cloud)', ()
     await rejections.settle()
     expect(rejections.list).toEqual([])
   })
+
+  it('user sees the New tag type button loading while the tag type is created', async () => {
+    const user = userEvent.setup()
+    // Given an item page with no tag types, and a server that holds the
+    // create of the tag type
+    cloudServer.queries.useGetTagTypesQuery = { tagTypes: [] }
+    const create = holdMutation('useCreateTagTypeMutation')
+    renderPage('/items/item-flour/tags')
+
+    // When the user adds a tag type named "Season"
+    await user.click(
+      await screen.findByRole('button', { name: /new tag type/i }),
+    )
+    await user.type(screen.getByLabelText(/name/i), 'Season')
+    await user.click(screen.getByRole('button', { name: /^add$/i }))
+
+    // Then, while it is being created, the Add button is disabled and shows
+    // a spinner
+    await waitFor(() =>
+      expect(cloudServer.calls.useCreateTagTypeMutation).toHaveLength(1),
+    )
+    const add = screen.getByRole('button', { name: /^add$/i })
+    await waitFor(() => expect(add).toBeDisabled())
+    expect(add.querySelector('.animate-spin')).not.toBeNull()
+
+    // When the server answers, the dialog closes
+    create.release()
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+    )
+    expect(toastError).not.toHaveBeenCalled()
+    await rejections.settle()
+    expect(rejections.list).toEqual([])
+  })
 })
