@@ -20,7 +20,7 @@ Vendor CRUD at `/settings/household/vendors`. Vendors are separate entities (not
 
 **Settings link**: the household sidebar (`src/components/global/Sidebar/HouseholdSidebar.tsx`) and the mobile `/settings` accordion (`src/routes/settings/index.tsx`), both with the `Store` icon
 
-**Assignment UI**: `src/routes/items/$id/relation/vendors.tsx` — Vendors subtab in item detail (under the Relation tab). Click-to-toggle badges, immediate save via `useUpdateItem`. "New Vendor" button inline with badges opens `AddNameDialog` to create and immediately assign a vendor. No Save button (same as tags tab).
+**Assignment UI**: `src/routes/items/$id/vendors.tsx` — Vendors tab of the item page (its own tab since 2026-11-24; it was under a Relation tab before). Click-to-toggle badges, immediate save via `useUpdateItem`. "New Vendor" button inline with badges opens `AddNameDialog` to create and immediately assign a vendor. No Save button (same as tags tab).
 
 **Vendor detail page**: `src/routes/settings/household/vendors/$id.tsx` — Tabbed layout (Info + Items). Info tab: edit vendor name with Save button. Items tab: combined search+create input with a searchable checklist of all items showing their current vendor assignments; saves immediately when a checkbox is clicked (no staged state, no Save button), same pattern as the Tags tab. Typing a name that matches no items reveals a `+ Create "<name>"` row — clicking it or pressing Enter creates the item inline (no dialog) and immediately assigns it to this vendor; pressing Escape clears the input.
 

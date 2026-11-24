@@ -400,10 +400,10 @@
     "detail": {
       "notFound": "查無此品項",
       "saved": "已儲存",
+      "tabsLabel": "品項分頁",
       "tabs": {
         "info": "基本資訊",
         "stock": "庫存",
-        "relations": "關聯",
         "tags": "標籤",
         "vendors": "供應商",
         "recipes": "食譜",

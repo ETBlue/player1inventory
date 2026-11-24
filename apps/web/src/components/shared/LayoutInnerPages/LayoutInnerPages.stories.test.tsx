@@ -1,5 +1,5 @@
 import { composeStories } from '@storybook/react'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './LayoutInnerPages.stories'
 
@@ -28,10 +28,18 @@ describe('LayoutInnerPages stories smoke tests', () => {
     expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument()
   })
 
-  it('WithTabs renders tab links', () => {
+  it('WithTabs renders the tab row under the toolbar, each tab named', () => {
     render(<WithTabs />)
-    expect(screen.getByRole('link', { name: 'Info tab' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Tags tab' })).toBeInTheDocument()
+    const row = screen.getByRole('navigation', { name: 'Sections' })
+    expect(within(row).getByRole('link', { name: 'Info' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    expect(within(row).getByRole('link', { name: 'Tags' })).toBeInTheDocument()
+    // The row is a second row, not inside the toolbar with the back button
+    const toolbar = screen.getByRole('button', { name: /go back/i })
+      .parentElement as HTMLElement
+    expect(toolbar).not.toContainElement(row)
   })
 
   it('WithScrollableContent renders children', () => {

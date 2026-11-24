@@ -16,7 +16,7 @@ import {
 import { showSaveError } from '@/lib/saveError'
 import type { RecipeItem } from '@/types'
 
-export const Route = createFileRoute('/items/$id/relation/recipes')({
+export const Route = createFileRoute('/items/$id/recipes')({
   component: RecipesTab,
 })
 

@@ -183,7 +183,7 @@ describe.each(people)('$who on the item page', (person) => {
     await seed()
     const milk = await makeMilk()
     person.as()
-    renderAt(`/items/${milk.id}/relation/${tab}`)
+    renderAt(`/items/${milk.id}/${tab}`)
     const main = await screen.findByRole('main')
 
     // Present first: the row's badge

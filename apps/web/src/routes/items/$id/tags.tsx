@@ -18,7 +18,7 @@ import { usePermissions } from '@/hooks/usePermissions'
 import { showSaveError } from '@/lib/saveError'
 import type { TagColor } from '@/types'
 
-export const Route = createFileRoute('/items/$id/relation/tags')({
+export const Route = createFileRoute('/items/$id/tags')({
   component: TagsTab,
 })
 
