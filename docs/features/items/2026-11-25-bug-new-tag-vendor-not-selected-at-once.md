@@ -81,4 +81,4 @@ the reload is what checks the saved state.
 
 ## PR / commit
 
-*TBD*
+PR #418 into `develop`. Commits `2036a44a` (the badge), `cf45f739` (the tag type dialog).
