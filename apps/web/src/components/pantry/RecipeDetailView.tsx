@@ -292,7 +292,7 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
   const inactiveDisplayed = displayedItems.filter((item) => isInactive(item))
 
   return (
-    <div className="h-screen grid grid-rows-[auto_1fr]">
+    <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
       <div>
         <ItemListToolbar
           className="border-b-1"

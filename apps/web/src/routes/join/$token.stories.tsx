@@ -81,6 +81,18 @@ export const Valid: Story = {
   ),
 }
 
+/** A valid invite with a household role and no location roles: no locations title, no list. */
+export const NoLocations: Story = {
+  beforeEach: cloudRoleStorySetup,
+  render: () => (
+    <CloudRolePage
+      path={JOIN_PATH}
+      householdRole="owner"
+      mocks={previewMocks({ ...VALID, locationRoles: [] })}
+    />
+  ),
+}
+
 export const AlreadyMember: Story = {
   beforeEach: cloudRoleStorySetup,
   render: () => (

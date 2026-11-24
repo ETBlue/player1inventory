@@ -107,10 +107,10 @@ describe('userFake applies where key by key, and throws on a key it does not kno
     // Then it throws, and names the path to the key
     await expect(
       fake.client.updateMany({
-        where: { id: 'user_none', OR: [{ deletedAt: null }] },
+        where: { id: 'user_none', OR: [{ email: null }] },
         data: { lastSeenAt: TODAY },
       }),
-    ).rejects.toThrow(/'OR\[0\]\.deletedAt'/)
+    ).rejects.toThrow(/'OR\[0\]\.email'/)
   })
 })
 
@@ -906,5 +906,99 @@ describe('userFake models locationSort (households H7b, task M.1, decision T74)'
       select: { locationSort: true },
     })
     expect(row).toEqual({ locationSort: 'custom' })
+  })
+})
+
+describe('userFake models the fallback name guard (2026-11-24, lib/userRow.ts)', () => {
+  // The write `refreshFallbackName` sends: "this user, still on the fallback
+  // name, and not deleted".
+  const guard = (id: string) => ({ id, displayName: 'User', deletedAt: null })
+
+  it('displayName matches only a row with exactly that name', async () => {
+    // Given one row on the fallback name and one with a real name
+    const fake = createUserFake([
+      userRow('user_a', { displayName: 'User' }),
+      userRow('user_b', { displayName: 'Real Name' }),
+    ])
+
+    // When updateMany asks for the fallback name
+    const result = await fake.client.updateMany({
+      where: { displayName: 'User' },
+      data: { displayName: 'Fixed' },
+    })
+
+    // Then only the fallback row changed
+    expect(result).toEqual({ count: 1 })
+    expect(fake.state.rows.map((r) => r.displayName)).toEqual(['Fixed', 'Real Name'])
+  })
+
+  it('deletedAt null does not match a deleted row', async () => {
+    // Given a deleted row on the fallback name
+    const deletedAt = new Date('2026-10-30T00:00:00.000Z')
+    const fake = createUserFake([userRow('user_a', { displayName: 'User', deletedAt })])
+
+    // When the guarded write runs
+    const result = await fake.client.updateMany({
+      where: guard('user_a'),
+      data: { displayName: 'Fixed' },
+    })
+
+    // Then nothing changed
+    expect(result).toEqual({ count: 0 })
+    expect(fake.state.rows[0]?.displayName).toBe('User')
+  })
+
+  it('deletedAt accepts only null, and displayName only a plain value', async () => {
+    const fake = createUserFake([userRow('user_a')])
+    await expect(
+      fake.client.updateMany({ where: { deletedAt: { lt: TODAY } }, data: {} }),
+    ).rejects.toThrow(UnsupportedWhereFilterError)
+    await expect(
+      fake.client.updateMany({ where: { displayName: { in: ['User'] } }, data: {} }),
+    ).rejects.toThrow(UnsupportedWhereFilterError)
+  })
+})
+
+describe('userFake updateManyAndReturn (2026-11-24, touchLastSeen)', () => {
+  it('writes like updateMany and returns the changed rows AFTER the write', async () => {
+    // Given one row seen yesterday and one seen today
+    const fake = createUserFake([
+      userRow('user_a', { lastSeenAt: YESTERDAY, displayName: 'User' }),
+      userRow('user_b', { lastSeenAt: TODAY }),
+    ])
+    const now = new Date(TODAY.getTime() + 1000)
+
+    // When the "not seen today" write runs for both, with a select
+    const rows = await fake.client.updateManyAndReturn({
+      where: { OR: [{ lastSeenAt: null }, { lastSeenAt: { lt: START_OF_TODAY } }] },
+      data: { lastSeenAt: now },
+      select: { id: true, displayName: true, lastSeenAt: true },
+    })
+
+    // Then only the changed row comes back, with only the selected keys,
+    // and with the new value
+    expect(rows).toEqual([{ id: 'user_a', displayName: 'User', lastSeenAt: now }])
+    expect(fake.state.rows[0]?.lastSeenAt).toEqual(now)
+    expect(fake.state.rows[1]?.lastSeenAt).toEqual(TODAY)
+  })
+
+  it('returns an empty list when no row matches, and throws on an unknown key', async () => {
+    const fake = createUserFake([userRow('user_a', { lastSeenAt: TODAY })])
+    await expect(
+      fake.client.updateManyAndReturn({ where: { id: 'user_none' }, data: { lastSeenAt: TODAY } }),
+    ).resolves.toEqual([])
+    await expect(
+      fake.client.updateManyAndReturn({ where: { email: null }, data: {} }),
+    ).rejects.toThrow(UnknownWhereKeyError)
+  })
+
+  it('returns copies, so changing a returned row does not change the store', async () => {
+    const fake = createUserFake([userRow('user_a', { displayName: 'Stored' })])
+    const [row] = await fake.client.updateManyAndReturn({
+      where: { id: 'user_a' },
+      data: { lastSeenAt: TODAY },
+    })
+    if (row) row.displayName = 'Changed by caller'
+    expect(fake.state.rows[0]?.displayName).toBe('Stored')
   })
 })

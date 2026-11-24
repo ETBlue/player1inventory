@@ -463,7 +463,7 @@ The page an invite link opens. Plan: `docs/global/permissions/2026-11-18-househo
 |---|---|
 | local | `join.needsCloud` and **Sign in to join**. It sets `data-mode` to `cloud`, never `migration-strategy` and never `migration-prompted`, then reloads. So no copy starts, and local data is not touched. The "Copy local data?" question waits on `/join/…`, `/sign-in` and `/sign-up` (`isCopyPromptPausedPath`), and **Join** adds the joined household to `migration-skip-households` (`skipCopyPromptIn`), so it is never asked there (O12-A). It still comes in any other household, for example the person's own. Until 2026-11-19 the button set `migration-prompted`, which turned the question off on the device for good (`docs/global/bugs/2026-11-19-bug-join-turns-off-copy-prompt.md`) |
 | cloud, loading | the spinner |
-| cloud, `VALID` | `join.title` with the household name, `join.invitedBy`, the roles (household role, then each location as stored, never `capitalize`), **Join** |
+| cloud, `VALID` | `join.title` with the household name, `join.invitedBy` (only when the invite has a name), then the roles as cards (`RoleRow`: an icon, the name as stored, never `capitalize`, and `join.yourRole` with the role). First a household card (`Home` icon), only when the invite has a household role. Then, only when there are location roles, an `h2` `join.locationsTitle` and a `ul` named by it through `aria-labelledby`, one `li` card per location (`MapPin` icon). Then **Join** |
 | cloud, `ALREADY_MEMBER` | the household name, `join.alreadyMember`, a link to the pantry |
 | cloud, `INVALID` | `join.invalid` and a link to the pantry. No name, even if one were sent |
 

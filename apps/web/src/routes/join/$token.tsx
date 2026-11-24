@@ -1,11 +1,13 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { Home, MapPin } from 'lucide-react'
+import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { switchToHousehold } from '@/apollo/householdGuard'
 import { OfflineWriteError } from '@/apollo/offlineWriteLink'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
 import {
   type InvitePreviewQuery,
   useInvitePreviewQuery,
@@ -206,32 +208,70 @@ function CloudJoin({ token }: { token: string }) {
 }
 
 /**
- * The roles the invite gives: the household role first, then one row per
- * location. Household and location names render as stored (no
- * `capitalize`, root `CLAUDE.md`, *Name Display Convention*).
+ * The roles the invite gives. First the household row, then, under a
+ * title, one row per location of that household. Each row is a card with an
+ * icon, the name, and "Your role: …". The title is an `h2` that names the
+ * list, so a screen reader announces "Locations in this household, list". Household and location names
+ * render as stored (no `capitalize`, root `CLAUDE.md`, *Name Display
+ * Convention*).
  */
 function RoleList({ preview }: { preview: Preview }) {
   const { t } = useTranslation()
+  const locations = preview.locationRoles ?? []
+  const locationsTitleId = useId()
   return (
-    <section className="w-full text-left">
-      <h2 className="mb-2 text-sm font-medium text-foreground-muted">
-        {t('join.yourRoles')}
-      </h2>
-      <ul className="flex flex-col gap-1">
-        {preview.householdRole && (
-          <li className="flex justify-between gap-4">
-            <span>{preview.householdName}</span>
-            <span>{t(`roles.household.${preview.householdRole}`)}</span>
-          </li>
-        )}
-        {(preview.locationRoles ?? []).map((row) => (
-          <li key={row.locationId} className="flex justify-between gap-4">
-            <span>{row.locationName}</span>
-            <span>{t(`roles.location.${row.role}`)}</span>
-          </li>
-        ))}
-      </ul>
+    <section className="flex w-full flex-col gap-3 text-left">
+      {preview.householdRole && (
+        <RoleRow
+          icon={<Home className="size-4" aria-hidden="true" />}
+          name={preview.householdName ?? ''}
+          role={t(`roles.household.${preview.householdRole}`)}
+        />
+      )}
+      {locations.length > 0 && (
+        <>
+          <h2 id={locationsTitleId} className="pt-2 text-center">
+            {t('join.locationsTitle')}
+          </h2>
+          <ul
+            aria-labelledby={locationsTitleId}
+            className="flex flex-col gap-3"
+          >
+            {locations.map((row) => (
+              <li key={row.locationId}>
+                <RoleRow
+                  icon={<MapPin className="size-4" aria-hidden="true" />}
+                  name={row.locationName}
+                  role={t(`roles.location.${row.role}`)}
+                />
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
     </section>
+  )
+}
+
+function RoleRow({
+  icon,
+  name,
+  role,
+}: {
+  icon: ReactNode
+  name: string
+  role: string
+}) {
+  const { t } = useTranslation()
+  return (
+    <Card className="flex items-start gap-2">
+      <span className="mt-0.5 shrink-0 text-foreground-muted">{icon}</span>
+      <span className="min-w-0 flex-1 break-words">{name}</span>
+      <span className="shrink-0 text-sm">
+        <span className="text-foreground-muted">{t('join.yourRole')}</span>{' '}
+        {role}
+      </span>
+    </Card>
   )
 }
 

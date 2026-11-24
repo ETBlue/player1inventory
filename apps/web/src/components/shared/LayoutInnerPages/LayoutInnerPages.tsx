@@ -45,7 +45,7 @@ export function LayoutInnerPages({
   const scrollRef = useRef<HTMLDivElement>(null)
 
   return (
-    <div className="h-screen grid grid-rows-[auto_1fr]">
+    <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
       <Toolbar className="w-[100cqw]">
         <Button
           variant="neutral-ghost"
