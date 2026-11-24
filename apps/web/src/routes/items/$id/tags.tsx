@@ -28,6 +28,7 @@ function TagTypeSection({
   onToggle,
   onAddTag,
   loadingTagId,
+  assigningTagIds = [],
   readOnly = false,
 }: {
   tagType: { id: string; name: string; color: TagColor }
@@ -36,6 +37,11 @@ function TagTypeSection({
   /** Left out for a household member: no "New Tag" button. */
   onAddTag?: ((typeId: string) => void) | undefined
   loadingTagId?: string | null
+  /**
+   * New tags whose assign to the item is still being saved. They are already
+   * in `item.tagIds` (the caller adds them), and are marked busy here.
+   */
+  assigningTagIds?: string[]
   /** A household member cannot toggle: the badges are aria-disabled. */
   readOnly?: boolean
 }) {
@@ -54,6 +60,7 @@ function TagTypeSection({
         {tagsWithDepth.map((tag) => {
           const isSelected = item.tagIds.includes(tag.id)
           const isLoading = loadingTagId === tag.id
+          const isAssigning = assigningTagIds.includes(tag.id)
           const depth = tag.depth ?? 0
           return (
             <div
@@ -81,7 +88,7 @@ function TagTypeSection({
               <Badge
                 role="button"
                 aria-pressed={isSelected}
-                aria-busy={isLoading}
+                aria-busy={isLoading || isAssigning}
                 aria-disabled={readOnly || undefined}
                 variant={
                   isSelected ? tagType.color : `${tagType.color}-inverse`
@@ -132,6 +139,21 @@ function TagsTab() {
   const [newTagTypeName, setNewTagTypeName] = useState('')
   const addTagType = useAddTagType()
   const [loadingTagId, setLoadingTagId] = useState<string | null>(null)
+  // Issue #402: a new tag is created, then assigned to the item in a second
+  // write. Between the two, the tag list already shows the new tag but the
+  // item does not have it yet, so it showed as not selected for about a
+  // second. Its id waits here until the assign is done, and the page shows it
+  // as selected all that time. On a failed assign it is removed, so the
+  // badge goes back to not selected.
+  const [assigningTagIds, setAssigningTagIds] = useState<string[]>([])
+  // What the user sees as assigned: the item's tags, plus new tags whose
+  // assign is still being saved.
+  const shownTagIds = item
+    ? [
+        ...item.tagIds,
+        ...assigningTagIds.filter((tagId) => !item.tagIds.includes(tagId)),
+      ]
+    : []
 
   const handleAddTag = async () => {
     if (!addTagDialog || !newTagName.trim()) return
@@ -152,20 +174,39 @@ function TagsTab() {
     setNewTagName('')
     setAddTagDialog(null)
     if (newTag?.id && item) {
-      // Immediately assign the new tag to the current item
+      const newTagId = newTag.id
+      setAssigningTagIds((ids) => [...ids, newTagId])
+      // Immediately assign the new tag to the current item. The list keeps
+      // any other new tag that is still being assigned.
       try {
         await updateItem.mutateAsync({
           id,
-          updates: { tagIds: [...item.tagIds, newTag.id] },
+          updates: {
+            tagIds: [...new Set([...shownTagIds, newTagId])],
+          },
         })
       } catch (err) {
         showSaveError(err)
+      } finally {
+        // When the write has succeeded, the item already has the tag: local
+        // `mutateAsync` waits for the refetch, and Apollo writes the answer
+        // to its cache before it resolves.
+        setAssigningTagIds((ids) => ids.filter((x) => x !== newTagId))
       }
     }
   }
 
   const toggleTag = async (tagId: string) => {
-    if (!item || !canEditCatalog || loadingTagId !== null) return
+    // No toggle while a new tag is being assigned. Each write sends the
+    // WHOLE list, so a second write at the same time could leave out the
+    // other one's change, depending on which one the server takes last.
+    if (
+      !item ||
+      !canEditCatalog ||
+      loadingTagId !== null ||
+      assigningTagIds.length > 0
+    )
+      return
 
     const newTagIds = item.tagIds.includes(tagId)
       ? item.tagIds.filter((id) => id !== tagId)
@@ -213,14 +254,15 @@ function TagsTab() {
               <TagTypeSection
                 key={tagType.id}
                 tagType={tagType}
-                item={item}
+                item={{ tagIds: shownTagIds }}
                 onToggle={toggleTag}
                 onAddTag={canEditCatalog ? setAddTagDialog : undefined}
                 readOnly={!canEditCatalog}
                 loadingTagId={loadingTagId}
+                assigningTagIds={assigningTagIds}
               />
             ))}
-          {item.tagIds.length === 0 && (
+          {shownTagIds.length === 0 && (
             <EmptyState
               title={t('items.tags.assignEmpty.title')}
               description={t('items.tags.assignEmpty.description')}

@@ -30,13 +30,30 @@ function VendorsTab() {
   const [showDialog, setShowDialog] = useState(false)
   const [newVendorName, setNewVendorName] = useState('')
   const [togglingVendorId, setTogglingVendorId] = useState<string | null>(null)
+  // Issue #402: a new vendor is created, then assigned to the item in a
+  // second write. Between the two, the vendor list already shows the new
+  // vendor but the item does not have it yet, so it showed as not selected
+  // for about a second. Its id waits here until the assign is done, and the
+  // page shows it as selected all that time. On a failed assign it is
+  // removed, so the badge goes back to not selected.
+  const [assigningVendorIds, setAssigningVendorIds] = useState<string[]>([])
+  // What the user sees as assigned: the item's vendors, plus new vendors
+  // whose assign is still being saved.
+  const itemVendorIds = item?.vendorIds ?? []
+  const shownVendorIds = [
+    ...itemVendorIds,
+    ...assigningVendorIds.filter((vid) => !itemVendorIds.includes(vid)),
+  ]
 
   useEffect(() => {
     if (!updateItem.isPending) setTogglingVendorId(null)
   }, [updateItem.isPending])
 
   const toggleVendor = (vendorId: string) => {
-    if (!item || !canEditCatalog) return
+    // No toggle while a new vendor is being assigned. Each write sends the
+    // WHOLE list, so a second write at the same time could leave out the
+    // other one's change, depending on which one the server takes last.
+    if (!item || !canEditCatalog || assigningVendorIds.length > 0) return
 
     const currentVendorIds = item.vendorIds ?? []
     const newVendorIds = currentVendorIds.includes(vendorId)
@@ -64,20 +81,31 @@ function VendorsTab() {
       showVendorCreateError(err, name)
       return
     }
-    if (newVendor?.id) {
-      // Immediately assign to current item. The vendor exists now, so the
-      // dialog closes even if this fails; the toast says so.
-      const currentVendorIds = item?.vendorIds ?? []
-      updateItem.mutate(
-        {
-          id,
-          updates: { vendorIds: [...currentVendorIds, newVendor.id] },
-        },
-        { onError: (err) => showSaveError(err) },
-      )
-    }
+    // The vendor exists now, so the dialog closes even if the assign below
+    // fails; the toast says so.
     setNewVendorName('')
     setShowDialog(false)
+    if (newVendor?.id) {
+      const newVendorId = newVendor.id
+      setAssigningVendorIds((ids) => [...ids, newVendorId])
+      // Immediately assign to the current item. The list keeps any other new
+      // vendor that is still being assigned.
+      try {
+        await updateItem.mutateAsync({
+          id,
+          updates: {
+            vendorIds: [...new Set([...shownVendorIds, newVendorId])],
+          },
+        })
+      } catch (err) {
+        showSaveError(err)
+      } finally {
+        // When the write has succeeded, the item already has the vendor:
+        // local `mutateAsync` waits for the refetch, and Apollo writes the
+        // answer to its cache before it resolves.
+        setAssigningVendorIds((ids) => ids.filter((x) => x !== newVendorId))
+      }
+    }
   }
 
   if (!item) return null
@@ -90,13 +118,15 @@ function VendorsTab() {
     <div className="p-4 space-y-6 max-w-2xl mx-auto">
       <div className="flex flex-wrap gap-2">
         {sortedVendors.map((vendor) => {
-          const isAssigned = (item.vendorIds ?? []).includes(vendor.id)
+          const isAssigned = shownVendorIds.includes(vendor.id)
+          const isAssigning = assigningVendorIds.includes(vendor.id)
 
           return (
             <Badge
               key={vendor.id}
               role="button"
               aria-pressed={isAssigned}
+              aria-busy={isAssigning || undefined}
               aria-disabled={!canEditCatalog || undefined}
               variant={isAssigned ? 'neutral' : 'neutral-outline'}
               className={`${canEditCatalog ? 'cursor-pointer' : 'cursor-default'} normal-case${updateItem.isPending && togglingVendorId === vendor.id ? ' pointer-events-none' : ''}`}
@@ -125,7 +155,7 @@ function VendorsTab() {
         )}
       </div>
 
-      {(item.vendorIds ?? []).length === 0 && (
+      {shownVendorIds.length === 0 && (
         <EmptyState
           title={t('items.vendors.assignEmpty.title')}
           description={t('items.vendors.assignEmpty.description')}
