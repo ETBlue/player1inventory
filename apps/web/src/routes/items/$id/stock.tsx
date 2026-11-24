@@ -433,7 +433,11 @@ function StockTab({ itemId }: { itemId: string }) {
                 <Button
                   type="button"
                   onClick={handleAdd}
-                  disabled={addItemToLocation.isPending}
+                  // `isLoading` shows the spinner and disables the button, so a
+                  // second click cannot send a second write. `isPending` stays
+                  // true until the stock lists have refetched (both modes), so
+                  // the button is replaced by the stock form with no idle frame.
+                  isLoading={addItemToLocation.isPending}
                 >
                   {t('items.detail.locationPager.addToLocation')}
                 </Button>
