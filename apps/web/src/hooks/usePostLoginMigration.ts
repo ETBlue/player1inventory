@@ -6,6 +6,7 @@ import type { HouseholdRole } from '@/generated/graphql'
 import { isAuthPage } from '@/lib/authPages'
 import { type ExportPayload, fetchLocalPayload } from '@/lib/exportData'
 import {
+  type ImportProgress,
   type ImportStrategy,
   type ImportTarget,
   importCloudData,
@@ -255,6 +256,11 @@ export function usePostLoginMigration({
   const [pending, setPending] = useState<PendingCopy | null>(null)
   // The stored strategy, while "Copy your offline data into …?" is open.
   const [waiting, setWaiting] = useState<ImportStrategy | null>(null)
+  // How far the running copy is: batches sent of all batches (issue #402).
+  // `null` until `importCloudData` reports its first count, and again at the
+  // start of every copy. The dialog shows a spinner while the state is
+  // 'auto-importing' or 'importing', and this count under it once known.
+  const [progress, setProgress] = useState<ImportProgress | null>(null)
   const apolloClient = useApolloClient()
   const { data: locations } = useLocations()
   // Hold the one-shot auto-import until this account's location list has
@@ -315,6 +321,10 @@ export function usePostLoginMigration({
   // nothing.
   // A refresh mounts the hook again with a fresh ref, so the user can retry.
   const importStarted = useRef(false)
+  // `true` while `importData` or `chooseLocation` runs a copy. A second press
+  // of Copy here or Import, before React has closed the dialog, returns at
+  // once instead of starting a second copy (issue #402).
+  const copyRunning = useRef(false)
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return
@@ -415,6 +425,7 @@ export function usePostLoginMigration({
   // and by the effect after the page moved to the household the person chose.
   function runStoredCopy(storedStrategy: ImportStrategy) {
     setWaiting(null)
+    setProgress(null)
     setState('auto-importing')
     fetchLocalPayload()
       .then((payload) => {
@@ -428,13 +439,13 @@ export function usePostLoginMigration({
           setState('choosing-location')
           return
         }
-        return importCloudData(payload, storedStrategy, apolloClient).then(
-          () => {
-            localStorage.removeItem(MIGRATION_STRATEGY_KEY)
-            localStorage.setItem(MIGRATION_PROMPTED_KEY, '1')
-            setState('done')
-          },
-        )
+        return importCloudData(payload, storedStrategy, apolloClient, {
+          onProgress: setProgress,
+        }).then(() => {
+          localStorage.removeItem(MIGRATION_STRATEGY_KEY)
+          localStorage.setItem(MIGRATION_PROMPTED_KEY, '1')
+          setState('done')
+        })
       })
       .catch((err) => {
         // The copy failed. The state is 'error', so the dialog tells the user
@@ -550,7 +561,11 @@ export function usePostLoginMigration({
   // state, so the dialog stayed on 'importing' — the Import button disabled and
   // reading '...' — for the rest of the session.
   async function importData(conflictResolution: 'append' | 'replace') {
+    // A second press before the dialog has closed starts no second copy.
+    if (copyRunning.current) return
+    copyRunning.current = true
     importStarted.current = true
+    setProgress(null)
     setState('importing')
     const strategy = conflictResolution === 'replace' ? 'replace' : 'skip'
     try {
@@ -560,24 +575,33 @@ export function usePostLoginMigration({
         setState('choosing-location')
         return
       }
-      await importCloudData(payload, strategy, apolloClient)
+      await importCloudData(payload, strategy, apolloClient, {
+        onProgress: setProgress,
+      })
       localStorage.setItem(MIGRATION_PROMPTED_KEY, '1')
       setState('done')
     } catch (err) {
       setError(toMigrationError(err, strategy))
       setState('error')
+    } finally {
+      copyRunning.current = false
     }
   }
 
   // The answer of "Import into which location?". Runs the copy that was
   // waiting for it, from either path.
   async function chooseLocation(target: ImportTarget) {
-    if (pending === null) return
+    if (pending === null || copyRunning.current) return
+    copyRunning.current = true
     const { payload, strategy } = pending
     setPending(null)
+    setProgress(null)
     setState('importing')
     try {
-      await importCloudData(payload, strategy, apolloClient, { target })
+      await importCloudData(payload, strategy, apolloClient, {
+        target,
+        onProgress: setProgress,
+      })
       localStorage.removeItem(MIGRATION_STRATEGY_KEY)
       localStorage.setItem(MIGRATION_PROMPTED_KEY, '1')
       setState('done')
@@ -585,6 +609,8 @@ export function usePostLoginMigration({
       localStorage.removeItem(MIGRATION_STRATEGY_KEY)
       setError(toMigrationError(err, strategy))
       setState('error')
+    } finally {
+      copyRunning.current = false
     }
   }
 
@@ -610,6 +636,8 @@ export function usePostLoginMigration({
     chooseLocation,
     cancelLocation,
     pendingPayload: pending?.payload,
+    // Batches sent of all batches, while a copy runs; else null.
+    progress,
     copyElsewhere,
     // `true` while the page moves to the chosen household (task L.5).
     moving,
