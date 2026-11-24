@@ -264,10 +264,14 @@ function CloudModeSection({ signOut }: CloudModeSectionProps) {
 
       {/* ── Sign out flow dialogs ───────────────────────────────────────── */}
 
-      {/* Dialog 1: askOffline — offer to switch to offline or just sign out */}
-      {/* No onOpenChange: all state transitions are driven by the buttons */}
+      {/* Dialog 1: askOffline — offer to switch to offline or just sign out.
+          Cancel and Escape close it: still signed in, still cloud. Cancel is
+          its only `AlertDialogCancel`, so the focus starts there. "Just sign
+          out" was one too until 2026-11-24, and Radix focused it, so Enter
+          signed the person out. No onOpenChange: Radix calls it for every
+          button, so it cannot tell Cancel from a choice. */}
       <AlertDialog open={signOutFlow === 'askOffline'}>
-        <AlertDialogContent>
+        <AlertDialogContent onEscapeKeyDown={() => setSignOutFlow('idle')}>
           <AlertDialogHeader>
             <AlertDialogTitle>
               {t('settings.dataMode.signOutOfflineDialog.title')}
@@ -280,9 +284,12 @@ function CloudModeSection({ signOut }: CloudModeSectionProps) {
             <AlertDialogCancel onClick={() => setSignOutFlow('idle')}>
               {t('common.cancel')}
             </AlertDialogCancel>
-            <AlertDialogCancel onClick={() => doSignOut(false)}>
+            <AlertDialogAction
+              variant="neutral-outline"
+              onClick={() => doSignOut(false)}
+            >
               {t('settings.dataMode.signOutOfflineDialog.justSignOut')}
-            </AlertDialogCancel>
+            </AlertDialogAction>
             <AlertDialogAction onClick={() => setSignOutFlow('askMigrate')}>
               {t('settings.dataMode.signOutOfflineDialog.switchToOffline')}
             </AlertDialogAction>
