@@ -171,7 +171,7 @@ export function ItemListToolbar({
 
         <div className="flex items-center gap-2 truncate">
           {showSort && (
-            <div className="flex items-center ml-2 truncate">
+            <div className="flex items-center gap-2 ml-2 truncate">
               <span className="hidden lg:inline text-sm text-foreground-muted">
                 {t('itemListToolbar.sortBy')}
               </span>

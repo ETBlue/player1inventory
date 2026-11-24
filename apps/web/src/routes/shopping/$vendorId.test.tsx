@@ -581,6 +581,77 @@ describe('Vendor cart page', () => {
     expect(screen.queryByText('Firewood')).not.toBeInTheDocument()
   })
 
+  describe('default sort', () => {
+    // Three items whose name order (Apple, Banana, Cherry) is the REVERSE of
+    // their stock order, so a name sort and a stock sort give different lists.
+    async function seedThreeItems() {
+      const vendor = await createVendor('Costco')
+      const base = {
+        tagIds: [],
+        vendorIds: [vendor.id],
+        targetUnit: 'package' as const,
+        targetQuantity: 4,
+        refillThreshold: 2,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      }
+      await createItem({ ...base, name: 'Apple', packedQuantity: 4 }) // ok
+      await createItem({ ...base, name: 'Banana', packedQuantity: 2 }) // at refill
+      await createItem({ ...base, name: 'Cherry', packedQuantity: 0 }) // below refill
+      return vendor
+    }
+
+    function namesInPageOrder(names: string[]) {
+      const nodes = names.map((name) => screen.getByText(name))
+      return [...nodes]
+        .sort((a, b) =>
+          a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING
+            ? -1
+            : 1,
+        )
+        .map((node) => node.textContent)
+    }
+
+    it('user sees cart items sorted by stock, low stock on top, by default', async () => {
+      // Given no saved sort choice for the cart page (earlier tests in this
+      // file save one, because the page writes its prefs on mount)
+      localStorage.removeItem('shopping-sort-prefs')
+      const vendor = await seedThreeItems()
+
+      // When user opens the vendor cart
+      renderVendorCart(vendor.id)
+      await screen.findByText('Cherry')
+
+      // Then the item below its refill level comes first, the item at its
+      // refill level next, and the well-stocked item last
+      expect(namesInPageOrder(['Apple', 'Banana', 'Cherry'])).toEqual([
+        'Cherry',
+        'Banana',
+        'Apple',
+      ])
+    })
+
+    it('user keeps a saved sort choice on the cart page', async () => {
+      // Given the user picked "Name, ascending" before
+      localStorage.setItem(
+        'shopping-sort-prefs',
+        JSON.stringify({ sortBy: 'name', sortDirection: 'asc' }),
+      )
+      const vendor = await seedThreeItems()
+
+      // When user opens the vendor cart
+      renderVendorCart(vendor.id)
+      await screen.findByText('Cherry')
+
+      // Then the saved choice wins over the stock default
+      expect(namesInPageOrder(['Apple', 'Banana', 'Cherry'])).toEqual([
+        'Apple',
+        'Banana',
+        'Cherry',
+      ])
+    })
+  })
+
   describe('search tail (unified item search)', () => {
     // THE FIXTURE IS THE TEST. Every case below needs an item stocked ONLY at
     // a second location — with one location, "stocked here" and "exists"
