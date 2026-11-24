@@ -15,6 +15,12 @@ describe('Item detail info tab stories smoke tests', () => {
     render(<Default />)
     // Info tab renders the name input; stock fields are no longer here.
     expect(await screen.findByLabelText(/^name$/i)).toBeInTheDocument()
+    // Save is in the top bar, outside the form (owner decision 2026-11-25)
+    const save = screen.getByRole('button', { name: /^save$/i })
+    expect(save.closest('form')).toBeNull()
+    expect(
+      screen.getByRole('heading', { level: 1 }).parentElement,
+    ).toContainElement(save)
   })
 
   it('WithInfoFields renders the Wikidata URL info field after setup', async () => {

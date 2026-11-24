@@ -157,7 +157,7 @@ function StockFormPanel({
 }) {
   const { t } = useTranslation()
   const updateItem = useUpdateItem()
-  const { registerDirtyState } = useItemLayout()
+  const { registerDirtyState, saveSlot } = useItemLayout()
   const [savedAt, setSavedAt] = useState(0)
 
   const id = item.id
@@ -198,6 +198,7 @@ function StockFormPanel({
       savedAt={savedAt}
       isPending={updateItem.isPending}
       readOnly={readOnly}
+      submitSlot={saveSlot}
     />
   )
 }
