@@ -290,11 +290,9 @@ test.describe('items stock tab — number input editing', () => {
     await expect(form.getSaveButton()).toBeEnabled()
 
     // When the user saves
-    const beforeSaveUrl = page.url()
+    // (Since 2026-11-24 the save stays on the page and shows "Saved".)
     await form.save()
-    await page.waitForURL((url) => url.toString() !== beforeSaveUrl, {
-      timeout: 10000,
-    })
+    await expect(page.getByText('Saved', { exact: true })).toBeVisible()
 
     // Then the new quantities are persisted to this location's stock row —
     // not merely reflected on screen, and not swapped between the two fields
