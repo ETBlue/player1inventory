@@ -1637,28 +1637,36 @@ Use git worktrees by default for feature work. Create isolated workspaces in `.w
 
 **Worktree before implementation (mandatory):** After brainstorming is complete and the branch name is derived, before writing the design doc, always create a git worktree using `superpowers:using-git-worktrees` (or follow the manual steps in "Advanced: Git Worktrees" below if the skill is unavailable). All subsequent work — design doc, implementation plan, and code — happens inside the worktree. Branch name is derived from the brainstorming topic: choose `feature/`, `fix/`, `refactor/`, or `docs/` prefix based on context, then add a short kebab-case topic (e.g. brainstorming about cooking expand/collapse → `feature/cooking-expand`).
 
-**Every PR targets `main`, and every merge to `main` deploys.** Cloudflare Pages builds the
-web, and Railway deploys the server (and runs `prisma migrate deploy`). Base every branch on
-`origin/main` and rebase onto it.
+**Every PR targets `develop`. `develop` goes into `main` in batch releases.** A merge to
+`main` deploys to production: Cloudflare Pages builds the web, and Railway deploys the
+server (and runs `prisma migrate deploy`). A merge to `develop` deploys nothing, so the owner
+can test several PRs together on a local server first. Base every branch on
+`origin/develop` and rebase onto it. A release is a PR from `develop` to `main`, merged with
+"Create a merge commit", never with `--delete-branch`.
 
-There is no `develop` branch any more. From 2026-11-12 to 2026-11-24 the households phases
-(H3a to H7b) merged into `develop`, which deployed nothing, and went to production together
-in release #403 (merge `16929909`, 2026-11-23). The owner deleted `develop` on 2026-11-24,
-after the households release was checked in production. See
-`docs/global/backend/2026-11-23-households-release-plan.md`, *Results*.
+History: from 2026-11-12 to 2026-11-23 the households phases (H3a to H7b) collected in
+`develop` and went to production together in release #403 (merge `16929909`). On 2026-11-24
+the owner deleted `develop`, then asked for it back the same day for batch testing. It was
+made again from `main` at `56d7de3a`. See `docs/global/backend/2026-11-23-households-release-plan.md`,
+*Results*.
 
-**When the web needs a server change first, split it into two PRs.** For example, the web
-selects a new field or sends a new argument that today's server does not know. A merge
-deploys both apps at about the same time, so one PR would leave a window where the new web
-talks to the old server and fails GraphQL validation.
+**After a release, bring `develop` level with `main`.** The release merge commit is on
+`main` only. Fast-forward `develop` with `git push origin origin/main:develop` (no force),
+when no PR has merged into `develop` since the release. Check that
+`git log origin/develop..origin/main --oneline` prints nothing.
 
-1. The server PR: the schema, the resolvers and their tests. Merge it.
+**When the web needs a server change first, put them in two releases.** For example, the web
+selects a new field or sends a new argument that today's server does not know. One release
+deploys both apps at about the same time, so the new web would talk to the old server for a
+while and fail GraphQL validation.
+
+1. Release the server change first: the schema, the resolvers and their tests.
 2. Wait until Railway shows the new deployment of that commit as active.
-3. The web PR: the documents and the UI. Merge it only then.
+3. Release the web change after that.
 
-The server PR must keep today's web documents valid: add fields and OPTIONAL arguments only.
-A new required argument that a web document omits makes `pnpm codegen` write nothing (see
-*`pnpm codegen` is all-or-nothing* above), and the old web would fail on it anyway.
+The server change must keep today's web documents valid: add fields and OPTIONAL arguments
+only. A new required argument that a web document omits makes `pnpm codegen` write nothing
+(see *`pnpm codegen` is all-or-nothing* above), and the old web would fail on it anyway.
 
 **After every merge to `main`, check that Railway started a new deploy of that commit.** In
 release #403 it did not, and the owner had to start the deploy by hand. The cause is not

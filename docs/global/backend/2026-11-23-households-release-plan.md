@@ -74,8 +74,11 @@ Issues found during the release:
 The owner checked #409 in production: page heights are fixed, the join page cards look
 right, and the inviter's real name is shown.
 
-**After this release `develop` is gone.** Every PR now targets `main`, and every merge
-deploys: Cloudflare builds the web, and Railway deploys the server. The rollback Neon branch
+**After this release, PRs still collect in `develop`.** The owner deleted `develop` on
+2026-11-24 and brought it back the same day, made again from `main` at `56d7de3a`, so that
+several PRs can be tested together on a local server before they go out. Every PR targets
+`develop`, and `develop` goes into `main` in batch releases. A merge to `main` deploys:
+Cloudflare builds the web, and Railway deploys the server. The rollback Neon branch
 `prod-before-households-2026-11-23` is kept until F.1 is deployed (A.4).
 
 ---
@@ -634,11 +637,12 @@ apart that R1 chooses. The steps below assume **R1 option A** (pause the Cloudfl
   (`git push origin origin/main:develop`, a fast-forward, no force) or open a PR, as R3
   decides. Check `git log origin/develop..origin/main --oneline` prints nothing.
 
-  What happened instead: the owner decided on 2026-11-24 to delete `develop`, because
-  households is checked in production. This replaces the R3-A answer. `develop` had no commit
-  that `main` lacked. It is deleted on GitHub and locally. No Cloudflare or Railway setting
-  was tied to `develop` (owner checked). From now on every PR targets `main`, and every merge
-  deploys.
+  What happened instead: on 2026-11-24 the owner first deleted `develop` (it had no commit
+  that `main` lacked; no Cloudflare or Railway setting was tied to it, owner checked). Later
+  the same day the owner asked for it back, to test several PRs together on a local server
+  before a batch release. It was made again from `main` at `56d7de3a`, so `develop` and
+  `main` were level again. PRs target `develop`; `develop` goes into `main` in batch
+  releases.
 - [x] **A.3 (main session): docs.** Fill every `TBD` the rehearsal and the deploy wrote. Mark
   the households rows in `docs/INDEX.md` as deployed, with the date and the merge SHA. Close
   issue #359 (it stays open "until H3a merges and deploys").
