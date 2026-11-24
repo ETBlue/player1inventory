@@ -14,6 +14,7 @@ vi.mock('./prisma.js', async () => {
     create: vi.fn(userFake.client.create),
     upsert: vi.fn(userFake.client.upsert),
     updateMany: vi.fn(userFake.client.updateMany),
+    updateManyAndReturn: vi.fn(userFake.client.updateManyAndReturn),
   }
   return { prisma: { user, $userFake: userFake } }
 })
@@ -126,7 +127,8 @@ function queryCount(): number {
     user.findMany.mock.calls.length +
     user.create.mock.calls.length +
     user.upsert.mock.calls.length +
-    user.updateMany.mock.calls.length
+    user.updateMany.mock.calls.length +
+    user.updateManyAndReturn.mock.calls.length
   )
 }
 
@@ -202,9 +204,9 @@ describe('ensureUser', () => {
     // When the first request today arrives
     await ensureUser('user_a', { kind: 'clerk', lookup }, TODAY_NOON)
 
-    // Then one updateMany ran, and lastSeenAt is now
+    // Then one updateManyAndReturn ran, and lastSeenAt is now
     expect(queryCount()).toBe(1)
-    expect(user.updateMany).toHaveBeenCalledTimes(1)
+    expect(user.updateManyAndReturn).toHaveBeenCalledTimes(1)
     expect(rowOf('user_a')?.lastSeenAt).toEqual(TODAY_NOON)
     expect(lookup).not.toHaveBeenCalled()
   })
@@ -255,7 +257,7 @@ describe('ensureUser', () => {
     await ensureUser('user_a', { kind: 'clerk', lookup }, next)
 
     // Then the memory does not skip it: lastSeenAt moves to the new day
-    expect(user.updateMany).toHaveBeenCalledTimes(1)
+    expect(user.updateManyAndReturn).toHaveBeenCalledTimes(1)
     expect(rowOf('user_a')?.lastSeenAt).toEqual(next)
   })
 
@@ -470,7 +472,7 @@ describe('ensureUser', () => {
     // Then they shared one run: one Clerk call and one create
     expect(lookup).toHaveBeenCalledTimes(1)
     expect(user.create).toHaveBeenCalledTimes(1)
-    expect(user.updateMany).toHaveBeenCalledTimes(1)
+    expect(user.updateManyAndReturn).toHaveBeenCalledTimes(1)
   })
 
   it('a parallel call for ANOTHER user does not share the run', async () => {
@@ -490,7 +492,9 @@ describe('ensureUser', () => {
 
   it('a failed run is not shared with the next request, which tries again', async () => {
     // Given a database that fails once, then works
-    user.updateMany.mockRejectedValueOnce(Object.assign(new Error('down'), { code: 'P1001' }))
+    user.updateManyAndReturn.mockRejectedValueOnce(
+      Object.assign(new Error('down'), { code: 'P1001' }),
+    )
     const lookup = clerkLookup(clerkUser({ id: 'user_new' }))
 
     // When the first request fails
@@ -501,7 +505,7 @@ describe('ensureUser', () => {
     // Then the next request runs again and creates the row
     await ensureUser('user_new', { kind: 'clerk', lookup }, TODAY_NOON)
     expect(userFake.state.rows.map((r) => r.id)).toEqual(['user_new'])
-    expect(user.updateMany).toHaveBeenCalledTimes(2)
+    expect(user.updateManyAndReturn).toHaveBeenCalledTimes(2)
   })
 
   it('does not throw when another process creates the row first (P2002)', async () => {
@@ -583,9 +587,9 @@ describe('ensureUser', () => {
     // When this process sees the user for the first time
     await ensureUser('user_a', { kind: 'clerk', lookup }, TODAY_NOON)
 
-    // Then updateMany matched nothing, one read found the row, nothing was
+    // Then the touch matched nothing, one read found the row, nothing was
     // created and Clerk was not asked
-    expect(user.updateMany).toHaveBeenCalledTimes(1)
+    expect(user.updateManyAndReturn).toHaveBeenCalledTimes(1)
     expect(user.findUnique).toHaveBeenCalledTimes(1)
     expect(user.create).not.toHaveBeenCalled()
     expect(lookup).not.toHaveBeenCalled()
@@ -610,7 +614,7 @@ describe('ensureUser', () => {
 
     // Then the memory was dropped, so user_0 is checked in the database again
     await ensureUser('user_0', { kind: 'e2e' }, TODAY_NOON)
-    expect(user.updateMany).toHaveBeenCalledTimes(1)
+    expect(user.updateManyAndReturn).toHaveBeenCalledTimes(1)
   })
 
   it('forgetSeenToday makes the next call check the database again', async () => {
@@ -721,6 +725,335 @@ describe('ensureUser', () => {
   })
 })
 
+// ── A fallback name is replaced once Clerk answers (bug 2026-11-24) ──
+//
+// docs/global/bugs/2026-11-24-bug-fallback-display-name-never-fixed.md. A row
+// created while Clerk failed keeps "User". On the first request of a UTC day
+// that finds such a row, ensureUser asks Clerk again.
+
+describe('ensureUser replaces a fallback display name', () => {
+  beforeEach(() => {
+    vi.resetAllMocks() // see the beforeEach of 'ensureUser' above
+    userFake.reset()
+    resetSeenTodayMemory()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  /** A row the safety net created while Clerk failed: the fallback values. */
+  function fallbackRow(id: string, extra: Partial<UserRow> = {}): UserRow {
+    return storedRow(id, {
+      displayName: FALLBACK_DISPLAY_NAME,
+      email: null,
+      lastSeenAt: YESTERDAY_NOON,
+      ...extra,
+    })
+  }
+
+  it('writes Clerk name and email on the first request of the day', async () => {
+    // Given a live row with the fallback values, last seen yesterday
+    userFake.reset([fallbackRow('user_a')])
+    const lookup = clerkLookup(clerkUser({ id: 'user_a' }))
+
+    // When the first request today arrives
+    await ensureUser('user_a', { kind: 'clerk', lookup }, TODAY_NOON)
+
+    // Then Clerk was asked once, and the row has the real name and email
+    expect(lookup).toHaveBeenCalledTimes(1)
+    expect(lookup).toHaveBeenCalledWith('user_a')
+    expect(rowOf('user_a')).toMatchObject({
+      displayName: 'ET Blue',
+      email: 'etblue@example.com',
+      lastSeenAt: TODAY_NOON,
+      deletedAt: null,
+    })
+    // And it cost the touch plus one guarded write
+    expect(user.updateManyAndReturn).toHaveBeenCalledTimes(1)
+    expect(user.updateMany).toHaveBeenCalledTimes(1)
+    expect(queryCount()).toBe(2)
+  })
+
+  it('also fixes a row never seen before (lastSeenAt null)', async () => {
+    // Given a fallback row that has never been seen
+    userFake.reset([fallbackRow('user_a', { lastSeenAt: null })])
+    const lookup = clerkLookup(clerkUser({ id: 'user_a' }))
+
+    // When a request arrives
+    await ensureUser('user_a', { kind: 'clerk', lookup }, TODAY_NOON)
+
+    // Then the name is replaced
+    expect(rowOf('user_a')?.displayName).toBe('ET Blue')
+  })
+
+  it('uses the part of the email before @ when Clerk has no name', async () => {
+    // Given a fallback row, and a Clerk account with an email but no name
+    // (the case the owner found)
+    userFake.reset([fallbackRow('user_a')])
+    const lookup = clerkLookup(clerkUser({ id: 'user_a', first_name: null, last_name: null }))
+
+    // When the first request today arrives
+    await ensureUser('user_a', { kind: 'clerk', lookup }, TODAY_NOON)
+
+    // Then the name is the email's local part
+    expect(rowOf('user_a')).toMatchObject({ displayName: 'etblue', email: 'etblue@example.com' })
+  })
+
+  it('keeps an email that is already stored', async () => {
+    // Given a fallback name with a stored email
+    userFake.reset([fallbackRow('user_a', { email: 'stored@example.com' })])
+    const lookup = clerkLookup(clerkUser({ id: 'user_a' }))
+
+    // When the name is replaced
+    await ensureUser('user_a', { kind: 'clerk', lookup }, TODAY_NOON)
+
+    // Then the stored email stays
+    expect(rowOf('user_a')).toMatchObject({ displayName: 'ET Blue', email: 'stored@example.com' })
+  })
+
+  it('a row with a real name costs 1 query and never asks Clerk', async () => {
+    // Given a row with a real name, last seen yesterday
+    userFake.reset([storedRow('user_a', { lastSeenAt: YESTERDAY_NOON })])
+    const lookup = clerkLookup(clerkUser({ id: 'user_a' }))
+
+    // When the first request today arrives
+    await ensureUser('user_a', { kind: 'clerk', lookup }, TODAY_NOON)
+
+    // Then only the touch ran, Clerk was not asked, and the name stays
+    expect(queryCount()).toBe(1)
+    expect(lookup).not.toHaveBeenCalled()
+    expect(rowOf('user_a')?.displayName).toBe('Stored Name')
+  })
+
+  it('a deleted row on the fallback name is not touched', async () => {
+    // Given a deleted row that still has the fallback name
+    const deletedAt = new Date('2026-10-30T09:00:00.000Z')
+    userFake.reset([fallbackRow('user_a', { deletedAt })])
+    const lookup = clerkLookup(clerkUser({ id: 'user_a' }))
+
+    // When a request for that user still arrives
+    await ensureUser('user_a', { kind: 'clerk', lookup }, TODAY_NOON)
+
+    // Then Clerk was not asked, and the name and deletedAt stay
+    expect(lookup).not.toHaveBeenCalled()
+    expect(user.updateMany).not.toHaveBeenCalled()
+    expect(rowOf('user_a')).toMatchObject({ displayName: FALLBACK_DISPLAY_NAME, deletedAt })
+  })
+
+  it('a Clerk error leaves the row, does not throw, and logs the error name only', async () => {
+    // Given a fallback row, and a Clerk API whose error names the user
+    userFake.reset([fallbackRow('user_a')])
+    const lookup = vi.fn<ClerkUserLookup>(async () => {
+      throw new Error('Clerk API is down for etblue@example.com')
+    })
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    // When the first request today arrives
+    await expect(
+      ensureUser('user_a', { kind: 'clerk', lookup }, TODAY_NOON),
+    ).resolves.toBeUndefined()
+
+    // Then the row keeps the fallback values, lastSeenAt still moved, and
+    // the log carries no email
+    expect(rowOf('user_a')).toMatchObject({
+      displayName: FALLBACK_DISPLAY_NAME,
+      email: null,
+      lastSeenAt: TODAY_NOON,
+    })
+    expect(user.updateMany).not.toHaveBeenCalled()
+    const logged = log.mock.calls.flat().map(String)
+    expect(logged).toContain('Error')
+    expect(logged.join('\n')).not.toContain('etblue@example.com')
+    log.mockRestore()
+  })
+
+  it('a Clerk lookup that times out leaves the row and does not throw', async () => {
+    // Given a fallback row and a Clerk lookup that never answers
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    userFake.reset([fallbackRow('user_a')])
+    const lookup = vi.fn<ClerkUserLookup>(() => new Promise(() => {}))
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    let settled = false
+    const run = ensureUser('user_a', { kind: 'clerk', lookup }, TODAY_NOON).then(() => {
+      settled = true
+    })
+
+    // When almost the whole timeout has passed, the request still waits
+    await vi.advanceTimersByTimeAsync(CLERK_LOOKUP_TIMEOUT_MS - 1)
+    expect(settled).toBe(false)
+
+    // And when the timeout is reached
+    await vi.advanceTimersByTimeAsync(1)
+    await run
+
+    // Then the row keeps the fallback values, and the timeout was logged
+    expect(rowOf('user_a')?.displayName).toBe(FALLBACK_DISPLAY_NAME)
+    expect(log.mock.calls.flat().map(String)).toContain('ClerkLookupTimeout')
+    log.mockRestore()
+  })
+
+  it('a Clerk reply with no JSON leaves the row', async () => {
+    // Given a fallback row and a lookup that answers null
+    userFake.reset([fallbackRow('user_a')])
+    const lookup = clerkLookup(null)
+
+    // When the first request today arrives
+    await ensureUser('user_a', { kind: 'clerk', lookup }, TODAY_NOON)
+
+    // Then nothing is written
+    expect(user.updateMany).not.toHaveBeenCalled()
+    expect(rowOf('user_a')?.displayName).toBe(FALLBACK_DISPLAY_NAME)
+  })
+
+  it('a Clerk account with no name and no email writes nothing', async () => {
+    // Given a fallback row, and a Clerk account that still gives "User"
+    // (phone sign-in with no name)
+    userFake.reset([fallbackRow('user_a')])
+    const lookup = clerkLookup(
+      clerkUser({
+        id: 'user_a',
+        first_name: null,
+        last_name: null,
+        primary_email_address_id: null,
+        email_addresses: [],
+      }),
+    )
+
+    // When the first request today arrives
+    await ensureUser('user_a', { kind: 'clerk', lookup }, TODAY_NOON)
+
+    // Then Clerk was asked, but no write was sent
+    expect(lookup).toHaveBeenCalledTimes(1)
+    expect(user.updateMany).not.toHaveBeenCalled()
+  })
+
+  it('asks Clerk at most once a day: a later request the same day does not ask again', async () => {
+    // Given a fallback row, and a Clerk that fails on the first request
+    userFake.reset([fallbackRow('user_a')])
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const lookup = vi.fn<ClerkUserLookup>(async () => {
+      throw new Error('down')
+    })
+    await ensureUser('user_a', { kind: 'clerk', lookup }, TODAY_NOON)
+    expect(lookup).toHaveBeenCalledTimes(1)
+
+    // When a second request arrives later the same day in this process
+    await ensureUser('user_a', { kind: 'clerk', lookup }, new Date('2026-10-31T18:00:00.000Z'))
+    // And another request arrives in another process (no memory)
+    resetSeenTodayMemory()
+    await ensureUser('user_a', { kind: 'clerk', lookup }, new Date('2026-10-31T19:00:00.000Z'))
+
+    // Then Clerk was not asked again
+    expect(lookup).toHaveBeenCalledTimes(1)
+    vi.mocked(console.error).mockRestore()
+  })
+
+  it('the next day asks Clerk again', async () => {
+    // Given a fallback row whose Clerk lookup failed today
+    userFake.reset([fallbackRow('user_a')])
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const failing = vi.fn<ClerkUserLookup>(async () => {
+      throw new Error('down')
+    })
+    await ensureUser('user_a', { kind: 'clerk', lookup: failing }, TODAY_NOON)
+
+    // When the first request of the next day arrives, and Clerk works
+    const lookup = clerkLookup(clerkUser({ id: 'user_a' }))
+    await ensureUser('user_a', { kind: 'clerk', lookup }, new Date('2026-11-01T08:00:00.000Z'))
+
+    // Then the name is replaced
+    expect(rowOf('user_a')?.displayName).toBe('ET Blue')
+    vi.mocked(console.error).mockRestore()
+  })
+
+  it('in E2E mode a row named "User" is left alone', async () => {
+    // Given E2E mode, and a row that happens to carry the fallback name
+    userFake.reset([fallbackRow('e2e-user-1')])
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    // When the first request today arrives
+    await ensureUser('e2e-user-1', { kind: 'e2e' }, TODAY_NOON)
+
+    // Then only the touch ran, no Clerk lookup was tried (a try would log
+    // its failure: E2E mode has no lookup), and the name stays
+    expect(queryCount()).toBe(1)
+    expect(log).not.toHaveBeenCalled()
+    expect(rowOf('e2e-user-1')?.displayName).toBe(FALLBACK_DISPLAY_NAME)
+    log.mockRestore()
+  })
+
+  it('does not overwrite a name the webhook wrote while Clerk was being asked', async () => {
+    // Given a fallback row, and a user.updated webhook that writes a real
+    // name while this request waits for Clerk
+    userFake.reset([fallbackRow('user_a')])
+    const lookup = vi.fn<ClerkUserLookup>(async (id) => {
+      const row = userFake.state.rows.find((r) => r.id === id)
+      if (row) Object.assign(row, { displayName: 'From Webhook', email: 'hook@example.com' })
+      return clerkUser({ id })
+    })
+
+    // When the request goes on and tries its write
+    await ensureUser('user_a', { kind: 'clerk', lookup }, TODAY_NOON)
+
+    // Then the webhook's values stay
+    expect(user.updateMany).toHaveBeenCalledTimes(1)
+    expect(rowOf('user_a')).toMatchObject({
+      displayName: 'From Webhook',
+      email: 'hook@example.com',
+    })
+  })
+
+  it('does not rename a row the webhook deleted while Clerk was being asked', async () => {
+    // Given a fallback row, and a user.deleted webhook that arrives while
+    // this request waits for Clerk
+    userFake.reset([fallbackRow('user_a')])
+    const deletedAt = new Date('2026-10-31T11:59:00.000Z')
+    const lookup = vi.fn<ClerkUserLookup>(async (id) => {
+      const row = userFake.state.rows.find((r) => r.id === id)
+      if (row) row.deletedAt = deletedAt
+      return clerkUser({ id })
+    })
+
+    // When the request goes on and tries its write
+    await ensureUser('user_a', { kind: 'clerk', lookup }, TODAY_NOON)
+
+    // Then the deleted row keeps its name
+    expect(rowOf('user_a')).toMatchObject({ displayName: FALLBACK_DISPLAY_NAME, deletedAt })
+  })
+
+  it('ten parallel requests ask Clerk once', async () => {
+    // Given a fallback row, and a page that sends ten queries at once
+    userFake.reset([fallbackRow('user_a')])
+    const lookup = clerkLookup(clerkUser({ id: 'user_a' }))
+
+    // When they all run together
+    await Promise.all(
+      Array.from({ length: 10 }, () => ensureUser('user_a', { kind: 'clerk', lookup }, TODAY_NOON)),
+    )
+
+    // Then they shared one run
+    expect(lookup).toHaveBeenCalledTimes(1)
+    expect(user.updateMany).toHaveBeenCalledTimes(1)
+    expect(rowOf('user_a')?.displayName).toBe('ET Blue')
+  })
+
+  it('a database error in the name write reaches ensureUserOrLog, which does not throw', async () => {
+    // Given a fallback row, and a name write that fails
+    userFake.reset([fallbackRow('user_a')])
+    user.updateMany.mockRejectedValueOnce(Object.assign(new Error('down'), { code: 'P1001' }))
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const lookup = clerkLookup(clerkUser({ id: 'user_a' }))
+
+    // When the safety net runs
+    await expect(ensureUserOrLog('user_a', { kind: 'clerk', lookup })).resolves.toBeUndefined()
+
+    // Then the error was logged by name and code
+    expect(log.mock.calls.flat().map(String)).toContain('P1001')
+    log.mockRestore()
+  })
+})
+
 describe('ensureUserOrLog', () => {
   beforeEach(() => {
     vi.resetAllMocks() // see the beforeEach of 'ensureUser' above
@@ -739,7 +1072,7 @@ describe('ensureUserOrLog', () => {
     const failure = Object.assign(new Error('create({ email: "etblue@example.com" }) failed'), {
       code: 'P1001',
     })
-    user.updateMany.mockRejectedValueOnce(failure)
+    user.updateManyAndReturn.mockRejectedValueOnce(failure)
 
     // When the safety net runs
     await expect(
