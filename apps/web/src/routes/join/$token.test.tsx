@@ -253,7 +253,7 @@ describe('join page, cloud mode', () => {
       await screen.findByRole('heading', { name: 'Join the Lin home' }),
     ).toBeInTheDocument()
     expect(
-      screen.getByText('Mei Lin invites you to this household:'),
+      screen.getByText('Mei Lin invites you to this household.'),
     ).toBeInTheDocument()
 
     // And the household card shows the household name and the household role
@@ -268,11 +268,11 @@ describe('join page, cloud mode', () => {
     expect(
       screen.getByRole('heading', {
         level: 2,
-        name: 'Locations in this household:',
+        name: 'Locations in this household',
       }),
     ).toBeInTheDocument()
     const list = screen.getByRole('list', {
-      name: 'Locations in this household:',
+      name: 'Locations in this household',
     })
     // The household card is not part of the locations list
     expect(list).not.toContainElement(householdCard)
@@ -313,7 +313,7 @@ describe('join page, cloud mode', () => {
     expect(within(householdCard).getByText('Member')).toBeInTheDocument()
 
     // And there is no locations heading and no list
-    expect(screen.queryByText('Locations in this household:')).toBeNull()
+    expect(screen.queryByText('Locations in this household')).toBeNull()
     expect(screen.queryByRole('list')).toBeNull()
     expect(screen.getByRole('button', { name: 'Join' })).toBeInTheDocument()
   })

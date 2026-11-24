@@ -38,7 +38,7 @@ export class JoinPage {
    */
   locationRows(): Locator {
     return this.page
-      .getByRole('list', { name: 'Locations in this household:' })
+      .getByRole('list', { name: 'Locations in this household' })
       .getByRole('listitem')
   }
 

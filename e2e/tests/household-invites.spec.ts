@@ -321,7 +321,7 @@ test.describe('invite, join and members', () => {
     await expect(join.heading()).toHaveText(`Join ${HOUSEHOLD}`)
     expect(new URL(newcomerPage.url()).pathname).toBe(`/join/${token}`)
     await expect(
-      newcomerPage.getByText('Olivia Owner invites you to this household:'),
+      newcomerPage.getByText('Olivia Owner invites you to this household.'),
     ).toBeVisible()
     await expect(join.householdCard(HOUSEHOLD)).toContainText('Your role:')
     await expect(join.householdCard(HOUSEHOLD)).toContainText('Member')

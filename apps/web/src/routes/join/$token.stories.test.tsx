@@ -26,7 +26,7 @@ describe('Join page stories smoke tests', () => {
     ).toBeInTheDocument()
     expect(
       within(
-        screen.getByRole('list', { name: 'Locations in this household:' }),
+        screen.getByRole('list', { name: 'Locations in this household' }),
       ).getAllByRole('listitem'),
     ).toHaveLength(2)
     expect(screen.getByRole('button', { name: 'Join' })).toBeInTheDocument()
