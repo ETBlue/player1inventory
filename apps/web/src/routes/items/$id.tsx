@@ -37,7 +37,7 @@ function ItemLayoutInner() {
   const navigate = useNavigate()
   const router = useRouter()
   const { data: item, isLoading } = useItem(id)
-  const { isDirty } = useItemLayout()
+  const { isDirty, setSaveSlot } = useItemLayout()
   const { goBack } = useAppNavigation('/')
   // Both the Info tab (index, exact `/items/$id`) and the Stock tab
   // (`/items/$id/stock`) render an editable ItemForm that registers dirty
@@ -151,6 +151,11 @@ function ItemLayoutInner() {
       <LayoutInnerPages
         title={item.name}
         onBack={handleBackClick}
+        // Row 1 ends with the current tab's Save (owner decision 2026-11-25).
+        // The Info and Stock tabs portal their Save into this element
+        // (`ItemForm`'s `submitSlot`); the other tabs leave it empty.
+        // `contents`, so an empty slot adds no flex gap.
+        toolbarEnd={<div ref={setSaveSlot} className="contents" />}
         tabs={
           // Row 2: every tab of the item, one level (design 2026-11-24, part
           // B). Below `sm` only the icons show; the name stays as visually

@@ -15,6 +15,7 @@ const {
   Saving,
   InfoSectionReadOnly,
   StockSectionReadOnly,
+  SaveInTopBar,
 } = composeStories(stories)
 
 describe('ItemForm stories smoke tests', () => {
@@ -95,5 +96,14 @@ describe('ItemForm stories smoke tests', () => {
       screen.getByRole('button', { name: /increase packed/i }),
     ).toBeDisabled()
     expect(screen.queryByRole('button', { name: /save/i })).toBeNull()
+  })
+
+  it('SaveInTopBar puts Save in the top bar, outside the form', async () => {
+    render(<SaveInTopBar />)
+    const save = await screen.findByRole('button', { name: /^save$/i })
+    expect(save.closest('form')).toBeNull()
+    expect(
+      screen.getByRole('heading', { name: 'Whole Milk' }).parentElement,
+    ).toContainElement(save)
   })
 })

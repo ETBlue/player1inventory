@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { elementAt } from '@/test/narrow'
@@ -1522,5 +1522,117 @@ describe('ItemForm — readOnly stock section (households H5 task F.6)', () => {
       expect(screen.getByRole('button', { name }), String(name)).toBeEnabled()
     }
     expect(screen.getByRole('button', { name: /save/i })).toBeInTheDocument()
+  })
+})
+
+// Owner decision 2026-11-25: on the item page Save is in the top bar. The
+// page passes an element as `submitSlot`, and the form renders its Save there
+// with a portal, linked back to the form by the HTML `form` attribute.
+describe('ItemForm — Save in a slot outside the form (submitSlot)', () => {
+  function makeSlot() {
+    const slot = document.createElement('div')
+    slot.setAttribute('data-testid', 'slot')
+    document.body.appendChild(slot)
+    return slot
+  }
+
+  it('renders Save in the slot, not in the form, linked by the form attribute', () => {
+    // Given a slot outside the form
+    const slot = makeSlot()
+    const { container } = render(
+      <ItemForm
+        onSubmit={vi.fn()}
+        initialValues={{ name: 'Milk' }}
+        onDirtyChange={vi.fn()}
+        submitSlot={slot}
+      />,
+    )
+
+    // Then Save is in the slot and nowhere in the form
+    const save = screen.getByRole('button', { name: /^save$/i })
+    expect(slot).toContainElement(save)
+    const form = container.querySelector('form')
+    if (!form) throw new Error('expected the form to render')
+    expect(form).not.toContainElement(save)
+    // And it submits that form
+    expect(form.id).toBeTruthy()
+    expect(save).toHaveAttribute('form', form.id)
+    expect(save).toHaveAttribute('type', 'submit')
+    slot.remove()
+  })
+
+  it('user can submit the form with the Save in the slot once it is dirty', async () => {
+    const user = userEvent.setup()
+    // Given an edit form with its Save in a slot
+    const slot = makeSlot()
+    const onSubmit = submitSpy()
+    render(
+      <ItemForm
+        onSubmit={onSubmit}
+        initialValues={{ name: 'Milk' }}
+        onDirtyChange={vi.fn()}
+        submitSlot={slot}
+      />,
+    )
+    const save = screen.getByRole('button', { name: /^save$/i })
+
+    // Save is disabled while the form is clean
+    expect(save).toBeDisabled()
+
+    // When the user changes the name and presses Save
+    const name = screen.getByRole('textbox', { name: /^name/i })
+    await user.clear(name)
+    await user.type(name, 'Oat milk')
+    expect(save).toBeEnabled()
+    await user.click(save)
+
+    // Then the form submits the new values
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    expect(elementAt(elementAt(onSubmit.mock.calls, 0), 0).name).toBe(
+      'Oat milk',
+    )
+    slot.remove()
+  })
+
+  it('shows Save disabled while saving', () => {
+    const slot = makeSlot()
+    render(
+      <ItemForm
+        onSubmit={vi.fn()}
+        initialValues={{ name: 'Milk' }}
+        submitSlot={slot}
+        isPending
+      />,
+    )
+    expect(within(slot).getByRole('button', { name: /^save$/i })).toBeDisabled()
+    slot.remove()
+  })
+
+  it('shows no Save when read only, in the slot or in the form', () => {
+    const slot = makeSlot()
+    render(
+      <ItemForm
+        onSubmit={vi.fn()}
+        initialValues={{ name: 'Milk' }}
+        submitSlot={slot}
+        readOnly
+      />,
+    )
+    // Present first: the form rendered
+    expect(screen.getByRole('textbox', { name: /^name/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^save$/i })).toBeNull()
+    slot.remove()
+  })
+
+  it('shows no Save while the slot is not there yet (null)', () => {
+    render(
+      <ItemForm
+        onSubmit={vi.fn()}
+        initialValues={{ name: 'Milk' }}
+        submitSlot={null}
+      />,
+    )
+    expect(screen.getByRole('textbox', { name: /^name/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^save$/i })).toBeNull()
   })
 })
