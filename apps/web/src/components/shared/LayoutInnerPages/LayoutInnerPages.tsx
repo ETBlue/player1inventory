@@ -16,6 +16,12 @@ interface LayoutInnerPagesProps {
   icon?: ReactNode
   onBack?: () => void
   toolbarEnd?: ReactNode
+  /**
+   * A second row under the toolbar, for a page's tab row (the item page's
+   * Info · Stock · Tags · Vendors · Recipes · Log). It is not scrolled with
+   * the content.
+   */
+  tabs?: ReactNode
   children: ReactNode
 }
 
@@ -38,6 +44,7 @@ export function LayoutInnerPages({
   icon,
   onBack,
   toolbarEnd,
+  tabs,
   children,
 }: LayoutInnerPagesProps) {
   const { t } = useTranslation()
@@ -46,23 +53,26 @@ export function LayoutInnerPages({
 
   return (
     <div className="h-[100cqh] grid grid-rows-[auto_1fr]">
-      <Toolbar className="w-[100cqw]">
-        <Button
-          variant="neutral-ghost"
-          size="icon"
-          className="lg:w-auto lg:mr-3"
-          onClick={onBack ?? goBack}
-          aria-label={t('common.goBack')}
-        >
-          <ArrowLeft />
-          <span className="hidden lg:inline">{t('common.goBack')}</span>
-        </Button>
-        {icon}
-        <h1 className="text-base font-regular truncate flex-1 capitalize">
-          {title}
-        </h1>
-        {toolbarEnd}
-      </Toolbar>
+      <div>
+        <Toolbar className="w-[100cqw]">
+          <Button
+            variant="neutral-ghost"
+            size="icon"
+            className="lg:w-auto lg:mr-3"
+            onClick={onBack ?? goBack}
+            aria-label={t('common.goBack')}
+          >
+            <ArrowLeft />
+            <span className="hidden lg:inline">{t('common.goBack')}</span>
+          </Button>
+          {icon}
+          <h1 className="text-base font-regular truncate flex-1 capitalize">
+            {title}
+          </h1>
+          {toolbarEnd}
+        </Toolbar>
+        {tabs}
+      </div>
       <div ref={scrollRef} className="overflow-y-auto [container-type:size]">
         <InnerPageScrollContext.Provider value={scrollRef}>
           {children}

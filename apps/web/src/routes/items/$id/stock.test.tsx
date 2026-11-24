@@ -955,7 +955,7 @@ describe('Item stock tab', () => {
 
     // …and clears the layout dirty flag with it: leaving the tab afterwards
     // must not re-raise a discard prompt for edits that no longer exist
-    await user.click(screen.getByRole('link', { name: /item info tab/i }))
+    await user.click(screen.getByRole('link', { name: /^info$/i }))
     await waitFor(() => {
       expect(screen.queryByLabelText(/^packed/i)).not.toBeInTheDocument()
     })
@@ -996,7 +996,7 @@ describe('Item stock tab', () => {
     await screen.findByRole('button', { name: /add to location/i })
 
     // Then leaving the tab is not blocked by edits that no longer exist
-    await user.click(screen.getByRole('link', { name: /item info tab/i }))
+    await user.click(screen.getByRole('link', { name: /^info$/i }))
     await waitFor(() => {
       expect(
         screen.queryByRole('button', { name: /add to location/i }),

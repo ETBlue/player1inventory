@@ -69,7 +69,7 @@ The five list pages keep their own Back button on mobile only (`lg:hidden`), bec
 
 Reusable across multiple features and pages.
 
-**`LayoutInnerPages`** (`src/components/shared/LayoutInnerPages/index.ts`) — shared layout for all level 2+ pages (entity detail + new-entity pages). Provides a fixed top bar (back button with `goBack()` default, optional `icon`, `title`, optional `toolbarEnd`) and a scrollable `children` area. Props: `title: ReactNode`, `icon?: ReactNode`, `onBack?: () => void`, `toolbarEnd?: ReactNode`, `children: ReactNode`.
+**`LayoutInnerPages`** (`src/components/shared/LayoutInnerPages/index.ts`) — shared layout for all level 2+ pages (entity detail + new-entity pages). Provides a fixed top bar (back button with `goBack()` default, optional `icon`, `title`, optional `toolbarEnd`), an optional second row under it (`tabs`, the item page's tab row since 2026-11-24; it does not scroll with the content) and a scrollable `children` area. Props: `title: ReactNode`, `icon?: ReactNode`, `onBack?: () => void`, `toolbarEnd?: ReactNode`, `tabs?: ReactNode`, `children: ReactNode`.
 
 **`Toolbar`** (`src/components/shared/Toolbar/index.tsx`) — shared wrapper for list-page toolbars. Provides `bg-background-surface`, `border-b-2 border-accessory-default`, `px-3 py-2`, `flex items-center gap-2`. Used by shopping (cart toolbar), vendor list, and tags pages. Accepts optional `className` for layout overrides (e.g. `justify-between`, `flex-wrap`).
 

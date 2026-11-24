@@ -101,8 +101,9 @@ export async function refetchAfterWrite(
  * `refetchAfterWrite` for a hook, plus `isRefetching`.
  *
  * A mutation's `loading` stayed true while `awaitRefetchQueries` waited, and
- * pages read it as "busy" (`isPending`). The relation tabs keep a badge busy
- * on it, so a second press cannot start from the old list. Now the read runs
+ * pages read it as "busy" (`isPending`). The item Tags, Vendors and Recipes
+ * tabs keep a badge busy on it, so a second press cannot start from the old
+ * list. Now the read runs
  * after the mutation has finished, so a hook reports
  * `loading || isRefetching` to keep that meaning.
  */
