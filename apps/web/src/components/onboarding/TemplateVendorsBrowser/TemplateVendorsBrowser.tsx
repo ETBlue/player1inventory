@@ -66,7 +66,7 @@ export function TemplateVendorsBrowser({
   // Render
   // ---------------------------------------------------------------------------
   return (
-    <div className="min-h-screen">
+    <div className="min-h-[100cqh]">
       {/* Row 1: Toolbar */}
       <Toolbar className="sticky top-0 z-10">
         <Button

@@ -122,6 +122,8 @@ Mobile                          Desktop
 
 Three patterns are used across the app. The outer shell differs between breakpoints (sidebar vs bottom nav), but the page-level structure is the same.
 
+**One height rule.** Only `Layout` is sized to the viewport (`h-dvh`). Every page sizes itself to Layout's `<main>` with `h-[100cqh]` or `min-h-[100cqh]`. Do not use `h-screen`, `min-h-screen` or any `vh` / `svh` / `lvh` / `dvh` height on a page: on iOS in home-screen mode `100vh` can be taller than `100dvh`, which leaves empty space at the bottom of the page. The test `apps/web/src/lib/pageHeightRule.test.ts` fails when a page breaks this rule.
+
 ### Mobile
 
 <MobileLayouts />
@@ -139,10 +141,10 @@ Three patterns are used across the app. The outer shell differs between breakpoi
 
 `h-[100cqh]` sizes to the container query height of Layout's `<main>` — the viewport minus the bottom nav height.
 
-**Toolbar + list** — level 2+ pages (item detail, shelf detail). The toolbar requires a back button. The bottom nav is hidden; `h-screen` fills the full viewport.
+**Toolbar + list** — level 2+ pages (item detail, shelf detail). The toolbar requires a back button. `h-[100cqh]` fills Layout's `<main>`, with or without the bottom nav.
 
 ```tsx
-<div className="h-screen grid grid-rows-[auto_1fr]">
+<div className="h-[100cqh] grid grid-rows-[auto_1fr]">
   <div>{/* Toolbar: back button + title */}</div>
   <div className="overflow-y-auto [container-type:size]">
     {/* Scrollable content */}
@@ -173,10 +175,10 @@ Three patterns are used across the app. The outer shell differs between breakpoi
 </div>
 ```
 
-**Toolbar + list** — same as mobile: no sidebar, no bottom nav. The toolbar requires a back button. `h-screen` fills the full viewport.
+**Toolbar + list** — same as mobile: no sidebar, no bottom nav. The toolbar requires a back button. `h-[100cqh]` fills Layout's `<main>`.
 
 ```tsx
-<div className="h-screen grid grid-rows-[auto_1fr]">
+<div className="h-[100cqh] grid grid-rows-[auto_1fr]">
   <div>{/* Toolbar: back button + title */}</div>
   <div className="overflow-y-auto [container-type:size]">
     {/* Scrollable content */}

@@ -32,7 +32,7 @@ export function TemplateOverview({
   const isConfirmDisabled = selectedItemCount === 0 && selectedVendorCount === 0
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 gap-6">
+    <div className="min-h-[100cqh] flex flex-col items-center justify-center p-6 gap-6">
       {/* Heading */}
       <div className="text-center">
         <h2 className="text-xl flex gap-2 items-center">

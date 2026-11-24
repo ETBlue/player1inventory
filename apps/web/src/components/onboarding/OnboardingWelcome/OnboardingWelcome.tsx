@@ -17,7 +17,7 @@ export function OnboardingWelcome({
   const { preference, setPreference } = useLanguage()
 
   return (
-    <div className="relative min-h-screen flex flex-col items-center justify-center p-6 gap-6">
+    <div className="relative min-h-[100cqh] flex flex-col items-center justify-center p-6 gap-6">
       {/* App logo (TBD) */}
 
       {/* Heading and subtext */}
