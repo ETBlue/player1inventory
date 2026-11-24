@@ -313,6 +313,7 @@ Row 1 (single combined toolbar):
 
 Row 2 (ItemListToolbar):
 - Same filter/sort/search as other item list pages
+- The sort starts at **Stock, ascending**, so low stock is on top: items below their refill level, then items at it, then the rest (`useSortFilter('shopping', { defaultSortBy: 'stock' })`, since 2026-11-24). Every other item list starts at Name, and the pantry list at Expiring. A choice saved in `localStorage['shopping-sort-prefs']` still wins, so a person who already picked a sort keeps it
 - No vendor `leading` prop — items are already scoped to this vendor
 
 **Item scoping:**
