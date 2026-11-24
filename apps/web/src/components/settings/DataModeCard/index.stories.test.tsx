@@ -5,7 +5,8 @@ import * as stories from './index.stories'
 
 // composeStories applies each story's MockedProvider decorator automatically.
 // We manually call each story's beforeEach since composeStories doesn't run them.
-const { LocalMode, CloudMode } = composeStories(stories)
+const { LocalMode, CloudMode, SwitchToLocalCopyDialog } =
+  composeStories(stories)
 
 describe('DataModeCard stories smoke tests', () => {
   describe('LocalMode', () => {
@@ -25,6 +26,23 @@ describe('DataModeCard stories smoke tests', () => {
     it('renders without error', () => {
       render(<CloudMode />)
       expect(screen.getByText('Cloud Mode')).toBeInTheDocument()
+    })
+  })
+
+  // `.run()` runs the story's `beforeEach` and its `play`, which opens the
+  // dialog.
+  describe('SwitchToLocalCopyDialog', () => {
+    it('shows the copy question with a Cancel button', async () => {
+      await SwitchToLocalCopyDialog.run()
+      expect(
+        await screen.findByRole('heading', {
+          name: 'Copy your cloud data to local storage?',
+        }),
+      ).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Start Fresh' }),
+      ).toBeInTheDocument()
     })
   })
 })
