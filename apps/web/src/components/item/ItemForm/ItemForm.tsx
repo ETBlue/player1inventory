@@ -23,6 +23,10 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import {
+  type RegisterSaveControl,
+  useRegisterSaveControl,
+} from '@/hooks/useSaveControl'
+import {
   computeFillToFull,
   computePack,
   computeUnpack,
@@ -100,8 +104,12 @@ interface ItemFormProps {
    * has no place for one. Both callers, `routes/items/$id/index.tsx` and
    * `routes/items/$id/stock.tsx`, do. When the save fails the caller does not
    * bump `savedAt`, so the form keeps its values and stays dirty.
+   *
+   * It may answer whether the save worked (`Promise<boolean>`). The form's
+   * own Save ignores the answer; `onSaveControlChange`'s `save` passes it on.
+   * Only `false` counts as "failed"; no answer counts as "worked".
    */
-  onSubmit: (values: ItemFormValues) => void
+  onSubmit: (values: ItemFormValues) => unknown
   onDirtyChange?: (isDirty: boolean) => void
   savedAt?: number
   submitLabel?: string
@@ -125,6 +133,14 @@ interface ItemFormProps {
    * The item page's Info and Stock tabs pass the top bar's slot.
    */
   submitSlot?: HTMLElement | null
+  /**
+   * Hands the item page's layout a "save now" for its unsaved-changes dialog
+   * (design `docs/global/ui-polish/2026-11-25-unsaved-dialog-save-design.md`).
+   * `canSave` is the same rule as the Save button (`isSubmitDisabled`, and not
+   * `readOnly`); `save` runs the same `onSubmit` as Save and answers whether
+   * it worked. The form gives `null` when it unmounts.
+   */
+  onSaveControlChange?: RegisterSaveControl
 }
 
 export function ItemForm({
@@ -137,6 +153,7 @@ export function ItemForm({
   isPending = false,
   readOnly = false,
   submitSlot,
+  onSaveControlChange,
 }: ItemFormProps) {
   const { t } = useTranslation()
   const formId = useId()
@@ -467,6 +484,16 @@ export function ItemForm({
     if (readOnly || isSubmitDisabled) return
     onSubmit(currentValuesRef.current)
   }
+
+  const canSave = !readOnly && !isSubmitDisabled
+  useRegisterSaveControl(onSaveControlChange, canSave, async () => {
+    if (!canSave) return false
+    try {
+      return (await onSubmit(currentValuesRef.current)) !== false
+    } catch {
+      return false
+    }
+  })
 
   return (
     <form

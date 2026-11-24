@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { usePermissions } from '@/hooks/usePermissions'
+import { useRegisterSaveControl } from '@/hooks/useSaveControl'
 import { useShelfLayout } from '@/hooks/useShelfLayout'
 import {
   useDeleteShelfMutation,
@@ -29,7 +30,7 @@ function ShelfInfoTab() {
   const deleteShelf = useDeleteShelfMutation()
   const { goBack } = useAppNavigation('/settings/household/shelves')
   const navigate = useNavigate()
-  const { registerDirtyState } = useShelfLayout()
+  const { registerDirtyState, registerSaveControl } = useShelfLayout()
   // A household member sees this page read only (households H5 task F.5)
   const { canEditCatalog, roleKnown } = usePermissions()
 
@@ -61,46 +62,53 @@ function ShelfInfoTab() {
     registerDirtyState(isDirty)
   }, [isDirty, registerDirtyState])
 
-  const handleSave = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!shelf || !canEditCatalog) return
+  const canSave =
+    !!shelf && canEditCatalog && !nameError && isDirty && !updateShelf.isPending
+
+  // The one save, for Save and for the unsaved-changes dialog. Answers
+  // whether it worked; a failure has shown its toast. It does not navigate:
+  // Save goes back after it (`handleSave`), the dialog goes where the user
+  // pressed (design 2026-11-25).
+  const saveShelf = async (): Promise<boolean> => {
+    if (!shelf || !canSave) return false
+    let data: Parameters<typeof updateShelf.mutateAsync>[0]['data']
     if (shelf.type === 'filter') {
       const base = shelf.filterConfig ?? {}
-      updateShelf.mutate(
-        {
-          id: shelf.id,
-          data: {
-            name: name.trim(),
-            filterConfig: {
-              ...(base.tagIds && base.tagIds.length > 0
-                ? { tagIds: base.tagIds }
-                : {}),
-              ...(base.vendorIds && base.vendorIds.length > 0
-                ? { vendorIds: base.vendorIds }
-                : {}),
-              ...(base.recipeIds && base.recipeIds.length > 0
-                ? { recipeIds: base.recipeIds }
-                : {}),
-            },
-          },
+      data = {
+        name: name.trim(),
+        filterConfig: {
+          ...(base.tagIds && base.tagIds.length > 0
+            ? { tagIds: base.tagIds }
+            : {}),
+          ...(base.vendorIds && base.vendorIds.length > 0
+            ? { vendorIds: base.vendorIds }
+            : {}),
+          ...(base.recipeIds && base.recipeIds.length > 0
+            ? { recipeIds: base.recipeIds }
+            : {}),
         },
-        // Before, a failed save showed nothing. The page stays, so the user
-        // can try again.
-        { onSuccess: () => goBack(), onError: (err) => showSaveError(err) },
-      )
+      }
     } else {
-      updateShelf.mutate(
-        {
-          id: shelf.id,
-          data: {
-            name: name.trim(),
-          },
-        },
-        // Before, a failed save showed nothing. The page stays, so the user
-        // can try again.
-        { onSuccess: () => goBack(), onError: (err) => showSaveError(err) },
-      )
+      data = { name: name.trim() }
     }
+    try {
+      await updateShelf.mutateAsync({ id: shelf.id, data })
+    } catch (err) {
+      // Before, a failed save showed nothing. The page stays, so the user
+      // can try again.
+      showSaveError(err)
+      return false
+    }
+    return true
+  }
+
+  useRegisterSaveControl(registerSaveControl, canSave, saveShelf)
+
+  const handleSave = (e: React.FormEvent) => {
+    e.preventDefault()
+    void saveShelf().then((saved) => {
+      if (saved) goBack()
+    })
   }
 
   if (isLoading) return <LoadingSpinner />
