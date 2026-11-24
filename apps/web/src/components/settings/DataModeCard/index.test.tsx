@@ -947,3 +947,98 @@ describe('DataModeCard — backing out of a switch', () => {
     expectNothingChanged(null)
   })
 })
+
+// The sign-out question "Switch to offline mode?" (owner, 2026-11-24, after
+// issue #405). Radix focuses the LAST `AlertDialogCancel` when an
+// `AlertDialog` opens. "Just sign out" was one, so Enter right after the
+// question opened signed the person out.
+describe('DataModeCard — backing out of signing out', () => {
+  let reloadMock: ReturnType<typeof vi.fn>
+  const signOutMock = vi.fn(async () => {})
+
+  beforeEach(() => {
+    reloadMock = vi.fn()
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, reload: reloadMock },
+      writable: true,
+    })
+    signOutMock.mockClear()
+    vi.mocked(useClerk).mockReturnValue({
+      signOut: signOutMock,
+    } as unknown as ReturnType<typeof useClerk>)
+    vi.mocked(importLocalData).mockClear()
+    vi.mocked(fetchCloudPayload).mockClear()
+  })
+
+  afterEach(() => {
+    localStorage.clear()
+    vi.mocked(useClerk).mockReset()
+    vi.mocked(useClerk).mockImplementation(
+      () => ({ signOut: vi.fn() }) as unknown as ReturnType<typeof useClerk>,
+    )
+  })
+
+  // Nothing was chosen: still cloud, not signed out, nothing copied.
+  function expectStillSignedIn() {
+    expect(localStorage.getItem('data-mode')).toBe('cloud')
+    expect(signOutMock).not.toHaveBeenCalled()
+    expect(fetchCloudPayload).not.toHaveBeenCalled()
+    expect(importLocalData).not.toHaveBeenCalled()
+    expect(reloadMock).not.toHaveBeenCalled()
+  }
+
+  it('user who presses Enter right after the sign-out question opens is not signed out', async () => {
+    // Given cloud mode
+    localStorage.setItem('data-mode', 'cloud')
+    const user = userEvent.setup()
+    renderCard()
+
+    // When the sign-out question opens, focus is on Cancel
+    await user.click(screen.getByRole('button', { name: 'Sign Out' }))
+    expect(
+      screen.getByRole('heading', { name: 'Switch to offline mode?' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus()
+
+    // And the user presses Enter
+    await user.keyboard('{Enter}')
+
+    // Then the question closes and nothing happens
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument(),
+    )
+    expectStillSignedIn()
+  })
+
+  it('user can close the sign-out question with Escape', async () => {
+    // Given cloud mode, with the sign-out question open
+    localStorage.setItem('data-mode', 'cloud')
+    const user = userEvent.setup()
+    renderCard()
+    await user.click(screen.getByRole('button', { name: 'Sign Out' }))
+
+    // When the user presses Escape
+    await user.keyboard('{Escape}')
+
+    // Then it is the same as Cancel
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument(),
+    )
+    expectStillSignedIn()
+  })
+
+  it('user can still just sign out', async () => {
+    // Given cloud mode, with the sign-out question open
+    localStorage.setItem('data-mode', 'cloud')
+    const user = userEvent.setup()
+    renderCard()
+    await user.click(screen.getByRole('button', { name: 'Sign Out' }))
+
+    // When the user clicks "Just sign out"
+    await user.click(screen.getByRole('button', { name: 'Just sign out' }))
+
+    // Then they are signed out, and the mode stays cloud
+    await waitFor(() => expect(signOutMock).toHaveBeenCalledOnce())
+    expect(localStorage.getItem('data-mode')).toBe('cloud')
+  })
+})
