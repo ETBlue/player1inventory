@@ -23,6 +23,26 @@ export class JoinPage {
   }
 
   /**
+   * The household card: the household name as stored, then "Your role:" and
+   * the household role (`RoleRow` in apps/web/src/routes/join/$token.tsx).
+   * The name is the card's middle `span`, so its parent is the card.
+   */
+  householdCard(householdName: string): Locator {
+    return this.page.getByText(householdName, { exact: true }).locator('..')
+  }
+
+  /**
+   * The list of location roles, named by its `h2` "Locations in this
+   * household:" through `aria-labelledby` (`join.locationsTitle`). Each
+   * `listitem` is one location card.
+   */
+  locationRows(): Locator {
+    return this.page
+      .getByRole('list', { name: 'Locations in this household:' })
+      .getByRole('listitem')
+  }
+
+  /**
    * Local mode: "Sign in to join" (`join.signIn`). It switches to cloud mode
    * and reloads. The E2E build has no Clerk, so the reload lands on this
    * page again, in cloud mode.

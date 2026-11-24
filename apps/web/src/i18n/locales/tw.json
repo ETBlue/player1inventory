@@ -1092,8 +1092,9 @@
   "join": {
     "heading": "加入家庭",
     "title": "加入 {{household}}",
-    "invitedBy": "{{name}} 邀請了你。",
-    "yourRoles": "你的角色",
+    "invitedBy": "{{name}} 邀請你加入這個家庭。",
+    "yourRole": "你的角色：",
+    "locationsTitle": "這個家庭裡的地點",
     "join": "加入",
     "alreadyMember": "你已經在這個家庭裡了。",
     "invalid": "這個邀請已經失效，請再要一個新的。",

@@ -1092,8 +1092,9 @@
   "join": {
     "heading": "Join a household",
     "title": "Join {{household}}",
-    "invitedBy": "{{name}} invited you.",
-    "yourRoles": "Your roles",
+    "invitedBy": "{{name}} invites you to this household:",
+    "yourRole": "Your role:",
+    "locationsTitle": "Locations in this household:",
     "join": "Join",
     "alreadyMember": "You are already in this household.",
     "invalid": "This invite is no longer valid. Ask for a new one.",

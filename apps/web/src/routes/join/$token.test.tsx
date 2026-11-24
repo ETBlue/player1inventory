@@ -9,7 +9,13 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { toast } from 'sonner'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -23,6 +29,7 @@ import {
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
 import { cloudRoleBaseMocks, cloudRoleStorySetup } from '@/test/cloudRoleStory'
+import { defined, elementAt } from '@/test/narrow'
 
 // The real generated hooks and Apollo React hooks, so `MockedProvider`
 // answers the page. `setup.ts` stubs both for every other test.
@@ -238,26 +245,76 @@ describe('join page, cloud mode', () => {
   })
 
   it('user sees who invited them, the household and their roles', async () => {
-    // Given a valid invite
+    // Given a valid invite with a household role and two location roles
     renderCloud([previewMock(VALID)])
 
     // Then the page names the household and the inviter
     expect(
       await screen.findByRole('heading', { name: 'Join the Lin home' }),
     ).toBeInTheDocument()
-    expect(screen.getByText('Mei Lin invited you.')).toBeInTheDocument()
-    // And lists the household role and each location role
-    expect(screen.getByText('Member')).toBeInTheDocument()
-    expect(screen.getByText('Organizer')).toBeInTheDocument()
-    expect(screen.getByText('Viewer')).toBeInTheDocument()
-    // And shows location and household names as stored, never title-cased
-    for (const name of ['my Kitchen', 'Garage']) {
+    expect(
+      screen.getByText('Mei Lin invites you to this household:'),
+    ).toBeInTheDocument()
+
+    // And the household card shows the household name and the household role
+    const householdCard = defined(
+      screen.getByText('the Lin home').parentElement ?? undefined,
+      'household card',
+    )
+    expect(within(householdCard).getByText('Your role:')).toBeInTheDocument()
+    expect(within(householdCard).getByText('Member')).toBeInTheDocument()
+
+    // And the locations come under their own heading, in a list it names
+    expect(
+      screen.getByRole('heading', {
+        level: 2,
+        name: 'Locations in this household:',
+      }),
+    ).toBeInTheDocument()
+    const list = screen.getByRole('list', {
+      name: 'Locations in this household:',
+    })
+    // The household card is not part of the locations list
+    expect(list).not.toContainElement(householdCard)
+    const rows = within(list).getAllByRole('listitem')
+    expect(rows).toHaveLength(2)
+    const kitchen = elementAt(rows, 0)
+    expect(within(kitchen).getByText('my Kitchen')).toBeInTheDocument()
+    expect(within(kitchen).getByText('Your role:')).toBeInTheDocument()
+    expect(within(kitchen).getByText('Organizer')).toBeInTheDocument()
+    const garage = elementAt(rows, 1)
+    expect(within(garage).getByText('Garage')).toBeInTheDocument()
+    expect(within(garage).getByText('Your role:')).toBeInTheDocument()
+    expect(within(garage).getByText('Viewer')).toBeInTheDocument()
+
+    // And shows household and location names as stored, never title-cased
+    for (const name of ['the Lin home', 'my Kitchen', 'Garage']) {
       let node: HTMLElement | null = screen.getByText(name)
       while (node) {
         expect(node.className).not.toMatch(/\bcapitalize\b/)
         node = node.parentElement
       }
     }
+    expect(screen.getByRole('button', { name: 'Join' })).toBeInTheDocument()
+  })
+
+  it('user sees no locations heading or list when the invite gives no location roles', async () => {
+    // Given a valid invite with a household role and no location roles
+    renderCloud([previewMock({ ...VALID, locationRoles: [] })])
+
+    // Then the household card shows the household role
+    expect(
+      await screen.findByRole('heading', { name: 'Join the Lin home' }),
+    ).toBeInTheDocument()
+    const householdCard = defined(
+      screen.getByText('the Lin home').parentElement ?? undefined,
+      'household card',
+    )
+    expect(within(householdCard).getByText('Member')).toBeInTheDocument()
+
+    // And there is no locations heading and no list
+    expect(screen.queryByText('Locations in this household:')).toBeNull()
+    expect(screen.queryByRole('list')).toBeNull()
     expect(screen.getByRole('button', { name: 'Join' })).toBeInTheDocument()
   })
 

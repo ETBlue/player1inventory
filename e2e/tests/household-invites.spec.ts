@@ -321,11 +321,14 @@ test.describe('invite, join and members', () => {
     await expect(join.heading()).toHaveText(`Join ${HOUSEHOLD}`)
     expect(new URL(newcomerPage.url()).pathname).toBe(`/join/${token}`)
     await expect(
-      newcomerPage.getByText('Olivia Owner invited you.'),
+      newcomerPage.getByText('Olivia Owner invites you to this household:'),
     ).toBeVisible()
-    const roles = newcomerPage.getByRole('listitem')
-    await expect(roles.filter({ hasText: HOUSEHOLD })).toContainText('Member')
-    await expect(roles.filter({ hasText: 'Home' })).toContainText('Participant')
+    await expect(join.householdCard(HOUSEHOLD)).toContainText('Your role:')
+    await expect(join.householdCard(HOUSEHOLD)).toContainText('Member')
+    await expect(join.locationRows()).toHaveCount(1)
+    await expect(join.locationRows().filter({ hasText: 'Home' })).toContainText(
+      'Participant',
+    )
     // NEWCOMER's first cloud request made them a household of their own, so
     // the join below has one to delete
     await expect
