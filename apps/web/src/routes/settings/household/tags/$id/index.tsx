@@ -42,7 +42,7 @@ function TagInfoTab() {
   const { data: tagTypes = [] } = useTagTypes()
   const tag = tags.find((tag) => tag.id === id)
   const updateTag = useUpdateTag()
-  const { registerDirtyState } = useTagLayout()
+  const { registerDirtyState, registerSaveControl } = useTagLayout()
   const { goBack } = useAppNavigation()
   const deleteTag = useDeleteTag()
   const { data: affectedItemCount = 0 } = useItemCountByTag(id)
@@ -139,13 +139,17 @@ function TagInfoTab() {
               // with nothing on screen. The error is passed on so the form
               // marks the edit as unsaved again; the form catches it.
               .then(
-                () => goBack(),
+                () => {},
                 (err: unknown) => {
                   showSaveError(err)
                   throw err
                 },
               )
           }
+          // Only the form's own Save goes back. The unsaved-changes dialog's
+          // Save goes where the user pressed (design 2026-11-25).
+          onSaved={goBack}
+          onSaveControlChange={registerSaveControl}
           isPending={updateTag.isPending}
           onDirtyChange={registerDirtyState}
           readOnly={!canEditCatalog}

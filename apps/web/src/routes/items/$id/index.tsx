@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import type { ItemFormValues } from '@/components/item/ItemForm'
@@ -205,7 +205,7 @@ function ItemInfoTab() {
   // dialog is reached only through Save, so it cannot open either.
   const { canEditCatalog, roleKnown } = usePermissions()
   const deleteItem = useDeleteItem()
-  const { registerDirtyState, saveSlot } = useItemLayout()
+  const { registerDirtyState, registerSaveControl, saveSlot } = useItemLayout()
   const { goBack } = useAppNavigation()
   const [savedAt, setSavedAt] = useState(0)
 
@@ -222,6 +222,16 @@ function ItemInfoTab() {
   const { data: locations } = useLocations()
 
   const [pending, setPending] = useState<PendingSave | null>(null)
+  // While the converted amounts dialog is open, the answer to the save that
+  // opened it: `true` once Confirm's write worked, `false` on Cancel or a
+  // failed write. The unsaved-changes dialog's Save waits on it (owner's flow,
+  // design 2026-11-25): that dialog stays open under this one.
+  const pendingAnswerRef = useRef<((saved: boolean) => void) | null>(null)
+  const answerPending = (saved: boolean) => {
+    const answer = pendingAnswerRef.current
+    pendingAnswerRef.current = null
+    answer?.(saved)
+  }
 
   if (!item) return null
 
@@ -247,14 +257,15 @@ function ItemInfoTab() {
   // Caught here because `ItemForm` does not await `onSubmit`: a failed save
   // would otherwise be an unhandled rejection with nothing on screen. The form
   // keeps the typed values and stays dirty, so Save can be pressed again.
-  const doSave = async (values: ItemFormValues) => {
+  const doSave = async (values: ItemFormValues): Promise<boolean> => {
     try {
       await persistInfo(values)
     } catch (err) {
       showSaveError(err)
-      return
+      return false
     }
     finishSave()
+    return true
   }
 
   // A recipe's `defaultAmount` is stored in the item's own unit and snapped to
@@ -271,7 +282,11 @@ function ItemInfoTab() {
   // arbitrary, and why this shipped only once the field move had landed.
   // `packedQuantity` is deliberately never converted: it counts sealed
   // packages, which are packages in either mode.
-  const handleSubmit = async (values: ItemFormValues) => {
+  //
+  // It answers whether the save worked. The top bar Save ignores the answer;
+  // the unsaved-changes dialog's Save leaves the page only on `true`. When the
+  // converted amounts dialog opens, the answer waits for it.
+  const handleSubmit = async (values: ItemFormValues): Promise<boolean> => {
     const oldConsumeAmount = item.consumeAmount ?? 0
     const newConsumeAmount = values.consumeAmount
     const targetUnitChanged = item.targetUnit !== values.targetUnit
@@ -370,11 +385,16 @@ function ItemInfoTab() {
     const adjustments = buildAdjustments()
     const conversions = buildStockConversions()
     if (adjustments.length > 0 || conversions.length > 0) {
+      // A save already waiting (not reachable today: the dialog is modal)
+      // is answered "not saved" before a new one starts.
+      answerPending(false)
       setPending({ values, adjustments, conversions })
-      return
+      return new Promise<boolean>((resolve) => {
+        pendingAnswerRef.current = resolve
+      })
     }
 
-    await doSave(values)
+    return doSave(values)
   }
 
   // Writes the item's own configuration, the per-location rows and the recipe
@@ -388,6 +408,11 @@ function ItemInfoTab() {
   // mixed units, silently, with nothing surfaced to the user.
   const handleConfirmAdjustments = async () => {
     if (!pending) return
+    // Taken now, before the first `await`: `AlertDialogAction` closes the
+    // dialog right after this handler starts, and that close runs
+    // `handleCancelAdjustments`, which would answer `false` first.
+    const answer = pendingAnswerRef.current
+    pendingAnswerRef.current = null
 
     // Resolved up front, outside any transaction: the Dexie batch must be
     // handed finished rows (see applyUnitSwitchBatch on why it may not await
@@ -421,15 +446,18 @@ function ItemInfoTab() {
       })
     } catch (err) {
       showSaveError(err)
+      answer?.(false)
       return
     }
 
     setPending(null)
     finishSave()
+    answer?.(true)
   }
 
   const handleCancelAdjustments = () => {
     setPending(null)
+    answerPending(false)
   }
 
   const handleDelete = async () => {
@@ -461,6 +489,7 @@ function ItemInfoTab() {
         sections={['info']}
         onSubmit={handleSubmit}
         onDirtyChange={registerDirtyState}
+        onSaveControlChange={registerSaveControl}
         savedAt={savedAt}
         isPending={updateItem.isPending}
         readOnly={!canEditCatalog}

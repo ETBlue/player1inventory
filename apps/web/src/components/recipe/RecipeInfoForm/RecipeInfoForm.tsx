@@ -3,6 +3,10 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  type RegisterSaveControl,
+  useRegisterSaveControl,
+} from '@/hooks/useSaveControl'
 import type { Recipe } from '@/types'
 
 interface RecipeInfoFormProps {
@@ -20,6 +24,19 @@ interface RecipeInfoFormProps {
   isPending?: boolean
   onDirtyChange?: (isDirty: boolean) => void
   /**
+   * Called after a save from this form's own Save button worked. The detail
+   * page passes `goBack`. Not called for a save from the unsaved-changes
+   * dialog: that dialog goes where the user pressed instead.
+   */
+  onSaved?: () => void
+  /**
+   * Hands the detail page's layout a "save now" for its unsaved-changes
+   * dialog (design 2026-11-25). `canSave` is the same rule as Save's
+   * `disabled`; `save` runs the same code as Save and answers whether it
+   * worked. `null` when the form unmounts.
+   */
+  onSaveControlChange?: RegisterSaveControl
+  /**
    * For a household member (households H5 task F.5): the inputs are
    * `readOnly` (the text can still be selected), selects are disabled, and
    * there is no Save button.
@@ -33,6 +50,8 @@ export function RecipeInfoForm({
   onSave,
   isPending,
   onDirtyChange,
+  onSaved,
+  onSaveControlChange,
   readOnly = false,
 }: RecipeInfoFormProps) {
   const { t } = useTranslation()
@@ -50,17 +69,35 @@ export function RecipeInfoForm({
     onDirtyChange?.(isDirty)
   }, [isDirty, onDirtyChange])
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (readOnly || nameError || !isDirty || isPending) return
+  const canSave = !readOnly && !nameError && isDirty && !isPending
+
+  // The one save, for Save and for the unsaved-changes dialog. Answers
+  // whether it worked.
+  const submit = async (): Promise<boolean> => {
+    if (!canSave) return false
     const trimmedName = name.trim()
     const previousName = committedName
     const result = onSave({ name: trimmedName })
     // Advance the committed baseline so isDirty → false → onDirtyChange(false)
     setName(trimmedName)
     setCommittedName(trimmedName)
-    // A failed save: put the baseline back, so the edit is unsaved again
-    result?.catch(() => setCommittedName(previousName))
+    try {
+      await result
+      return true
+    } catch {
+      // A failed save: put the baseline back, so the edit is unsaved again
+      setCommittedName(previousName)
+      return false
+    }
+  }
+
+  useRegisterSaveControl(onSaveControlChange, canSave, submit)
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    void submit().then((saved) => {
+      if (saved) onSaved?.()
+    })
   }
 
   return (

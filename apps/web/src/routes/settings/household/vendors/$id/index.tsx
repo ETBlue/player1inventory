@@ -24,7 +24,7 @@ function VendorInfoTab() {
   const { data: vendors = [] } = useVendors()
   const vendor = vendors.find((v) => v.id === id)
   const updateVendor = useUpdateVendor()
-  const { registerDirtyState } = useVendorLayout()
+  const { registerDirtyState, registerSaveControl } = useVendorLayout()
   const { goBack } = useAppNavigation()
   const deleteVendor = useDeleteVendor()
   const { data: affectedItemCount = 0 } = useItemCountByVendor(id)
@@ -65,13 +65,20 @@ function VendorInfoTab() {
             updateVendor
               .mutateAsync({ id: vendor.id, updates: data })
               // A failed save shows a toast and keeps the page, so the
-              // person can try again. Without the second callback it was an
-              // unhandled rejection with nothing on screen.
+              // person can try again. The error is passed on so the form
+              // knows the save failed; the form catches it.
               .then(
-                () => goBack(),
-                (err: unknown) => showSaveError(err),
+                () => {},
+                (err: unknown) => {
+                  showSaveError(err)
+                  throw err
+                },
               )
           }
+          // Only the form's own Save goes back. The unsaved-changes dialog's
+          // Save goes where the user pressed (design 2026-11-25).
+          onSaved={goBack}
+          onSaveControlChange={registerSaveControl}
           isPending={updateVendor.isPending}
           onDirtyChange={registerDirtyState}
           readOnly={!canEditCatalog}
