@@ -28,6 +28,7 @@ import type { Recipe, RecipeItem } from '@/types'
 import { useActiveLocation } from './useActiveLocation'
 import { useRequiredCloudLocationId } from './useCloudLocationId'
 import { useDataMode } from './useDataMode'
+import { stockListRefetches } from './useItems'
 
 export function useRecipes() {
   const { mode } = useDataMode()
@@ -368,6 +369,7 @@ export function useConsumeRecipes() {
   // so the `'local'` sentinel of a fresh cloud session would lose the whole
   // cook to FORBIDDEN. See `useCloudLocationId`.
   const resolveCloudLocationId = useRequiredCloudLocationId()
+  const { refetchAfterWrite } = useRefetchAfterWrite()
 
   return useMutation({
     mutationFn: async (input: ConsumeRecipesArgs) => {
@@ -378,11 +380,12 @@ export function useConsumeRecipes() {
         // `packedQuantity` / `unpackedQuantity` and the log `quantity`,
         // computed from the stock this screen had loaded, so two people
         // cooking the same item from the same screen lost one use.
-        return cloudConsumeRecipes({
+        const locationId = await resolveCloudLocationId()
+        const result = await cloudConsumeRecipes({
           variables: {
             input: {
               occurredAt: input.occurredAt.toISOString(),
-              locationId: await resolveCloudLocationId(),
+              locationId,
               recipeIds: input.recipeIds,
               items: input.items.map((item) => ({
                 itemId: item.itemId,
@@ -396,6 +399,30 @@ export function useConsumeRecipes() {
             },
           },
         })
+        // Issue #404: read again what the cook changed. `ConsumeRecipes`
+        // returns no `ItemStock` and no `Recipe`, the `onSuccess`
+        // invalidations below are TanStack keys that no cloud query uses, and
+        // the server sends the live `STOCK` event to OTHER tabs only. Without
+        // this the cooking page kept the old quantities and `lastCookedAt`
+        // until it mounted again.
+        //
+        // `PantryData` goes by `{ query, variables }` for the location the
+        // cook was SENT for, never by name: by name Apollo also reads a
+        // `PantryData` observer that `skip` parked on the `'local'` sentinel,
+        // which the server refuses (`stockListRefetches` in `useItems.ts`).
+        // Not the mutation's own `refetchQueries` with `awaitRefetchQueries`:
+        // one failed read would reject a cook the server saved
+        // (`apollo/refetchAfterWrite.ts`). A failed read does not reject
+        // here, and a failed write rejects before this line.
+        //
+        // Awaited, so `mutateAsync` resolves, and `isPending` turns false,
+        // only once the lists have landed. The Done dialog stays busy until
+        // then, the same as the other stock writes.
+        await refetchAfterWrite([
+          ...stockListRefetches(locationId),
+          { query: GetRecipesDocument },
+        ])
+        return result
       }
       // Local mode is single-user, so computing here from the page's stock is
       // safe. This is the computation `cooking.tsx` did itself before B.6,
