@@ -9,16 +9,7 @@ import { Info, ListTodo, Store } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LayoutInnerPages } from '@/components/shared/LayoutInnerPages'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+import { UnsavedChangesDialog } from '@/components/shared/UnsavedChangesDialog'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useVendorLayout, VendorLayoutProvider } from '@/hooks/useVendorLayout'
 import { useVendors } from '@/hooks/useVendors'
@@ -34,7 +25,7 @@ function VendorDetailLayoutInner() {
   const router = useRouter()
   const { data: vendors = [] } = useVendors()
   const vendor = vendors.find((v) => v.id === id)
-  const { isDirty } = useVendorLayout()
+  const { isDirty, saveControl } = useVendorLayout()
   const { goBack } = useAppNavigation('/settings/household/vendors')
 
   const [showDiscardDialog, setShowDiscardDialog] = useState(false)
@@ -122,25 +113,15 @@ function VendorDetailLayoutInner() {
         <Outlet key={router.state.location.pathname} />
       </LayoutInnerPages>
 
-      {/* Discard Confirmation Dialog */}
-      <AlertDialog open={showDiscardDialog} onOpenChange={setShowDiscardDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('common.unsavedTitle')}</AlertDialogTitle>
-          </AlertDialogHeader>
-          <AlertDialogDescription>
-            {t('common.unsavedDescription')}
-          </AlertDialogDescription>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={cancelDiscard}>
-              {t('common.cancel')}
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDiscard}>
-              {t('common.discard')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Cancel · Discard · Save (design 2026-11-25). Save runs the Info
+          form's own save and goes where the user pressed only when it
+          worked. */}
+      <UnsavedChangesDialog
+        open={showDiscardDialog}
+        onCancel={cancelDiscard}
+        onLeave={confirmDiscard}
+        saveControl={saveControl}
+      />
     </>
   )
 }

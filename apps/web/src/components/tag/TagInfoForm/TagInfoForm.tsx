@@ -10,6 +10,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  type RegisterSaveControl,
+  useRegisterSaveControl,
+} from '@/hooks/useSaveControl'
 import type { Tag, TagType } from '@/types'
 
 // Sentinel value used in the Select to represent "no parent" (top-level).
@@ -33,6 +37,19 @@ interface TagInfoFormProps {
   }) => void | Promise<void>
   isPending?: boolean
   onDirtyChange?: (isDirty: boolean) => void
+  /**
+   * Called after a save from this form's own Save button worked. The detail
+   * page passes `goBack`. Not called for a save from the unsaved-changes
+   * dialog: that dialog goes where the user pressed instead.
+   */
+  onSaved?: () => void
+  /**
+   * Hands the detail page's layout a "save now" for its unsaved-changes
+   * dialog (design 2026-11-25). `canSave` is the same rule as Save's
+   * `disabled`; `save` runs the same code as Save and answers whether it
+   * worked. `null` when the form unmounts.
+   */
+  onSaveControlChange?: RegisterSaveControl
   /** When true, the type Select is disabled — used in dialogs where the type is pre-set. */
   typeReadonly?: boolean
   /**
@@ -50,6 +67,8 @@ export function TagInfoForm({
   onSave,
   isPending,
   onDirtyChange,
+  onSaved,
+  onSaveControlChange,
   typeReadonly,
   readOnly = false,
 }: TagInfoFormProps) {
@@ -78,9 +97,12 @@ export function TagInfoForm({
     onDirtyChange?.(isDirty)
   }, [isDirty, onDirtyChange])
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (readOnly || nameError || !isDirty || isPending) return
+  const canSave = !readOnly && !nameError && isDirty && !isPending
+
+  // The one save, for Save and for the unsaved-changes dialog. Answers
+  // whether it worked.
+  const submit = async (): Promise<boolean> => {
+    if (!canSave) return false
     const trimmedName = name.trim()
     const resolvedParentId = parentId === NO_PARENT ? undefined : parentId
     const previousName = committedName
@@ -92,8 +114,23 @@ export function TagInfoForm({
     // Advance the committed baseline so isDirty → false → onDirtyChange(false)
     setName(trimmedName)
     setCommittedName(trimmedName)
-    // A failed save: put the baseline back, so the edit is unsaved again
-    result?.catch(() => setCommittedName(previousName))
+    try {
+      await result
+      return true
+    } catch {
+      // A failed save: put the baseline back, so the edit is unsaved again
+      setCommittedName(previousName)
+      return false
+    }
+  }
+
+  useRegisterSaveControl(onSaveControlChange, canSave, submit)
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    void submit().then((saved) => {
+      if (saved) onSaved?.()
+    })
   }
 
   return (
