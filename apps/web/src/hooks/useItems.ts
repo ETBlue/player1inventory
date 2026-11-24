@@ -794,7 +794,11 @@ export function useCreateItem(options?: { catalogOnly?: boolean }) {
 // it somewhere. `PantryData` does have to be listed even though it shares
 // `ROOT_QUERY.items` with `GetItems`, because `itemStocks` is a different root
 // field that a `GetItems` refetch never reaches.
-function stockListRefetches(locationId: string): RefetchAfterWrite[] {
+//
+// Exported for `useConsumeRecipes` (`useRecipes.ts`): a cook changes stock at
+// one location the same way, and its mutation returns no `ItemStock` either
+// (issue #404).
+export function stockListRefetches(locationId: string): RefetchAfterWrite[] {
   return [
     { query: PantryDataDocument, variables: { locationId } },
     'ItemStocksForItem',
