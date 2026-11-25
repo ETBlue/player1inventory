@@ -374,7 +374,9 @@ test('user can see "Bought at" the vendor after checking out that vendor\'s cart
 
   // When: buy it from Test Mart's cart
   await shopping.navigateToVendorCart(vendorId)
-  await shopping.addItemToCart('Test Bread')
+  // Ticking opens the cart amount dialog with the SUGGESTED amount (the packs
+  // missing to reach the target), so type the one pack this test expects.
+  await shopping.addItemToCartWithAmount('Test Bread', 1)
   await shopping.clickDone()
   await shopping.confirmCheckout()
   await page.waitForURL(/\/shopping(\?|$)/)
