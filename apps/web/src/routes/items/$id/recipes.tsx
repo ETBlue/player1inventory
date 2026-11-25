@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Loader2, Plus, X } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AddNameDialog } from '@/components/shared/AddNameDialog'
 import { EmptyState } from '@/components/shared/EmptyState'
@@ -14,7 +14,7 @@ import {
   useUpdateRecipe,
 } from '@/hooks/useRecipes'
 import { showSaveError } from '@/lib/saveError'
-import type { RecipeItem } from '@/types'
+import { isConsumable, type RecipeItem } from '@/types'
 
 export const Route = createFileRoute('/items/$id/recipes')({
   component: RecipesTab,
@@ -31,6 +31,7 @@ function RecipesTab() {
   // (households H5 task F.5): presses write nothing, the badges are
   // aria-disabled, and there is no "New …" button.
   const { canEditCatalog } = usePermissions()
+  const notConsumableNoteId = useId()
   const [showDialog, setShowDialog] = useState(false)
   const [newRecipeName, setNewRecipeName] = useState('')
   const [togglingRecipeId, setTogglingRecipeId] = useState<string | null>(null)
@@ -43,6 +44,9 @@ function RecipesTab() {
     if (!item || !canEditCatalog) return
 
     const isAssigned = recipe.items.some((ri) => ri.itemId === id)
+    // Cooking is only for consumable items (owner decision 2026-11-26), so a
+    // non-consumable item cannot join a recipe. An old link can be removed.
+    if (!isAssigned && !isConsumable(item)) return
     const newItems = isAssigned
       ? recipe.items.filter((ri) => ri.itemId !== id)
       : [...recipe.items, { itemId: id, defaultAmount: 0 }]
@@ -75,6 +79,10 @@ function RecipesTab() {
 
   if (!item) return null
 
+  // A non-consumable item cannot be added to a recipe: the unassigned badges
+  // are disabled, there is no New Recipe button, and a note says why.
+  const consumable = isConsumable(item)
+
   const sortedRecipes = [...recipes].sort((a, b) =>
     a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
   )
@@ -84,15 +92,17 @@ function RecipesTab() {
       <div className="flex flex-wrap gap-2">
         {sortedRecipes.map((recipe) => {
           const isAssigned = recipe.items.some((ri) => ri.itemId === id)
+          const canPress = canEditCatalog && (consumable || isAssigned)
 
           return (
             <Badge
               key={recipe.id}
               role="button"
               aria-pressed={isAssigned}
-              aria-disabled={!canEditCatalog || undefined}
+              aria-disabled={!canPress || undefined}
+              aria-describedby={consumable ? undefined : notConsumableNoteId}
               variant={isAssigned ? 'neutral' : 'neutral-outline'}
-              className={`${canEditCatalog ? 'cursor-pointer' : 'cursor-default'} capitalize ${updateRecipe.isPending && togglingRecipeId === recipe.id ? 'pointer-events-none' : ''}`}
+              className={`${canPress ? 'cursor-pointer' : 'cursor-default'} ${canPress || isAssigned ? '' : 'opacity-50'} capitalize ${updateRecipe.isPending && togglingRecipeId === recipe.id ? 'pointer-events-none' : ''}`}
               onClick={() => toggleRecipe(recipe)}
             >
               {recipe.name}
@@ -105,7 +115,7 @@ function RecipesTab() {
           )
         })}
 
-        {canEditCatalog && (
+        {canEditCatalog && consumable && (
           <Button
             variant="neutral-ghost"
             size="sm"
@@ -117,6 +127,12 @@ function RecipesTab() {
           </Button>
         )}
       </div>
+
+      {!consumable && (
+        <p id={notConsumableNoteId} className="text-sm text-foreground-muted">
+          {t('items.recipes.notConsumable')}
+        </p>
+      )}
 
       {!sortedRecipes.some((recipe) =>
         recipe.items.some((ri) => ri.itemId === id),

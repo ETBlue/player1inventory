@@ -287,4 +287,46 @@ describe('RecipeDetailView search tail', () => {
       screen.getByRole('button', { name: `Update quantity of ${milk.name}` }),
     ).toBeInTheDocument()
   })
+
+  it('user sees a non-consumable item in the search tail with a note instead of Add to recipe', async () => {
+    // Given an empty recipe, and a non-consumable Cup and a consumable Cocoa
+    // both stocked here (owner decision 2026-11-26: only consumable items
+    // can be in a recipe)
+    await createItem(
+      {
+        name: 'Cup',
+        tagIds: [],
+        targetUnit: 'package',
+        consumeAmount: 1,
+        consumable: false,
+        ...STORED,
+      },
+      DEFAULT_LOCATION_ID,
+    )
+    await createItem(
+      {
+        name: 'Cocoa',
+        tagIds: [],
+        targetUnit: 'package',
+        consumeAmount: 1,
+        ...STORED,
+      },
+      DEFAULT_LOCATION_ID,
+    )
+    const recipe = await createRecipe({ name: 'Hot Chocolate', items: [] })
+
+    // When the user searches for "c"
+    await renderSearching(recipe.id, 'c')
+
+    // Then Cocoa has the button and Cup has a note instead
+    expect(
+      await screen.findByRole('button', { name: 'Add to recipe: Cocoa' }),
+    ).toBeEnabled()
+    expect(
+      screen.queryByRole('button', { name: 'Add to recipe: Cup' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByText('Not consumable, so it cannot be added to a recipe.'),
+    ).toBeInTheDocument()
+  })
 })

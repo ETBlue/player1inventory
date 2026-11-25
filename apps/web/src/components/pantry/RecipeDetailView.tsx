@@ -22,7 +22,7 @@ import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import { useVendors } from '@/hooks/useVendors'
 import { isInactive } from '@/lib/quantityUtils'
 import { type SortDirection, type SortField, sortItems } from '@/lib/sortUtils'
-import type { PantryItem, StockFields } from '@/types'
+import { isConsumable, type PantryItem, type StockFields } from '@/types'
 
 interface RecipeDetailViewProps {
   recipeId: string
@@ -179,6 +179,9 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
   async function handleAddToRecipe(item: PantryItem) {
     if (isUnsorted || !recipe) return
     if (recipe.items.some((ri) => ri.itemId === item.id)) return
+    // Only consumable items can be in a recipe (owner decision 2026-11-26).
+    // The row shows a note instead of the button; this covers the press.
+    if (!isConsumable(item)) return
     await updateRecipe.mutateAsync({
       id: recipe.id,
       updates: {
@@ -243,6 +246,8 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
             label: t('items.searchTail.addToRecipe'),
             onAction: handleAddToRecipe,
             icon: <ArrowUpFromLine />,
+            blockedNote: (item: PantryItem) =>
+              isConsumable(item) ? null : t('items.searchTail.notConsumable'),
           },
         }
       : {}),

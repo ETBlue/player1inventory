@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import * as stories from './ItemSearchTail.stories'
 
 const {
+  BlockedRow,
   BothSections,
   GroupNote,
   InLocationOnly,
@@ -67,6 +68,19 @@ describe('ItemSearchTail stories smoke tests', () => {
     ).not.toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: 'Add to My Home: Milk Powder' }),
+    ).toBeInTheDocument()
+  })
+
+  it('BlockedRow shows a note in place of one row button', () => {
+    render(<BlockedRow />)
+    expect(
+      screen.getByRole('button', { name: 'Add to recipe: Bread' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Add to recipe: Cup' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByText('Not consumable, so it cannot be added to a recipe.'),
     ).toBeInTheDocument()
   })
 

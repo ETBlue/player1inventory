@@ -3,7 +3,8 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './recipes.stories'
 
-const { Default, WithRecipes, EmptyRecipes } = composeStories(stories)
+const { Default, WithRecipes, EmptyRecipes, NonConsumableItem } =
+  composeStories(stories)
 
 describe('Item detail recipes tab stories smoke tests', () => {
   it('Default renders the New Recipe button after setup', async () => {
@@ -25,5 +26,15 @@ describe('Item detail recipes tab stories smoke tests', () => {
   it('EmptyRecipes renders the no-recipes-assigned empty hint', async () => {
     render(<EmptyRecipes />)
     expect(await screen.findByText('No recipes assigned')).toBeInTheDocument()
+  })
+
+  it('NonConsumableItem says it cannot be added and disables the other recipe', async () => {
+    render(<NonConsumableItem />)
+    expect(
+      await screen.findByText(/not consumable, so it cannot be added/i),
+    ).toBeInTheDocument()
+    expect(
+      await screen.findByRole('button', { name: 'Pasta Sauce' }),
+    ).toHaveAttribute('aria-disabled', 'true')
   })
 })
