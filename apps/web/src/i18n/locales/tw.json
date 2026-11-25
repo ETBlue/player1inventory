@@ -77,8 +77,10 @@
     },
     "cartChanged": "購物車已有變動，請確認後再試一次。",
     "amountDialog": {
-      "context": "庫存 {{stock}} · 目標 {{target}} {{unit}}",
-      "amountLabel": "數量（{{unit}}）",
+      "titleEdit": "購物車中的品項",
+      "titleAdd": "加入購物車",
+      "buy": "購買",
+      "amountLabel": "購買（{{unit}}）",
       "decrease": "減少數量",
       "increase": "增加數量",
       "zeroNote": "數量為 0 時，品項會留在購物車，這次不買，下次再買。"

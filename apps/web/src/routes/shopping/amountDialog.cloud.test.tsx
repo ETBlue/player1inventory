@@ -110,7 +110,7 @@ describe('Cart page - the cart amount dialog in cloud mode', () => {
     })
     await user.click(increase)
     await user.click(increase)
-    const field = within(dialog).getByRole('spinbutton', { name: /^Amount/ })
+    const field = within(dialog).getByRole('spinbutton', { name: /^Buy/ })
     await user.clear(field)
     await user.type(field, '10')
     await user.click(within(dialog).getByRole('button', { name: 'Save' }))
@@ -131,7 +131,7 @@ describe('Cart page - the cart amount dialog in cloud mode', () => {
     await user.click(await screen.findByRole('checkbox', { name: 'Add Milk' }))
     const dialog = await screen.findByRole('dialog')
     expect(
-      within(dialog).getByRole('spinbutton', { name: /^Amount/ }),
+      within(dialog).getByRole('spinbutton', { name: /^Buy/ }),
     ).toHaveValue(3)
     await user.click(within(dialog).getByRole('button', { name: 'Save' }))
 

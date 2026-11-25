@@ -70,7 +70,7 @@ describe('Vendor cart page', () => {
   // The cart amount dialog, its amount field, and its Save button
   const amountDialog = () => screen.findByRole('dialog')
   const amountField = (dialog: HTMLElement) =>
-    within(dialog).getByRole('spinbutton', { name: /^Amount/ })
+    within(dialog).getByRole('spinbutton', { name: /^Buy/ })
   const saveButton = (dialog: HTMLElement) =>
     within(dialog).getByRole('button', { name: 'Save' })
 
@@ -963,13 +963,14 @@ describe('Vendor cart page', () => {
       await waitFor(() => expect(amount).toBeEnabled())
       await userEvent.click(amount)
 
-      // Then it is titled with the item, says stock and target, and Save is
-      // off until the amount changes
+      // Then it is titled "Item in cart", shows the item with its stock and
+      // target, and Save is off until the amount changes
       const dialog = await amountDialog()
       expect(
-        within(dialog).getByRole('heading', { name: 'Milk' }),
+        within(dialog).getByRole('heading', { name: 'Item in cart' }),
       ).toBeInTheDocument()
-      expect(dialog).toHaveTextContent('In stock 1 · target 4 pack')
+      expect(within(dialog).getByText('Milk')).toBeInTheDocument()
+      expect(within(dialog).getByText('1 / 4 pack')).toBeInTheDocument()
       expect(amountField(dialog)).toHaveValue(2)
       expect(saveButton(dialog)).toBeDisabled()
     })

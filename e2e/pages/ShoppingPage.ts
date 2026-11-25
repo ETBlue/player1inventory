@@ -76,13 +76,14 @@ export class ShoppingPage {
 
   getAmountDialog(): Locator {
     // CartAmountDialog (src/components/shopping/CartAmountDialog): a Radix
-    // Dialog titled with the item name
+    // Dialog titled "Item in cart" or "Add to cart"; the item name is in its
+    // body
     return this.page.getByRole('dialog')
   }
 
   getAmountField(): Locator {
-    // aria-label "Amount ({unit})" (shopping.amountDialog.amountLabel)
-    return this.getAmountDialog().getByRole('spinbutton', { name: /^Amount/ })
+    // aria-label "Buy ({unit})" (shopping.amountDialog.amountLabel)
+    return this.getAmountDialog().getByRole('spinbutton', { name: /^Buy/ })
   }
 
   async setItemAmount(name: string, amount: number) {
