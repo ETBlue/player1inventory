@@ -1,4 +1,5 @@
 import { screen } from '@testing-library/react'
+import { userEvent } from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderWithRouter } from '@/test/utils'
 import type { Item, Recipe, Tag, TagType, Vendor } from '@/types'
@@ -16,6 +17,8 @@ vi.mock('@/hooks/useUrlSearchAndFilters', () => ({
     toggleRecipeId: vi.fn(),
     clearVendorIds: vi.fn(),
     clearRecipeIds: vi.fn(),
+    consumableFilter: 'all' as const,
+    setConsumableFilter: vi.fn(),
   })),
 }))
 
@@ -99,6 +102,8 @@ describe('ItemFilters count badges', () => {
       toggleRecipeId: vi.fn(),
       clearVendorIds: vi.fn(),
       clearRecipeIds: vi.fn(),
+      consumableFilter: 'all' as const,
+      setConsumableFilter: vi.fn(),
       search: '',
       isFiltersVisible: false,
       isTagsVisible: false,
@@ -123,6 +128,8 @@ describe('ItemFilters count badges', () => {
       toggleRecipeId: vi.fn(),
       clearVendorIds: vi.fn(),
       clearRecipeIds: vi.fn(),
+      consumableFilter: 'all' as const,
+      setConsumableFilter: vi.fn(),
       search: '',
       isFiltersVisible: false,
       isTagsVisible: false,
@@ -152,6 +159,8 @@ describe('ItemFilters count badges', () => {
       toggleRecipeId: vi.fn(),
       clearVendorIds: vi.fn(),
       clearRecipeIds: vi.fn(),
+      consumableFilter: 'all' as const,
+      setConsumableFilter: vi.fn(),
       search: '',
       isFiltersVisible: false,
       isTagsVisible: false,
@@ -201,6 +210,8 @@ describe('ItemFilters count badges', () => {
       toggleRecipeId: vi.fn(),
       clearVendorIds: vi.fn(),
       clearRecipeIds: vi.fn(),
+      consumableFilter: 'all' as const,
+      setConsumableFilter: vi.fn(),
       search: '',
       isFiltersVisible: false,
       isTagsVisible: false,
@@ -231,5 +242,81 @@ describe('ItemFilters count badges', () => {
     // No badge span with a number inside the button
     const badgeSpan = vendorsButton?.querySelector('span.font-semibold')
     expect(badgeSpan).toBeNull()
+  })
+})
+
+describe('ItemFilters Consumable filter', () => {
+  function hookState(
+    consumableFilter: 'all' | 'consumable' | 'notConsumable',
+    setConsumableFilter = vi.fn(),
+  ) {
+    vi.mocked(useUrlSearchAndFilters).mockReturnValue({
+      filterState: {},
+      setFilterState: vi.fn(),
+      selectedVendorIds: [],
+      selectedRecipeIds: [],
+      toggleVendorId: vi.fn(),
+      toggleRecipeId: vi.fn(),
+      clearVendorIds: vi.fn(),
+      clearRecipeIds: vi.fn(),
+      consumableFilter,
+      setConsumableFilter,
+      search: '',
+      isFiltersVisible: false,
+      isTagsVisible: false,
+      setSearch: vi.fn(),
+      setIsFiltersVisible: vi.fn(),
+      setIsTagsVisible: vi.fn(),
+      clearAllFilters: vi.fn(),
+    })
+    return setConsumableFilter
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(useTagTypes).mockReturnValue(QUERY_RESULT([]))
+    vi.mocked(useTags).mockReturnValue(QUERY_RESULT([]))
+    vi.mocked(useTagsWithDepth).mockReturnValue(QUERY_RESULT([]))
+  })
+
+  it('user can filter by Not consumable, even with no tags, vendors or recipes', async () => {
+    // Given no tags, vendors or recipes, so no other filter shows
+    const setConsumableFilter = hookState('all')
+    await renderWithRouter(<ItemFilters items={mockItems} />)
+    const user = userEvent.setup()
+
+    // When the user picks Not consumable
+    await user.click(screen.getByRole('button', { name: 'Consumable' }))
+    await user.click(
+      screen.getByRole('menuitemradio', { name: /Not consumable/ }),
+    )
+
+    // Then the URL filter changes
+    expect(setConsumableFilter).toHaveBeenCalledWith('notConsumable')
+  })
+
+  it('user sees the active Consumable choice from the URL', async () => {
+    hookState('notConsumable')
+    await renderWithRouter(<ItemFilters items={mockItems} />)
+    expect(
+      screen.getByRole('button', { name: 'Not consumable' }),
+    ).toBeInTheDocument()
+  })
+
+  it('the onboarding template list (controlled mode) has no Consumable filter', async () => {
+    hookState('all')
+    await renderWithRouter(
+      <ItemFilters
+        items={mockItems}
+        tagTypes={[]}
+        tags={[]}
+        tagsWithDepth={[]}
+        filterState={{}}
+        onFilterStateChange={vi.fn()}
+      />,
+    )
+    expect(
+      screen.queryByRole('button', { name: 'Consumable' }),
+    ).not.toBeInTheDocument()
   })
 })

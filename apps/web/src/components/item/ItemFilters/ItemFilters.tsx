@@ -3,13 +3,14 @@
 import { Link } from '@tanstack/react-router'
 import { Pencil } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { ConsumableFilterDropdown } from '@/components/item/ConsumableFilterDropdown'
 import { RecipeFilterDropdown } from '@/components/recipe/RecipeFilterDropdown'
 import { TagTypeDropdown } from '@/components/tag/TagTypeDropdown'
 import { Button } from '@/components/ui/button'
 import { VendorFilterDropdown } from '@/components/vendor/VendorFilterDropdown'
 import { useTags, useTagsWithDepth, useTagTypes } from '@/hooks/useTags'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
-import { calculateTagCount } from '@/lib/filterUtils'
+import { type ConsumableFilter, calculateTagCount } from '@/lib/filterUtils'
 import { cn } from '@/lib/utils'
 import type { Item, Recipe, Tag, TagType, Vendor } from '@/types'
 
@@ -76,6 +77,12 @@ interface ItemFiltersRenderProps {
   toggleRecipeId: (id: string) => void
   clearVendorIds: () => void
   clearRecipeIds: () => void
+  // The Consumable filter. Left out (the controlled variant, used by
+  // onboarding's template list): no Consumable dropdown.
+  consumable?: {
+    value: ConsumableFilter
+    onChange: (value: ConsumableFilter) => void
+  }
 }
 
 function ItemFiltersRenderer({
@@ -97,6 +104,7 @@ function ItemFiltersRenderer({
   toggleRecipeId,
   clearVendorIds,
   clearRecipeIds,
+  consumable,
 }: ItemFiltersRenderProps) {
   const { t } = useTranslation()
 
@@ -111,7 +119,13 @@ function ItemFiltersRenderer({
   const showRecipes = !hideRecipeFilter && recipes.length > 0
 
   // Don't render if nothing to show
-  if (tagTypesWithTags.length === 0 && !showVendors && !showRecipes) return null
+  if (
+    tagTypesWithTags.length === 0 &&
+    !showVendors &&
+    !showRecipes &&
+    !consumable
+  )
+    return null
 
   const handleToggleTag = (tagTypeId: string, tagId: string) => {
     const currentTags = filterState[tagTypeId] ?? []
@@ -138,6 +152,14 @@ function ItemFiltersRenderer({
         disabled ? 'opacity-50 pointer-events-none' : '',
       )}
     >
+      {consumable && (
+        <ConsumableFilterDropdown
+          value={consumable.value}
+          onChange={consumable.onChange}
+          items={items}
+        />
+      )}
+
       {showVendors && (
         <VendorFilterDropdown
           vendors={vendors}
@@ -223,6 +245,8 @@ function ItemFiltersDb({
     toggleRecipeId,
     clearVendorIds,
     clearRecipeIds,
+    consumableFilter,
+    setConsumableFilter,
   } = useUrlSearchAndFilters()
 
   return (
@@ -245,6 +269,7 @@ function ItemFiltersDb({
       toggleRecipeId={toggleRecipeId}
       clearVendorIds={clearVendorIds}
       clearRecipeIds={clearRecipeIds}
+      consumable={{ value: consumableFilter, onChange: setConsumableFilter }}
     />
   )
 }

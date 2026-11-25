@@ -28,6 +28,7 @@ import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import { useVendors } from '@/hooks/useVendors'
 import {
   filterItems,
+  filterItemsByConsumable,
   filterItemsByRecipes,
   filterItemsByVendors,
 } from '@/lib/filterUtils'
@@ -76,6 +77,7 @@ export function PantryListView() {
     isTagsVisible,
     selectedVendorIds,
     selectedRecipeIds,
+    consumableFilter,
     toggleVendorId,
     toggleRecipeId,
   } = useUrlSearchAndFilters()
@@ -123,10 +125,9 @@ export function PantryListView() {
 
   const tagFiltered = filterItems(items, filterState, tags)
   const vendorFiltered = filterItemsByVendors(tagFiltered, selectedVendorIds)
-  const filteredItems = filterItemsByRecipes(
-    vendorFiltered,
-    selectedRecipeIds,
-    recipes,
+  const filteredItems = filterItemsByConsumable(
+    filterItemsByRecipes(vendorFiltered, selectedRecipeIds, recipes),
+    consumableFilter,
   )
 
   const {

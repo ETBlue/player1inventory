@@ -32,6 +32,7 @@ import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import { useVendors } from '@/hooks/useVendors'
 import {
   filterItems,
+  filterItemsByConsumable,
   filterItemsByRecipes,
   filterItemsByVendors,
 } from '@/lib/filterUtils'
@@ -93,6 +94,7 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
     filterState,
     selectedVendorIds,
     selectedRecipeIds,
+    consumableFilter,
   } = useUrlSearchAndFilters()
 
   const [pendingItemIds, setPendingItemIds] = useState<Set<string>>(new Set())
@@ -177,7 +179,10 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
     if (!isUnsorted) return sortedInShelfItems
     const tagFiltered = filterItems(sortedInShelfItems, filterState, tags)
     const vendorFiltered = filterItemsByVendors(tagFiltered, selectedVendorIds)
-    return filterItemsByRecipes(vendorFiltered, selectedRecipeIds, recipes)
+    return filterItemsByConsumable(
+      filterItemsByRecipes(vendorFiltered, selectedRecipeIds, recipes),
+      consumableFilter,
+    )
   }, [
     isUnsorted,
     sortedInShelfItems,
@@ -185,6 +190,7 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
     filterState,
     selectedVendorIds,
     selectedRecipeIds,
+    consumableFilter,
     recipes,
     tags,
   ])

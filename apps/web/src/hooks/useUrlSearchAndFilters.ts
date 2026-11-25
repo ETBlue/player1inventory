@@ -2,9 +2,20 @@
 
 import { useRouter, useRouterState } from '@tanstack/react-router'
 import { useMemo } from 'react'
-import type { FilterState } from '@/lib/filterUtils'
+import type { ConsumableFilter, FilterState } from '@/lib/filterUtils'
 
-const RESERVED_FILTER_KEYS = new Set(['vendor', 'recipe'])
+// `f_` params that are NOT a tag type: vendor, recipe and consumable each have
+// their own param. A tag type id is a uuid or a cuid, so it cannot be one of
+// these words.
+const RESERVED_FILTER_KEYS = new Set(['vendor', 'recipe', 'consumable'])
+
+// The Consumable filter in the URL: `yes`, `no`, or no param (All). Any other
+// value also reads as All.
+function consumableFilterFrom(value: string | null): ConsumableFilter {
+  if (value === 'yes') return 'consumable'
+  if (value === 'no') return 'notConsumable'
+  return 'all'
+}
 
 function buildSearchString(params: URLSearchParams): string {
   const str = params.toString()
@@ -49,6 +60,8 @@ export function useUrlSearchAndFilters() {
     () => (params.get('f_recipe') ?? '').split(',').filter(Boolean),
     [params],
   )
+
+  const consumableFilter = consumableFilterFrom(params.get('f_consumable'))
 
   // Write helpers — update URL params only (no sessionStorage; state lives in nav history)
   function updateParams(updater: (p: URLSearchParams) => void): void {
@@ -119,6 +132,14 @@ export function useUrlSearchAndFilters() {
     })
   }
 
+  function setConsumableFilter(filter: ConsumableFilter): void {
+    updateParams((p) => {
+      if (filter === 'consumable') p.set('f_consumable', 'yes')
+      else if (filter === 'notConsumable') p.set('f_consumable', 'no')
+      else p.delete('f_consumable')
+    })
+  }
+
   function clearVendorIds(): void {
     updateParams((p) => p.delete('f_vendor'))
   }
@@ -143,6 +164,7 @@ export function useUrlSearchAndFilters() {
     filterState,
     selectedVendorIds,
     selectedRecipeIds,
+    consumableFilter,
     isFiltersVisible,
     isTagsVisible,
     setSearch,
@@ -151,6 +173,7 @@ export function useUrlSearchAndFilters() {
     setIsTagsVisible,
     toggleVendorId,
     toggleRecipeId,
+    setConsumableFilter,
     clearVendorIds,
     clearRecipeIds,
     clearAllFilters,
