@@ -8,6 +8,7 @@ const {
   InCart,
   InCartAmountZero,
   InCartLongUnit,
+  InCartLargeAmount,
   InCartViewOnly,
   InCartStepper,
   CheckboxPendingUnchecked,
@@ -22,12 +23,12 @@ describe('ItemCard shopping stories smoke tests', () => {
     )
   })
 
-  it('InCart renders one amount button with the amount and unit', async () => {
+  it('InCart renders one amount button that shows only the amount', async () => {
     render(<InCart />)
     const button = await screen.findByRole('button', {
       name: 'Edit amount of Yogurt (plain): 3 gallon',
     })
-    expect(button).toHaveTextContent('3 gallon')
+    expect(button.textContent).toBe('3')
     expect(
       screen.queryByRole('button', { name: /Increase quantity/ }),
     ).toBeNull()
@@ -49,6 +50,14 @@ describe('ItemCard shopping stories smoke tests', () => {
         name: 'Edit amount of Yogurt (plain): 12 family-size bottle',
       }),
     ).toBeInTheDocument()
+  })
+
+  it('InCartLargeAmount shows the 4-digit amount', async () => {
+    render(<InCartLargeAmount />)
+    const button = await screen.findByRole('button', {
+      name: 'Edit amount of Yogurt (plain): 1000 gallon',
+    })
+    expect(button.textContent).toBe('1000')
   })
 
   it('InCartViewOnly disables the amount button', async () => {

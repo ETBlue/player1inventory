@@ -791,10 +791,14 @@ test.describe('cart amount dialog', () => {
     await shopping.fillAmount(10)
     await shopping.saveAmount()
 
-    // Then the row is in the cart with 10 pack, also after a reload
-    await expect(shopping.getAmountButton('Amount Milk')).toHaveText(/^10 pack/)
+    // Then the row is in the cart with 10 pack, also after a reload. The
+    // button shows only "10"; the unit is in its name
+    await expect(shopping.getAmountButton('Amount Milk')).toHaveText('10')
+    await expect(shopping.getAmountButton('Amount Milk')).toHaveAccessibleName(
+      'Edit amount of Amount Milk: 10 pack',
+    )
     await page.reload({ waitUntil: 'networkidle' })
-    await expect(shopping.getAmountButton('Amount Milk')).toHaveText(/^10 pack/)
+    await expect(shopping.getAmountButton('Amount Milk')).toHaveText('10')
     await expect(
       page.getByRole('main').getByText('10 packs', { exact: true }),
     ).toBeVisible()
@@ -821,7 +825,7 @@ test.describe('cart amount dialog', () => {
         .getByText(/Amount 0 keeps the item in the cart/),
     ).toBeVisible()
     await shopping.saveAmount()
-    await expect(shopping.getAmountButton('Amount Milk')).toHaveText(/^0 pack/)
+    await expect(shopping.getAmountButton('Amount Milk')).toHaveText('0')
 
     // And checks out
     await shopping.clickDone()
@@ -832,7 +836,7 @@ test.describe('cart amount dialog', () => {
     await shopping.navigateToVendorCart(AMOUNT_VENDOR)
     await expect(page.getByLabel('Add Amount Eggs')).toBeVisible()
     await expect(page.getByLabel('Remove Amount Milk')).toBeChecked()
-    await expect(shopping.getAmountButton('Amount Milk')).toHaveText(/^0 pack/)
+    await expect(shopping.getAmountButton('Amount Milk')).toHaveText('0')
   })
 
   for (const dark of [false, true]) {
