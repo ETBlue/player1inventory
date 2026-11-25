@@ -130,3 +130,7 @@ This replaces the first bullet of *The row* above.
   from 238px to 294px wide; at 1280px from 904px to 960px.
 - The Cooking page and the recipe items tab keep their `− n +` group and their `mr-28`
   unchanged. The card picks the margin from which control it shows (`onAmountEdit`).
+- **Follow-up, same day (owner):** the button touched the card. It now sits at `-right-14`
+  and the card reserves `mr-16` (4rem), so there is 0.5rem between the card and the button,
+  and 0.5rem at the page edge. The owner chose this over `w-10`, which would keep the card
+  width but cut a 4-digit amount. The card gives back 8px (294px → 286px at 390px).
