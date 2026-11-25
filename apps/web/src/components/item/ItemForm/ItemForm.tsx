@@ -434,6 +434,27 @@ export function ItemForm({
   const normalizeTargetStep = (value: number) =>
     targetUnit === 'package' ? value : roundToStep(value, stepperStep)
 
+  // A non-consumable item (cups) has ONE stock field, "Amount", in whole
+  // pieces of the package unit; it edits `packedQuantity`. Its target and
+  // refill threshold are whole pieces too, whatever the measurement settings
+  // say (owner decision 2026-11-26). So all three step by 1, a typed fraction
+  // is rounded (Amount down, target and threshold up, the same rule as
+  // `getPieceCounts`), and every label shows the package unit.
+  const stockUnit =
+    consumable && targetUnit === 'measurement'
+      ? measurementUnit || undefined
+      : packageUnit || undefined
+  const targetStepValue: number | 'any' =
+    !consumable || targetUnit === 'package' ? 1 : quantityStep
+  const targetStepperStep =
+    !consumable || targetUnit === 'package' ? 1 : stepperStep
+  const normalizeTarget = (value: number) =>
+    consumable ? normalizeTargetStep(value) : Math.ceil(value)
+  const refillStepValue: number | 'any' = consumable ? quantityStep : 1
+  const refillStepperStep = consumable ? stepperStep : 1
+  const normalizeRefill = (value: number) =>
+    consumable ? roundToStep(value, stepperStep) : Math.ceil(value)
+
   // Progress row preview — mirrors QuickUpdateDialog's live computations
   // exactly (both call `getStockPreview`), but reads ItemForm's own
   // in-progress state instead of a saved PantryItem, so raising/lowering a
@@ -456,6 +477,7 @@ export function ItemForm({
         ? { amountPerPackage: Number(amountPerPackage) }
         : {}),
       consumeAmount,
+      consumable,
     },
     {
       packedQuantity,
@@ -475,12 +497,18 @@ export function ItemForm({
   // Fill to Full aims at the target currently in the input, not a saved one —
   // computed separately (not read off `preview`) because the `onFill` handler
   // below needs the destination quantities, not just whether they're reached.
-  const fillToFullState = computeFillToFull({
-    targetUnit,
-    targetQuantity,
-    consumeAmount,
-    ...(amountPerPackage ? { amountPerPackage: Number(amountPerPackage) } : {}),
-  })
+  // A non-consumable item fills to its target in whole pieces, with no opened
+  // stock (`preview.target` is already in pieces).
+  const fillToFullState = consumable
+    ? computeFillToFull({
+        targetUnit,
+        targetQuantity,
+        consumeAmount,
+        ...(amountPerPackage
+          ? { amountPerPackage: Number(amountPerPackage) }
+          : {}),
+      })
+    : { packedQuantity: preview.target, unpackedQuantity: 0 }
 
   // Only errors the active sections actually RENDER may block submission. All
   // four validated fields live in the info section, so a sections={['stock']}
@@ -846,8 +874,13 @@ export function ItemForm({
               `docs/features/pantry/2026-08-27-brainstorming-quick-update-stock-settings.md`
               (addendum 2026-09-22). */}
           <div>
+            {/* A non-consumable item shows this one field as "Amount": whole
+                pieces of the package unit. It still edits `packedQuantity`;
+                the Stock tab saves `unpackedQuantity: 0` for it. */}
             <Label htmlFor="packedQuantity">
-              {t('items.form.packedQuantity.label')}{' '}
+              {consumable
+                ? t('items.form.packedQuantity.label')
+                : t('items.form.amount.label')}{' '}
               <UnitInline unit={packageUnit || undefined} />
             </Label>
             <div className="grid grid-cols-[auto_8rem] gap-2">
@@ -855,8 +888,16 @@ export function ItemForm({
                 value={packedQuantity}
                 onStep={setPackedQuantity}
                 step={1}
-                decreaseLabel={t('items.form.packedQuantity.decrease')}
-                increaseLabel={t('items.form.packedQuantity.increase')}
+                decreaseLabel={
+                  consumable
+                    ? t('items.form.packedQuantity.decrease')
+                    : t('items.form.amount.decrease')
+                }
+                increaseLabel={
+                  consumable
+                    ? t('items.form.packedQuantity.increase')
+                    : t('items.form.amount.increase')
+                }
                 disabled={isPending}
                 readOnly={readOnly}
                 size="default"
@@ -867,6 +908,7 @@ export function ItemForm({
                     'packedQuantity',
                     packedQuantity,
                     setPackedQuantity,
+                    consumable ? undefined : (n) => Math.floor(n),
                   ),
                 }}
               />
@@ -896,7 +938,9 @@ export function ItemForm({
               )}
             </div>
             <p className="text-xs text-foreground-muted">
-              {t('items.form.packedQuantity.hint')}
+              {consumable
+                ? t('items.form.packedQuantity.hint')
+                : t('items.form.amount.hint')}
             </p>
           </div>
 
@@ -1001,7 +1045,8 @@ export function ItemForm({
             quantityLabel={progressQuantityLabel}
             unitLabel={progressUnitLabel}
             current={currentStockQuantity}
-            target={targetQuantity}
+            // In the bar's unit: whole pieces for a non-consumable item.
+            target={preview.target}
             status={stockStatus}
             // The form's own value. The Stock tab does not show the switch,
             // so here it is the saved value; with both sections it follows
@@ -1014,8 +1059,9 @@ export function ItemForm({
             {...(amountPerPackage
               ? { amountPerPackage: Number(amountPerPackage) }
               : {})}
-            // Live form state, so the tick moves before the form is saved.
-            refillThreshold={refillThreshold}
+            // From live form state, so the tick moves before the form is
+            // saved (whole pieces for a non-consumable item).
+            refillThreshold={preview.refillThreshold}
             onClear={() => {
               setPackedQuantity(0)
               setUnpackedQuantity(0)
@@ -1033,19 +1079,13 @@ export function ItemForm({
           <div>
             <Label htmlFor="targetQuantity">
               {t('items.form.targetQuantity.label')}{' '}
-              <UnitInline
-                unit={
-                  targetUnit === 'measurement'
-                    ? measurementUnit || undefined
-                    : packageUnit || undefined
-                }
-              />
+              <UnitInline unit={stockUnit} />
             </Label>
             <QuantityStepper
               value={targetQuantity}
               onStep={setTargetQuantity}
-              step={targetUnit === 'package' ? 1 : stepperStep}
-              round={normalizeTargetStep}
+              step={targetStepperStep}
+              round={normalizeTarget}
               decreaseLabel={t('items.form.targetQuantity.decrease')}
               increaseLabel={t('items.form.targetQuantity.increase')}
               disabled={isPending}
@@ -1053,11 +1093,12 @@ export function ItemForm({
               size="default"
               inputProps={{
                 id: 'targetQuantity',
-                step: targetUnit === 'package' ? 1 : quantityStep,
+                step: targetStepValue,
                 ...numericInputProps(
                   'targetQuantity',
                   targetQuantity,
                   setTargetQuantity,
+                  consumable ? undefined : normalizeTarget,
                 ),
               }}
             />
@@ -1069,19 +1110,13 @@ export function ItemForm({
           <div>
             <Label htmlFor="refillThreshold">
               {t('items.form.refillThreshold.label')}{' '}
-              <UnitInline
-                unit={
-                  targetUnit === 'measurement'
-                    ? measurementUnit || undefined
-                    : packageUnit || undefined
-                }
-              />
+              <UnitInline unit={stockUnit} />
             </Label>
             <QuantityStepper
               value={refillThreshold}
               onStep={setRefillThreshold}
-              step={stepperStep}
-              round={(n) => roundToStep(n, stepperStep)}
+              step={refillStepperStep}
+              round={normalizeRefill}
               decreaseLabel={t('items.form.refillThreshold.decrease')}
               increaseLabel={t('items.form.refillThreshold.increase')}
               disabled={isPending}
@@ -1089,11 +1124,12 @@ export function ItemForm({
               size="default"
               inputProps={{
                 id: 'refillThreshold',
-                step: quantityStep,
+                step: refillStepValue,
                 ...numericInputProps(
                   'refillThreshold',
                   refillThreshold,
                   setRefillThreshold,
+                  consumable ? undefined : normalizeRefill,
                 ),
               }}
             />

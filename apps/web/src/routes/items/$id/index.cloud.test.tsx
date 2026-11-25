@@ -378,10 +378,11 @@ describe('Item info tab unit switch — cloud mode', () => {
     ])
   })
 
-  it('user turning Consumable off on an item tracked in grams sees the converted amounts and saves both in ONE call', async () => {
+  it('user turning Consumable off on an item tracked in grams drops opened stock and saves whole packs in every location in ONE call', async () => {
     const user = userEvent.setup()
 
-    // Given the flour item, tracked in grams in two locations
+    // Given the flour item, tracked in grams in two locations, with opened
+    // stock in both (250 g and 750 g)
     renderInfoTab()
     await screen.findByDisplayValue('Flour')
 
@@ -389,10 +390,14 @@ describe('Item info tab unit switch — cloud mode', () => {
     await user.click(screen.getByRole('switch', { name: /^consumable$/i }))
     await user.click(screen.getByRole('button', { name: /save/i }))
 
-    // Then the same converted amounts dialog as a unit change opens
+    // Then the converted amounts dialog says opened stock is removed, and
+    // lists it going to 0 in BOTH locations
     const dialog = await screen.findByRole('alertdialog')
-    expect(within(dialog).getByText(/250\D+0\.5/)).toBeInTheDocument()
-    expect(within(dialog).getByText(/750\D+1\.5/)).toBeInTheDocument()
+    expect(
+      within(dialog).getByText(/opened packs are removed/i),
+    ).toBeInTheDocument()
+    expect(within(dialog).getByText(/250\D+0$/)).toBeInTheDocument()
+    expect(within(dialog).getByText(/750\D+0$/)).toBeInTheDocument()
 
     // When the user confirms
     await user.click(
@@ -404,7 +409,10 @@ describe('Item info tab unit switch — cloud mode', () => {
     await waitFor(() => expect(sentSwitches).toHaveLength(1))
     const sent = sentSwitches[0] as {
       updates: Record<string, unknown>
-      stockConversions: { locationId: string }[]
+      stockConversions: {
+        locationId: string
+        quantities: Record<string, number>
+      }[]
     }
     expect(sent.updates).toMatchObject({
       consumable: false,
@@ -412,9 +420,77 @@ describe('Item info tab unit switch — cloud mode', () => {
       measurementUnit: 'g',
       amountPerPackage: 500,
     })
-    expect(sent.stockConversions.map((c) => c.locationId).sort()).toEqual(
-      [LOC_A, LOC_B].sort(),
+    // And every location: no opened stock, target and refill in whole packs
+    // (1000 g -> 2, 200 g -> 0.4 -> 1; 3000 g -> 6, 500 g -> 1)
+    const byLocation = new Map(
+      sent.stockConversions.map((c) => [c.locationId, c.quantities]),
     )
-    expect(stocks.find((s) => s.locationId === LOC_B)?.targetQuantity).toBe(6)
+    expect(byLocation.get(LOC_A)).toMatchObject({
+      unpackedQuantity: 0,
+      targetQuantity: 2,
+      refillThreshold: 1,
+    })
+    expect(byLocation.get(LOC_B)).toMatchObject({
+      unpackedQuantity: 0,
+      targetQuantity: 6,
+      refillThreshold: 1,
+    })
+    // Packed packages are kept
+    expect(stocks.find((s) => s.locationId === LOC_A)?.packedQuantity).toBe(2)
+    expect(stocks.find((s) => s.locationId === LOC_B)?.packedQuantity).toBe(1)
+  })
+
+  it('user turning Consumable off on an item tracked in packages drops opened stock in every location', async () => {
+    const user = userEvent.setup()
+
+    // Given flour already tracked in packages, with half a pack open in one
+    // location and nothing open in the other. No unit change happens here,
+    // so before 2026-11-26 no conversion ran at all.
+    item = { ...FLOUR, targetUnit: 'package', consumeAmount: 0.5 }
+    stocks = [
+      {
+        ...FLOUR_A,
+        targetQuantity: 4,
+        refillThreshold: 1,
+        unpackedQuantity: 0.5,
+      },
+      {
+        ...FLOUR_B,
+        targetQuantity: 3,
+        refillThreshold: 1,
+        unpackedQuantity: 0,
+      },
+    ]
+    renderInfoTab()
+    await screen.findByDisplayValue('Flour')
+
+    // When the user turns Consumable off, saves and confirms
+    await user.click(screen.getByRole('switch', { name: /^consumable$/i }))
+    await user.click(screen.getByRole('button', { name: /save/i }))
+    const dialog = await screen.findByRole('alertdialog')
+    await user.click(
+      within(dialog).getByRole('button', { name: /update & save/i }),
+    )
+
+    // Then the one call writes 0 opened stock where there was some, and
+    // leaves the row that needs no change alone
+    await waitFor(() => expect(sentSwitches).toHaveLength(1))
+    const sent = sentSwitches[0] as {
+      stockConversions: {
+        locationId: string
+        quantities: Record<string, number>
+      }[]
+    }
+    expect(sent.stockConversions).toEqual([
+      {
+        locationId: LOC_A,
+        quantities: {
+          unpackedQuantity: 0,
+          targetQuantity: 4,
+          refillThreshold: 1,
+        },
+      },
+    ])
+    expect(stocks.find((s) => s.locationId === LOC_A)?.unpackedQuantity).toBe(0)
   })
 })

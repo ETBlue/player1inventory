@@ -4,6 +4,7 @@ import { ItemProgressBar } from '@/components/item/ItemProgressBar'
 import { CardTitle } from '@/components/ui/card'
 import {
   getCurrentQuantity,
+  getPieceCounts,
   getStockStatus,
   isInactive,
 } from '@/lib/quantityUtils'
@@ -42,8 +43,6 @@ export function ItemStockSummary({
   nameAs = 'h3',
 }: ItemStockSummaryProps) {
   const currentQuantity = getCurrentQuantity(item)
-  const status = getStockStatus(currentQuantity, item.refillThreshold)
-  const progressStatus = isInactive(item) ? 'inactive' : status
   // Convert packed quantity to measurement units for display when tracking in measurement
   const displayPacked =
     item.targetUnit === 'measurement' && item.amountPerPackage
@@ -53,22 +52,23 @@ export function ItemStockSummary({
   const unitLabel =
     item.targetUnit === 'measurement' && item.measurementUnit
       ? item.measurementUnit
-      : (item.packageUnit ?? DEFAULT_PACKAGE_UNIT)
+      : // `||`, not `??`: an item created with just a name stores `''`.
+        // `getStockPreview` (the stock row) uses the same fallback.
+        item.packageUnit || DEFAULT_PACKAGE_UNIT
 
-  // A non-consumable item (cups, slippers) counts whole pieces: one square
-  // per piece (`ItemCountBar`), no opened packs, no expiry. Turning the
-  // switch off moves the item to packages, but an item that still tracks in a
-  // measurement unit (for example from an old backup) is converted to pieces
-  // here, the same way `ItemProgressBar` converts to segments.
+  // A non-consumable item (cups, slippers) counts whole pieces in the package
+  // unit: one square per piece (`ItemCountBar`), no opened packs, no expiry.
+  // `getPieceCounts` is the one rule, shared with the stock row
+  // (`getStockPreview`): packed packages only, and the target and threshold
+  // in whole pieces.
   const consumable = isConsumable(item)
-  const pieceScale =
-    item.targetUnit === 'measurement' &&
-    item.amountPerPackage &&
-    item.amountPerPackage > 0
-      ? item.amountPerPackage
-      : 1
-  const piecesInStock = Math.floor(currentQuantity / pieceScale)
-  const piecesWanted = Math.floor(item.targetQuantity / pieceScale)
+  const pieces = getPieceCounts(item, item)
+  // A non-consumable item's status is read from pieces too, so opened stock
+  // left in an old row does not count.
+  const status = consumable
+    ? getStockStatus(currentQuantity, item.refillThreshold)
+    : getStockStatus(pieces.inStock, pieces.refillThreshold)
+  const progressStatus = isInactive(item) ? 'inactive' : status
 
   // "Inactive" is targetQuantity === 0, a per-location fact. With stock
   // hidden the name must not say "Inactive" either.
@@ -93,7 +93,7 @@ export function ItemStockSummary({
           // — see docs/global/bugs/2026-08-29-bug-unit-badge-contrast.md.
           <span className="text-xs font-normal text-foreground-muted whitespace-nowrap">
             {!consumable
-              ? `${piecesInStock} / ${piecesWanted} ${item.packageUnit || DEFAULT_PACKAGE_UNIT}`
+              ? `${pieces.inStock} / ${pieces.wanted} ${item.packageUnit || DEFAULT_PACKAGE_UNIT}`
               : item.unpackedQuantity > 0
                 ? `${displayPacked} (+${item.unpackedQuantity}) / ${item.targetQuantity} ${unitLabel}`
                 : `${currentQuantity} / ${item.targetQuantity} ${unitLabel}`}
@@ -102,10 +102,10 @@ export function ItemStockSummary({
       </CardTitle>
       {showStock && !consumable && (
         <ItemCountBar
-          current={piecesInStock}
-          target={piecesWanted}
+          current={pieces.inStock}
+          target={pieces.wanted}
           status={progressStatus}
-          refillThreshold={item.refillThreshold / pieceScale}
+          refillThreshold={pieces.refillThreshold}
         />
       )}
       {showStock && consumable && (

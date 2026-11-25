@@ -1658,6 +1658,12 @@ packs; the Not consumable filter on a cart keeps only the non-consumable item an
 reload; and axe scans, light and dark, of the pantry with a count bar, the open Consumable
 menu, the Info tab with the switch off and the converted amounts dialog.
 
+Since 2026-11-26 (the Amount field) it also checks, in both projects: the gram item's switch
+drops the 250 g opened stock and stores `[packed 2, unpacked 0, target 4, refill 1]` (read
+back with `readStocksForItem`); the quick edit dialog and the Stock tab show one "Amount"
+field; and an Amount saved on the Stock tab writes `unpackedQuantity: 0`.
+`FIXTURE_CUPS_NOT_CONSUMABLE` seeds Cups with half a pack open on purpose, as an old row.
+
 ### Location order is assigned differently in the two modes — keep the default first
 
 | Helper | How it assigns `order` |

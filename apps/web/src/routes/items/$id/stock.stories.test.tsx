@@ -125,7 +125,8 @@ describe('Item detail stock tab stories smoke tests', () => {
 
   it('NotConsumableItem draws one square per piece', async () => {
     render(<NotConsumableItem />)
-    await screen.findByLabelText(/^packed/i)
+    // One "Amount" field in place of Packed and Unpacked
+    await screen.findByLabelText(/^amount \(/i)
     const squares = await screen.findAllByTestId('count-square')
     expect(squares).toHaveLength(5)
     expect(squares.filter((s) => s.dataset.filled === 'true')).toHaveLength(3)

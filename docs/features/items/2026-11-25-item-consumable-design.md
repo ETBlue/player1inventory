@@ -129,6 +129,12 @@ dialog and on the item Stock tab too, not only on its card. Branch
 | callers | `QuickUpdateDialog` passes `isConsumable(item)`. `ItemForm` passes its `consumable` form value, so with both sections the bar follows the switch before Save |
 | not changed | `ItemCard` keeps its own `pieceScale` copy (another branch was editing it); `GroupCard` keeps `ItemProgressBar` (a group total, not one item) |
 
+### The Amount field (2026-11-26)
+
+A non-consumable item has ONE stock field, **Amount** (whole pieces in the package unit),
+and turning Consumable off drops opened stock at every location. Design:
+`2026-11-26-non-consumable-amount-design.md`.
+
 ## Not changing
 
 Recipes, cooking, checkout.

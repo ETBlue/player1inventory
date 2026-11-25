@@ -29,7 +29,10 @@ import { useLocations } from '@/hooks/useLocations'
 import { usePermissions } from '@/hooks/usePermissions'
 import { useRecipes } from '@/hooks/useRecipes'
 import type { TrackedQuantities } from '@/lib/quantityUtils'
-import { convertTrackedQuantities } from '@/lib/quantityUtils'
+import {
+  convertTrackedQuantities,
+  toNonConsumableQuantities,
+} from '@/lib/quantityUtils'
 import { showSaveError } from '@/lib/saveError'
 import type { Item, PantryItem, StockConfigFields, StockFields } from '@/types'
 import { DEFAULT_PACKAGE_UNIT, isConsumable } from '@/types'
@@ -170,6 +173,9 @@ type PendingSave = {
   values: ItemFormValues
   adjustments: Adjustment[]
   conversions: StockConversion[]
+  // The save turns Consumable off: the dialog says opened stock is removed,
+  // not "now tracking in {unit}".
+  toNonConsumable: boolean
 }
 
 function calcNewDefault(oldDefault: number, newConsumeAmount: number): number {
@@ -296,6 +302,10 @@ function ItemInfoTab() {
     const oldConsumeAmount = item.consumeAmount ?? 0
     const newConsumeAmount = values.consumeAmount
     const targetUnitChanged = item.targetUnit !== values.targetUnit
+    // Turning Consumable off (owner decision 2026-11-26): at EVERY location
+    // opened stock is dropped, and the target and the refill threshold become
+    // whole packs. Turning it on again changes no stock.
+    const toNonConsumable = isConsumable(item) && !values.consumable
 
     const buildAdjustments = (): Adjustment[] => {
       if (!allRecipes) return []
@@ -351,7 +361,7 @@ function ItemInfoTab() {
     // holds the ACTIVE location's quantities (already rescaled in its local
     // state by the toggle), which are the wrong numbers for every other row.
     const buildStockConversions = (): StockConversion[] => {
-      if (!targetUnitChanged || !stocks) return []
+      if ((!targetUnitChanged && !toNonConsumable) || !stocks) return []
       const amountPerPackage = Number(values.amountPerPackage)
       const order = new Map(locations?.map((l, i) => [l.id, i]))
       return stocks
@@ -361,11 +371,21 @@ function ItemInfoTab() {
             targetQuantity: stock.targetQuantity,
             refillThreshold: stock.refillThreshold,
           }
-          const after = convertTrackedQuantities(
-            before,
-            amountPerPackage,
-            values.targetUnit,
-          )
+          // To non-consumable: the stored numbers are in the item's OLD unit
+          // (`item.targetUnit`), and the switch to packages (the form turns
+          // "Track in measurement" off with it) is folded into the same
+          // divide-by-amountPerPackage rule. Even an item already tracked in
+          // packages gets a row when it holds opened stock or a fraction.
+          const after = toNonConsumable
+            ? toNonConsumableQuantities(before, {
+                targetUnit: item.targetUnit,
+                ...(amountPerPackage > 0 ? { amountPerPackage } : {}),
+              })
+            : convertTrackedQuantities(
+                before,
+                amountPerPackage,
+                values.targetUnit,
+              )
           // No usable factor (missing / zero / negative amountPerPackage), or
           // nothing actually moves (all-zero row, 1:1 package size): leave the
           // row alone rather than list a no-op for the user to reason about.
@@ -394,7 +414,7 @@ function ItemInfoTab() {
       // A save already waiting (not reachable today: the dialog is modal)
       // is answered "not saved" before a new one starts.
       answerPending(false)
-      setPending({ values, adjustments, conversions })
+      setPending({ values, adjustments, conversions, toNonConsumable })
       return new Promise<boolean>((resolve) => {
         pendingAnswerRef.current = resolve
       })
@@ -521,9 +541,16 @@ function ItemInfoTab() {
           <AlertDialogDescription>
             {hasConversions && (
               <span className="block">
-                {t('items.detail.unitSwitchDialog.description', {
-                  unit: switchedToUnit,
-                })}
+                {pending?.toNonConsumable
+                  ? t(
+                      'items.detail.unitSwitchDialog.nonConsumableDescription',
+                      {
+                        unit: switchedToUnit,
+                      },
+                    )
+                  : t('items.detail.unitSwitchDialog.description', {
+                      unit: switchedToUnit,
+                    })}
               </span>
             )}
             {hasAdjustments && pending && (

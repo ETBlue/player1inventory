@@ -122,7 +122,10 @@ type ItemUpdatePayload = Omit<Partial<StockFields>, 'dueDate'> & {
 function buildStockUpdates(values: ItemFormValues): ItemUpdatePayload {
   return {
     packedQuantity: values.packedQuantity,
-    unpackedQuantity: values.unpackedQuantity,
+    // A non-consumable item has no opened stock: its one "Amount" field is
+    // `packedQuantity`, and `unpackedQuantity` is always saved as 0. This also
+    // clears opened stock an old row still held (owner decision 2026-11-26).
+    unpackedQuantity: values.consumable ? values.unpackedQuantity : 0,
     targetQuantity: values.targetQuantity,
     refillThreshold: values.refillThreshold,
     // A non-consumable item hides the field too (`ItemForm`), so it sends no

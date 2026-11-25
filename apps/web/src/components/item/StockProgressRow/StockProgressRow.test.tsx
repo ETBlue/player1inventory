@@ -123,8 +123,11 @@ describe('StockProgressRow bar choice', () => {
     expect(screen.getByTestId('refill-marker')).toBeInTheDocument()
   })
 
-  it('a non-consumable item tracked in a measurement unit shows whole pieces', () => {
-    // Given 750 ml of a 1000 ml target, 250 ml per piece, refill below 500 ml
+  it('a non-consumable item draws the piece values it is given, without dividing again', () => {
+    // Given an item still tracked in ml, 250 ml per piece. The caller
+    // (`getStockPreview`) already turned the numbers into pieces: 3 of 4,
+    // refill below 2. Until 2026-11-26 the row divided by the piece size
+    // itself, so it took ml.
     render(
       <StockProgressRow
         {...baseProps}
@@ -132,10 +135,10 @@ describe('StockProgressRow bar choice', () => {
         targetUnit="measurement"
         measurementUnit="ml"
         amountPerPackage={250}
-        current={750}
-        target={1000}
-        packed={750}
-        refillThreshold={500}
+        current={3}
+        target={4}
+        packed={3}
+        refillThreshold={2}
       />,
     )
 

@@ -2458,6 +2458,28 @@ describe('ItemCard - non-consumable items', () => {
     expect(screen.getByTestId('refill-marker').dataset.threshold).toBe('2')
   })
 
+  it('user sees whole packs only for a non-consumable item that still holds opened stock', async () => {
+    // Given an old row of cups with 2 packs and 1.5 opened: the Amount field
+    // shows 2, so the card must show 2 too, not floor(3.5) = 3
+    const item = makeItem({
+      packedQuantity: 2,
+      unpackedQuantity: 1.5,
+      targetQuantity: 5,
+      refillThreshold: 2,
+      targetUnit: 'package',
+      packageUnit: 'cup',
+      consumable: false,
+    })
+
+    await renderWithRouter(
+      <ItemCard lastPurchaseDate={null} item={item} tags={[]} tagTypes={[]} />,
+    )
+
+    expect(screen.getByText('2 / 5 cup')).toBeInTheDocument()
+    const squares = screen.getAllByTestId('count-square')
+    expect(squares.filter((s) => s.dataset.filled === 'true')).toHaveLength(2)
+  })
+
   it('user sees no expiry on a non-consumable item', async () => {
     // Given the same expiry settings on two items
     const expiry = {

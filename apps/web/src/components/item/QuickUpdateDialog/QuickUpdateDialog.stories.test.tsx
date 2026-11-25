@@ -328,5 +328,9 @@ describe('QuickUpdateDialog — NotConsumable story', () => {
     expect(squares).toHaveLength(5)
     expect(squares.filter((s) => s.dataset.filled === 'true')).toHaveLength(3)
     expect(screen.getByText('3 / 5 cup')).toBeInTheDocument()
+    // One "Amount" field in place of Packed and Unpacked
+    expect(
+      screen.getByRole('spinbutton', { name: 'Amount (cup)' }),
+    ).toBeInTheDocument()
   })
 })
