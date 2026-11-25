@@ -4,24 +4,34 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import * as stories from './CartAmountDialog.stories'
 
-const { EditAmount, AddSuggested, AmountZero, MeasurementItem, SaveFails } =
-  composeStories(stories)
+const {
+  EditAmount,
+  AddSuggested,
+  AmountZero,
+  MeasurementItem,
+  NonConsumableItem,
+  SaveFails,
+} = composeStories(stories)
 
 describe('CartAmountDialog stories smoke tests', () => {
-  it('EditAmount shows the item, its stock and target, and the amount', () => {
+  it('EditAmount shows the title, the item, its stock and target, and the amount', () => {
     render(<EditAmount />)
     expect(
-      screen.getByRole('heading', { name: 'Yogurt (plain)' }),
+      screen.getByRole('heading', { name: 'Item in cart' }),
     ).toBeInTheDocument()
-    expect(screen.getByText('In stock 1 · target 2 gallon')).toBeInTheDocument()
+    expect(screen.getByText('Yogurt (plain)')).toBeInTheDocument()
+    expect(screen.getByText('1 / 2 gallon')).toBeInTheDocument()
     expect(
-      screen.getByRole('spinbutton', { name: 'Amount (gallon)' }),
+      screen.getByRole('spinbutton', { name: 'Buy (gallon)' }),
     ).toHaveValue(3)
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
   })
 
-  it('AddSuggested has Save on from the start', () => {
+  it('AddSuggested is titled Add to cart, with Save on from the start', () => {
     render(<AddSuggested />)
+    expect(
+      screen.getByRole('heading', { name: 'Add to cart' }),
+    ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
   })
 
@@ -34,10 +44,16 @@ describe('CartAmountDialog stories smoke tests', () => {
 
   it('MeasurementItem shows stock in L and the amount in bottles', () => {
     render(<MeasurementItem />)
-    expect(screen.getByText('In stock 1.7 · target 2 L')).toBeInTheDocument()
+    expect(screen.getByText(/\/ 2 L$/)).toBeInTheDocument()
     expect(
-      screen.getByRole('spinbutton', { name: 'Amount (bottle)' }),
+      screen.getByRole('spinbutton', { name: 'Buy (bottle)' }),
     ).toBeInTheDocument()
+  })
+
+  it('NonConsumableItem shows one square per piece', () => {
+    render(<NonConsumableItem />)
+    expect(screen.getByText('2 / 6 cup')).toBeInTheDocument()
+    expect(screen.getAllByTestId('count-square')).toHaveLength(6)
   })
 
   it('SaveFails shows the error after Save', async () => {

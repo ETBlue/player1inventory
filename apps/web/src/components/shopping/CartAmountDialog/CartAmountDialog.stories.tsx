@@ -37,10 +37,28 @@ export const AmountZero: Story = {
 }
 
 // mockDualUnitItem: 'Purple grapes', 1 L per bottle, target 2 L, 1.7 L in
-// stock. The context line is in L; the amount is in bottles.
+// stock. The stock row is in L; the amount is in bottles.
 export const MeasurementItem: Story = {
   name: 'Measurement item — stock in L, amount in bottles',
   args: { item: mockDualUnitItem, mode: 'add', initialAmount: 1 },
+}
+
+// A non-consumable item (cups) shows one square per piece, like its card.
+export const NonConsumableItem: Story = {
+  name: 'Non-consumable item — one square per piece',
+  args: {
+    item: {
+      ...mockItem,
+      name: 'Paper cups',
+      packageUnit: 'cup',
+      consumable: false,
+      targetQuantity: 6,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+    },
+    mode: 'edit',
+    initialAmount: 4,
+  },
 }
 
 export const SaveFails: Story = {

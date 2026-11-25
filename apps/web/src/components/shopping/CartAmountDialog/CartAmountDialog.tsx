@@ -1,5 +1,6 @@
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { ItemStockSummary } from '@/components/item/ItemStockSummary'
 import { QuantityStepper } from '@/components/item/QuantityStepper'
 import { Button } from '@/components/ui/button'
 import {
@@ -11,12 +12,11 @@ import {
   DialogMain,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { getCurrentQuantity } from '@/lib/quantityUtils'
 import type { PantryItem } from '@/types'
 import { DEFAULT_PACKAGE_UNIT } from '@/types'
 
 interface CartAmountDialogProps {
-  // The joined row of the ACTIVE location, so the context line shows the
+  // The joined row of the ACTIVE location, so the stock row shows the
   // stock and target of the cart's own location.
   item: PantryItem
   // `edit`: the item is in the cart and `initialAmount` is its amount there.
@@ -38,12 +38,6 @@ function parseAmount(text: string): number | null {
   const trimmed = text.trim()
   if (!/^\d+$/.test(trimmed)) return null
   return Number(trimmed)
-}
-
-// Stock and target are in the tracking unit and may be fractions (0.7 L).
-// Two decimals is enough to read, and drops float noise.
-function formatQuantity(n: number): string {
-  return String(Math.round(n * 100) / 100)
 }
 
 /**
@@ -71,11 +65,6 @@ export function CartAmountDialog({
 
   const amount = parseAmount(text)
   const packageUnit = item.packageUnit || DEFAULT_PACKAGE_UNIT
-  // The same unit and numbers the item card shows on the cart page.
-  const trackingUnit =
-    item.targetUnit === 'measurement' && item.measurementUnit
-      ? item.measurementUnit
-      : packageUnit
 
   const isUnchanged = mode === 'edit' && amount === initialAmount
   const saveDisabled = amount === null || isUnchanged || isPending
@@ -105,23 +94,34 @@ export function CartAmountDialog({
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle className="capitalize">{item.name}</DialogTitle>
+          {/* A generic title (owner request 2026-11-26). The item name is in
+              the body, and the body's first row is the description, so a
+              screen reader still hears which item this is. */}
+          <DialogTitle>
+            {mode === 'edit'
+              ? t('shopping.amountDialog.titleEdit')
+              : t('shopping.amountDialog.titleAdd')}
+          </DialogTitle>
         </DialogHeader>
 
         <DialogMain>
-          {/* The stock line sits in the body, above the amount (owner request
-              2026-11-25). It is still the dialog's description. */}
-          <DialogDescription className="mb-3">
-            {t('shopping.amountDialog.context', {
-              stock: formatQuantity(getCurrentQuantity(item)),
-              target: formatQuantity(item.targetQuantity),
-              unit: trackingUnit,
-            })}
+          {/* The same name, "x / y unit" text and bar as the item card
+              (`ItemStockSummary`). Radix renders the description as a <p>,
+              which cannot hold the <div>s inside, so `asChild` puts it on a
+              <div>. The bars are aria-hidden, so the description reads the
+              name and the numbers. */}
+          <DialogDescription asChild className="mb-4 text-foreground">
+            <div>
+              <ItemStockSummary item={item} nameAs="span" />
+            </div>
           </DialogDescription>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-sm text-foreground-muted shrink-0">
-                {t('shopping.amountDialog.amountLabel', { unit: packageUnit })}
+              <span
+                aria-hidden="true"
+                className="text-sm text-foreground-muted shrink-0"
+              >
+                {t('shopping.amountDialog.buy')}
               </span>
               <QuantityStepper
                 value={amount ?? 0}
@@ -133,6 +133,10 @@ export function CartAmountDialog({
                 inputProps={{
                   step: 1,
                   inputMode: 'numeric',
+                  // Just wide enough for a 4-digit amount. The class must
+                  // repeat the stepper's own default, because this one
+                  // replaces it.
+                  className: 'h-7 w-20 rounded-none text-right',
                   'aria-label': t('shopping.amountDialog.amountLabel', {
                     unit: packageUnit,
                   }),
@@ -148,6 +152,12 @@ export function CartAmountDialog({
                   },
                 }}
               />
+              <span
+                aria-hidden="true"
+                className="text-sm text-foreground-muted min-w-0 truncate"
+              >
+                {packageUnit}
+              </span>
             </div>
             {amount === 0 && (
               <p id={zeroNoteId} className="mt-2 text-sm text-foreground-muted">

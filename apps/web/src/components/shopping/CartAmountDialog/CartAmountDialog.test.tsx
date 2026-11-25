@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { PantryItem } from '@/types'
@@ -33,7 +33,7 @@ function setup(props: Partial<Parameters<typeof CartAmountDialog>[0]> = {}) {
       {...props}
     />,
   )
-  const field = screen.getByRole('spinbutton', { name: 'Amount (bottle)' })
+  const field = screen.getByRole('spinbutton', { name: 'Buy (bottle)' })
   const save = screen.getByRole('button', { name: 'Save' })
   return { onSubmit, onClose, field, save, user: userEvent.setup() }
 }
@@ -41,46 +41,89 @@ function setup(props: Partial<Parameters<typeof CartAmountDialog>[0]> = {}) {
 const ZERO_NOTE = /Amount 0 keeps the item in the cart/
 
 describe('CartAmountDialog', () => {
-  it('user sees the item name, and the stock and target here', () => {
-    setup()
-    expect(screen.getByRole('heading', { name: 'Milk' })).toBeInTheDocument()
-    expect(screen.getByText('In stock 1 · target 4 bottle')).toBeInTheDocument()
-  })
-
-  it('user sees the stock line in the dialog body, not in the header', () => {
-    setup()
-    const line = screen.getByText('In stock 1 · target 4 bottle')
-    // The header row holds the title and the close button only
-    const header = screen.getByRole('heading', { name: 'Milk' }).parentElement
-    expect(header).not.toContainElement(line)
-    // The line comes before the amount field, in the same body block
-    const field = screen.getByRole('spinbutton', { name: /Amount/ })
+  it('user sees "Item in cart" as the title when the item is in the cart', () => {
+    setup({ mode: 'edit' })
     expect(
-      line.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy()
-    expect(line.parentElement).toContainElement(field)
-    // It is still the dialog's description
-    expect(screen.getByRole('dialog')).toHaveAccessibleDescription(
-      'In stock 1 · target 4 bottle',
-    )
-  })
-
-  it('user sees a measurement item stocked in its tracking unit', () => {
-    setup({
-      item: {
-        ...milk,
-        targetUnit: 'measurement',
-        measurementUnit: 'ml',
-        amountPerPackage: 750,
-        targetQuantity: 2000,
-        packedQuantity: 1,
-        unpackedQuantity: 0.1 + 0.2,
-      },
-    })
-    // 750 + 0.30000000000000004, shown with 2 decimals
-    expect(
-      screen.getByText('In stock 750.3 · target 2000 ml'),
+      screen.getByRole('heading', { name: 'Item in cart' }),
     ).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Milk' })).toBeNull()
+  })
+
+  it('user sees "Add to cart" as the title when the item is not in the cart yet', () => {
+    setup({ mode: 'add', initialAmount: 3 })
+    expect(
+      screen.getByRole('heading', { name: 'Add to cart' }),
+    ).toBeInTheDocument()
+  })
+
+  it('user sees the item name and its quantity in the body, like on the card', () => {
+    setup()
+    const dialog = screen.getByRole('dialog')
+    // The same text the item card shows: "1 / 4 bottle"
+    const name = within(dialog).getByText('Milk')
+    const quantity = within(dialog).getByText('1 / 4 bottle')
+    // Not in the header: the header holds the title and the close button
+    const header = screen.getByRole('heading', {
+      name: 'Item in cart',
+    }).parentElement
+    expect(header).not.toContainElement(name)
+    expect(header).not.toContainElement(quantity)
+    // The name keeps `capitalize` (Name Display Convention)
+    expect(name).toHaveClass('capitalize')
+    // The row comes before the amount field
+    const field = screen.getByRole('spinbutton', { name: /^Buy/ })
+    expect(
+      quantity.compareDocumentPosition(field) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+  })
+
+  it('user hears the item name and quantity as the dialog description', () => {
+    setup()
+    const dialog = screen.getByRole('dialog')
+    // The title is generic, so the description must say which item
+    expect(dialog).toHaveAccessibleDescription(/^Milk 1 \/ 4 bottle/)
+  })
+
+  it('user sees the percentage bar for a consumable item', () => {
+    setup()
+    const dialog = screen.getByRole('dialog')
+    // ItemProgressBar draws one segment per package (target 4)
+    expect(dialog.querySelectorAll('[data-segment]').length).toBeGreaterThan(0)
+    expect(within(dialog).queryAllByTestId('count-square')).toHaveLength(0)
+  })
+
+  it('user sees one square per piece for a non-consumable item', () => {
+    setup({ item: { ...milk, name: 'Cups', consumable: false } })
+    const dialog = screen.getByRole('dialog')
+    // ItemCountBar: 4 squares, 1 filled
+    const squares = within(dialog).getAllByTestId('count-square')
+    expect(squares).toHaveLength(4)
+    expect(
+      squares.filter((s) => s.getAttribute('data-filled') === 'true'),
+    ).toHaveLength(1)
+    expect(dialog.querySelectorAll('[data-segment]')).toHaveLength(0)
+  })
+
+  it('user sees "Buy", then the amount field, then the package unit', () => {
+    const { field } = setup()
+    const buy = screen.getByText('Buy')
+    const unit = screen.getByText('bottle', { selector: 'span' })
+    expect(
+      buy.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(
+      field.compareDocumentPosition(unit) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    // All three in one row
+    expect(buy.parentElement).toContainElement(field)
+    expect(buy.parentElement).toContainElement(unit)
+  })
+
+  it('the amount field is narrow, just wide enough for 4 digits', () => {
+    const { field } = setup()
+    expect(field).toHaveClass('w-20')
+    expect(field).not.toHaveClass('w-full')
   })
 
   it('user can step and type the amount, and Save sends it ONCE', async () => {

@@ -77,8 +77,10 @@
     },
     "cartChanged": "This cart changed. Please check and try again.",
     "amountDialog": {
-      "context": "In stock {{stock}} · target {{target}} {{unit}}",
-      "amountLabel": "Amount ({{unit}})",
+      "titleEdit": "Item in cart",
+      "titleAdd": "Add to cart",
+      "buy": "Buy",
+      "amountLabel": "Buy ({{unit}})",
       "decrease": "Decrease amount",
       "increase": "Increase amount",
       "zeroNote": "Amount 0 keeps the item in the cart. It is not bought this time. Buy it next time."

@@ -142,3 +142,29 @@ the first line of `DialogMain`, above the amount field, with `mb-3` below it. Th
 holds only the item name and the close button. It is still a `DialogDescription`, so screen
 readers still hear it as the dialog's description. `ConflictDialog` and
 `ImportLocationDialog` already put their description in the body the same way.
+
+### As built: a generic title, the card's stock row, and "Buy" (2026-11-26)
+
+Built on `feature/cart-dialog-layout`, after an owner request. Not merged, not deployed.
+This replaces the section above and the title and amount rows of *As built (2026-11-25)*.
+
+| Part | Before | Now |
+|---|---|---|
+| Title | the item name | **"Item in cart"** (`shopping.amountDialog.titleEdit`) when `mode` is `edit`, **"Add to cart"** (`titleAdd`) when `mode` is `add`. No `capitalize` |
+| First row of the body | "In stock N · target M {unit}" (`shopping.amountDialog.context`, deleted) | the same name, "x / y unit" text and stock bar as the item card. A non-consumable item shows `ItemCountBar` (one square per piece), like its card |
+| Second row | "Amount ({unit})" label, then the stepper | **Buy** (`buy`), the stepper, then the package unit. The number field is `w-20`, wide enough for 4 digits |
+| Field name | "Amount ({unit})" | "Buy ({unit})" (`amountLabel`) |
+
+- **One component for the card and the dialog.** The name row and the bar moved out of
+  `ItemCard` into `ItemStockSummary` (`components/item/ItemStockSummary`). `ItemCard` renders
+  it inside its link, and the dialog renders it with `nameAs="span"`, so the dialog has one
+  heading only. The card's DOM did not change: the component returns the two rows with no
+  wrapper.
+- **Which item, for a screen reader.** The title no longer names the item, so the first row
+  is the dialog's description: `DialogDescription asChild` around a `<div>` (a `<p>` cannot
+  hold the `<div>`s inside). The description reads, for example, "Milk 1 / 4 bottle Refill
+  when below 1": the bars are `aria-hidden`, but `ItemProgressBar` and `ItemCountBar` carry
+  the sr-only refill text, the same as in the card's link name.
+- **The "Buy" word and the unit are `aria-hidden`.** The field's own name, "Buy (pack)",
+  already holds both, and it contains the visible word "Buy" (WCAG 2.5.3).
+- The `−` and `+` buttons stay. The owner did not ask to remove them.
