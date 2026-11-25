@@ -47,6 +47,7 @@ function itemToGraphQL(item: {
   estimatedDueDays?: number | null
   expirationThreshold?: number | null
   expirationMode: ExpirationMode
+  consumable: boolean
   createdAt: Date
   updatedAt: Date
   tags: { tagId: string }[]
@@ -922,7 +923,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       return withCatalogEvent(ctx, householdId, async (changed) => {
         const results: Item[] = []
         for (const item of items) {
-          const { id, tagIds, vendorIds, createdAt, updatedAt, targetUnit, expirationThreshold, ...rest } = item
+          const { id, tagIds, vendorIds, createdAt, updatedAt, targetUnit, expirationThreshold, consumable, ...rest } = item
           // Skip the caller's OWN existing row. The per-row
           // `findUnique({ where: { id } })` this replaces was UNSCOPED, so a
           // stranger's row read as "already exists" and the caller's own item
@@ -944,6 +945,10 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
               ...rest,
               targetUnit: targetUnit as TargetUnit,
               expirationThreshold: expirationThreshold ?? undefined,
+              // A backup written before this field existed has no
+              // `consumable`. It imports as consumable, and an explicit null
+              // too: the column is NOT NULL.
+              consumable: consumable ?? true,
               expirationMode: expirationMode
                 ? (expirationMode === 'days from purchase' ? 'days_from_purchase' : expirationMode as ExpirationMode)
                 : 'disabled',
@@ -1433,7 +1438,7 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       return withCatalogEvent(ctx, householdId, async (changed) => {
         const results: Item[] = []
         for (const item of items) {
-          const { id, tagIds, vendorIds, createdAt, updatedAt, targetUnit, expirationThreshold, ...rest } = item
+          const { id, tagIds, vendorIds, createdAt, updatedAt, targetUnit, expirationThreshold, consumable, ...rest } = item
           const expirationMode = (rest as { expirationMode?: string }).expirationMode
           // CONFIGURATION only — same reason as `bulkCreateItems` above.
           // `wikidataUrl` and `note` (issue #335) ride in `...rest` here too.
@@ -1441,6 +1446,10 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
             ...rest,
             targetUnit: targetUnit as TargetUnit,
             expirationThreshold: expirationThreshold ?? undefined,
+            // Same rule as `bulkCreateItems`. It is in `update` too: a replace
+            // takes the file's value, and a file with no `consumable` says
+            // "consumable", so an omitted value sets true, not "keep".
+            consumable: consumable ?? true,
             expirationMode: expirationMode
               ? (expirationMode === 'days from purchase' ? 'days_from_purchase' : expirationMode as ExpirationMode)
               : 'disabled',

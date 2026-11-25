@@ -134,6 +134,27 @@ read them back first after it (`assertLocationDataUpdatedAtBackfill`). The same 
 other new column, `"User"."locationSort"`, follows the plain rule above: `NULL` means "the
 default", and it gets no backfill.
 
+## Adding a `NOT NULL` column WITH a constant default — one statement
+
+`20261125000000_add_item_consumable` is the model:
+
+```sql
+ALTER TABLE "Item" ADD COLUMN "consumable" BOOLEAN NOT NULL DEFAULT true;
+```
+
+**This is not the four-phase shape above.** Postgres fills every existing row with the
+constant default while it adds the column, so no row can be left `NULL`: there is nothing
+to backfill and nothing for a guard to count. Use the four phases only when the value
+depends on other data (a backfill `UPDATE`), or when there is no sensible constant.
+
+Two rules from it:
+
+- **The resolvers still write the value themselves** (`consumable ?? true`). The Prisma
+  fakes do not apply column defaults, so a value left to the database is one no test can
+  see or miss.
+- **An optional GraphQL input on a `NOT NULL` column must never pass `null` to Prisma.**
+  `null` and an omitted key both mean "the default" on create and "leave it" on update.
+
 ## Re-keying a primary key
 
 `20260917000000_rekey_cart_to_location_vendor` rewrote `Cart.id` from the bare vendor id to
@@ -265,6 +286,19 @@ than trusting a number here — it said **four** when there were seven.
   `apps/server/prisma/` or `apps/server/scripts/` changed after that run
   (`git log --oneline 415cbf02..HEAD -- apps/server/prisma/ apps/server/scripts/` is empty at
   `14f9501c`).
+  **Fourteen** entries since 2026-11-25 (`20261125000000_add_item_consumable`, design
+  `docs/features/items/2026-11-25-item-consumable-design.md`, in the `last` group too: one
+  `NOT NULL` boolean column with `DEFAULT true` on `"Item"`, no seed step). So the fourth
+  `migrate deploy` now applies six migrations. It hit the same trap as H7b's `Location`
+  reads: two `Item` calls run BEFORE the last deploy (the `item-a2` delete in
+  `assertLocationMigrationsBeforeDrop` and the `item-late` read in `assertDropUserScope`),
+  and the client built from the final schema would ask for `consumable` (`P2022`). Both got
+  a `select`. The ids of every `"Item"` row are read before the last deploy
+  (`itemIdsBeforeConsumable`), and `assertItemConsumable` checks after it that each one
+  still there reads `true`, plus the column's place (on `"Item"`, not on `"ItemStock"`),
+  its type, `NOT NULL`, `DEFAULT true`, a `23502` for an explicit `NULL`, and a stored
+  `false`. **Not run yet**: the main session runs it on the test database, with the
+  owner's consent.
   The history below said the list was in `scripts/verify-migration.ts`, as a `MIGRATIONS` list —
   **nine** entries since households H3b task B.3 (2026-11-15; eight on 2026-11-11). The
   ninth, `20261114000000_shared_carts`, is applied in a **fourth** `migrate deploy`, after
@@ -286,7 +320,7 @@ than trusting a number here — it said **four** when there were seven.
   old server could write between the two deploys (`seedBetweenDeploys`).
   **Count the array rather than trusting this line.** It said **four** until 2026-10-08:
   ```bash
-  grep -o "'2026[0-9]*_[a-z_]*'" apps/server/scripts/migrationDeploys.ts | wc -l   # 13 since H7b task M.1 (12 since H6b task K.1, 11 since H6 task J.1, 10 since H5b task G.1)
+  grep -o "'2026[0-9]*_[a-z_]*'" apps/server/scripts/migrationDeploys.ts | wc -l   # 14 since add_item_consumable (13 since H7b task M.1, 12 since H6b task K.1, 11 since H6 task J.1, 10 since H5b task G.1)
   ```
   (The command was `grep -c "^  '2026" apps/server/scripts/verify-migration.ts` until G.1. It
   prints 0 now.)

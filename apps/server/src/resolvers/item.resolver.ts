@@ -91,6 +91,9 @@ export function buildItemUpdateData(input: UpdateItemInput): Prisma.ItemUpdateIn
     // here at all.
     ...(rest.wikidataUrl !== undefined ? { wikidataUrl: rest.wikidataUrl } : {}),
     ...(rest.note !== undefined ? { note: rest.note } : {}),
+    // NOT NULL column. An omitted key and an explicit null both mean "leave
+    // it alone", so null can never reach Prisma (it would be refused).
+    ...(rest.consumable !== undefined && rest.consumable !== null ? { consumable: rest.consumable } : {}),
   }
 }
 
@@ -187,6 +190,9 @@ export const itemResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
           // stored value from "never set".
           wikidataUrl: strOr(rest.wikidataUrl),
           note: strOr(rest.note),
+          // Written out, not left to the column's DEFAULT true, so the value
+          // a new item gets is visible here and in the tests' payloads.
+          consumable: rest.consumable ?? true,
           householdId,
         },
       })
