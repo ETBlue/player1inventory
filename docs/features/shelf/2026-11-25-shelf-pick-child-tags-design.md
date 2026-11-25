@@ -44,3 +44,34 @@ Brainstorming: `2026-11-25-brainstorming-shelf-pick-child-tags.md`.
 ## Not in this design
 
 - The Filters tab of the shelf settings page (it already lists every tag).
+
+## As built (2026-11-25)
+
+Built as designed. Web only; no server or schema change.
+
+| Part | Where | What |
+|---|---|---|
+| `FilterAxisOption.depth` | `apps/web/src/lib/shelfUtils.ts` | required on every option. 0 for an id the rule names; 1, 2, … for a child, a grandchild. Vendor and recipe options are always 0 |
+| `tagAxisOptions` | same file, private | builds the tree ONCE per call with `buildDepthFirstTagList(tags)` (`lib/tagUtils.ts`), the helper behind `useTagsWithDepth` and the tag settings page. Each named tag's subtree is its row plus the rows after it that are deeper. So children are sorted by `sortTagsByName` at each level, the same as Settings › Tags. No second sort was written |
+| a named tag below another named tag | same | listed once, under its ancestor, even when the rule names the child first |
+| `defaultPicksFor` | same | counts only depth-0 options. One → that option is the default. For vendor and recipe this is the same as "exactly one option" |
+| `ShelfFilterPicksDialog` | `components/shelf/ShelfFilterPicksDialog/` | each radio row has `marginLeft: depth * 24px` (radio 16px + gap 8px, so a child's radio sits under its parent's name). Names keep `capitalize`. The reset signature now holds `id@depth` per option, because `defaultPicksFor` reads `depth` |
+| Story | `ChildTags` | Dairy with Cheese, Milk, and Milk's two children |
+
+**The server and Dexie writes were checked, not assumed.** `applyShelfFilterPicks`
+(`apps/server/src/resolvers/shelf.resolver.ts`) checks only `requireCatalogIds(ctx,
+householdId, 'tag', addTagIds)`: each tag must be a tag of the household. Local
+`applyShelfFilterPicksBatch` (`apps/web/src/db/operations.ts`) unions the ids with no check.
+`ShelfDetailView.applyFilterPicks` passes `picks.tagIds` through. None of them limits a pick
+to the tags the rule names.
+
+**Edge cases decided while building** (not in the design):
+
+- A rule naming Dairy AND its child Milk has one depth-0 option (Dairy), so Dairy is the
+  default. The rule "Dairy or Milk" matches the same items as "Dairy".
+- A named tag that `buildDepthFirstTagList` cannot reach from the top (a broken parent
+  chain, for example a cycle) is offered alone, at depth 0, as before this feature.
+- Descendants of another tag TYPE are listed too. `matchesFilterConfig` counts them, so
+  picking one makes the item match.
+- The met line ("Already set: …") still names the named tag, even when the item carries
+  only a child tag.
