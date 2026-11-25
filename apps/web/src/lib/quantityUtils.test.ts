@@ -1448,3 +1448,51 @@ describe('getPieceScale', () => {
     ).toBe(1)
   })
 })
+
+describe('getStockPreview unit word', () => {
+  it('uses the default package unit, not "unit", for an item with no package unit', () => {
+    // The card shows `item.packageUnit || DEFAULT_PACKAGE_UNIT`; the stock row
+    // must say the same.
+    const result = getStockPreview(
+      { targetUnit: 'package', consumeAmount: 1 },
+      {
+        packedQuantity: 3,
+        unpackedQuantity: 0,
+        targetQuantity: 5,
+        refillThreshold: 1,
+      },
+    )
+    expect(result.unitLabel).toBe('pack')
+  })
+
+  it('treats an empty package unit like a missing one', () => {
+    const result = getStockPreview(
+      { targetUnit: 'package', packageUnit: '', consumeAmount: 1 },
+      {
+        packedQuantity: 3,
+        unpackedQuantity: 0,
+        targetQuantity: 5,
+        refillThreshold: 1,
+      },
+    )
+    expect(result.unitLabel).toBe('pack')
+  })
+
+  it('keeps the measurement unit for a consumable measurement item', () => {
+    const result = getStockPreview(
+      {
+        targetUnit: 'measurement',
+        measurementUnit: 'g',
+        amountPerPackage: 500,
+        consumeAmount: 10,
+      },
+      {
+        packedQuantity: 1,
+        unpackedQuantity: 0,
+        targetQuantity: 1000,
+        refillThreshold: 0,
+      },
+    )
+    expect(result.unitLabel).toBe('g')
+  })
+})

@@ -1,4 +1,9 @@
-import { decimalPlaces, getCurrentQuantity, roundToStep } from '@p1i/types'
+import {
+  DEFAULT_PACKAGE_UNIT,
+  decimalPlaces,
+  getCurrentQuantity,
+  roundToStep,
+} from '@p1i/types'
 import type { StockConfigFields, StockFields } from '@/types'
 
 // `getPackedTotal`, `consumeItem`, `roundToStep`, `getCurrentQuantity` and
@@ -347,12 +352,13 @@ export function getStockPreview(
   const unitLabel =
     targetUnit === 'measurement' && measurementUnit
       ? measurementUnit
-      : // Falls back to the literal string 'unit', not DEFAULT_PACKAGE_UNIT
-        // ('pack') — a pre-existing divergence from QuickUpdateDialog's own
-        // `item.packageUnit || DEFAULT_PACKAGE_UNIT` label logic, left as-is
-        // deliberately: unifying it would change the dialog's shipped display
-        // text for every item with no package unit, which is out of scope here.
-        (packageUnit ?? 'unit')
+      : // The package unit as the card shows it (`ItemStockSummary`:
+        // `item.packageUnit || DEFAULT_PACKAGE_UNIT`). `||`, not `??`: an
+        // item created with just a name stores `''`. Until 2026-11-26 this
+        // fell back to the literal word 'unit', so the stock row said
+        // "3 / 5 unit" where the card said "3 / 5 pack" (owner decision
+        // 2026-11-26).
+        packageUnit || DEFAULT_PACKAGE_UNIT
 
   const quantityLabel =
     unpackedQuantity > 0

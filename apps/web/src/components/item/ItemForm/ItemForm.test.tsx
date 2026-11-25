@@ -1362,10 +1362,14 @@ describe('ItemForm — stock tab progress row previews live form state', () => {
 // The unit is no longer a bordered `UnitBadge` — it is a trailing bare word
 // inside the quantity's own span (the badge's `opacity-75` failed WCAG AA;
 // see docs/global/bugs/2026-08-29-bug-unit-badge-contrast.md) — so the guard
-// now asserts the label ENDS in the honest "unit" fallback rather than
-// trailing off after the numbers.
+// now asserts the label ENDS in a unit word rather than trailing off after the
+// numbers.
+//
+// Since 2026-11-26 that word is the default package unit, "pack", the word the
+// item's card shows (`item.packageUnit || DEFAULT_PACKAGE_UNIT`), not the
+// literal "unit" (owner decision 2026-11-26).
 describe('ItemForm — stock tab unit falls back honestly when unconfigured', () => {
-  it('renders the unit as "unit", not nothing, when packageUnit and measurementUnit are both unset', () => {
+  it('user sees the unit as "pack", the same word as the card, when packageUnit and measurementUnit are both unset', () => {
     render(
       <ItemForm
         initialValues={{
@@ -1383,7 +1387,7 @@ describe('ItemForm — stock tab unit falls back honestly when unconfigured', ()
       />,
     )
 
-    expect(screen.getByText('0 / 4 unit')).toBeInTheDocument()
+    expect(screen.getByText('0 / 4 pack')).toBeInTheDocument()
   })
 })
 
