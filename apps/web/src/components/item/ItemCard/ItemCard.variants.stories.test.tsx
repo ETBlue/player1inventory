@@ -10,6 +10,7 @@ const {
   VendorsAndRecipesExpanded,
   ActiveTagFilter,
   ActiveVendorFilter,
+  NonConsumable,
 } = composeStories(stories)
 
 describe('ItemCard variants stories smoke tests', () => {
@@ -53,5 +54,13 @@ describe('ItemCard variants stories smoke tests', () => {
     await waitFor(() =>
       expect(screen.getByText('Yogurt (plain)')).toBeInTheDocument(),
     )
+  })
+
+  it('NonConsumable renders the count squares', async () => {
+    render(<NonConsumable />)
+    await waitFor(() =>
+      expect(screen.getAllByTestId('count-square')).toHaveLength(6),
+    )
+    expect(screen.getByText('4 / 6 cup')).toBeInTheDocument()
   })
 })
