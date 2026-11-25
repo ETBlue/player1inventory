@@ -50,9 +50,55 @@ export class ShoppingPage {
   }
 
   async addItemToCart(name: string) {
+    // Ticking opens the cart amount dialog in "add" mode, with the suggested
+    // amount (src/routes/shopping/$vendorId.tsx, handleToggleCart). Save adds.
     await this.getItemCheckbox(name).click()
+    await this.saveAmount()
     // Wait for the mutation to complete: checkbox flips to "Remove {name}" once item is in cart
     await this.page.getByLabel(`Remove ${name}`).waitFor({ state: 'visible' })
+  }
+
+  async addItemToCartWithAmount(name: string, amount: number) {
+    await this.getItemCheckbox(name).click()
+    await this.fillAmount(amount)
+    await this.saveAmount()
+    await this.page.getByLabel(`Remove ${name}`).waitFor({ state: 'visible' })
+  }
+
+  getAmountButton(name: string): Locator {
+    // The one amount button on a cart row, "{amount} {unit}" with a pencil.
+    // aria-label="Edit amount of {name}: {amount} {unit}"
+    // (src/components/item/ItemCard/ItemCard.tsx, onAmountEdit)
+    return this.page.getByRole('button', {
+      name: new RegExp(`^Edit amount of ${name}: `),
+    })
+  }
+
+  getAmountDialog(): Locator {
+    // CartAmountDialog (src/components/shopping/CartAmountDialog): a Radix
+    // Dialog titled with the item name
+    return this.page.getByRole('dialog')
+  }
+
+  getAmountField(): Locator {
+    // aria-label "Amount ({unit})" (shopping.amountDialog.amountLabel)
+    return this.getAmountDialog().getByRole('spinbutton', { name: /^Amount/ })
+  }
+
+  async setItemAmount(name: string, amount: number) {
+    await this.getAmountButton(name).click()
+    await this.fillAmount(amount)
+    await this.saveAmount()
+  }
+
+  async fillAmount(amount: number) {
+    await this.getAmountField().fill(String(amount))
+  }
+
+  async saveAmount() {
+    await this.getAmountDialog().getByRole('button', { name: 'Save' }).click()
+    // The dialog closes once the one write has landed
+    await this.getAmountDialog().waitFor({ state: 'hidden' })
   }
 
   getNotStockedHereDivider(): Locator {
