@@ -1,5 +1,6 @@
 import { GraphQLScalarType } from 'graphql'
 import type { Prisma } from '@prisma/client'
+import { STOCK_COUNT_LOG_KEY } from '@p1i/types'
 import {
   type LocationRole,
   locationIdsWithRole,
@@ -96,8 +97,24 @@ export const inventoryLogResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Inve
       const scopedLocationId = await requireLocation(ctx, locationId, 'viewer')
       const results = await Promise.all(
         itemIds.map(async (itemId) => {
+          // Option A (design 2026-11-25, inventory log layout): the newest
+          // row that added stock and is NOT a stock count. A stock count is a
+          // correction, not a purchase, so it must not move the "last
+          // purchased" date, the expiry date of a "days from purchase" item,
+          // or the purchased sort.
+          //
+          // The `OR` with `logKey: null` is required. Rows from before
+          // `logKey` existed hold NULL, and in SQL both `logKey <> 'x'` and
+          // `NOT (logKey = 'x')` are NULL, not true, for such a row, so
+          // `{ not: … }` alone or `NOT: { logKey: … }` would drop every old
+          // purchase. Pinned in `inventoryLog.resolver.test.ts`.
           const log = await prisma.inventoryLog.findFirst({
-            where: { itemId, locationId: scopedLocationId, delta: { gt: 0 } },
+            where: {
+              itemId,
+              locationId: scopedLocationId,
+              delta: { gt: 0 },
+              OR: [{ logKey: null }, { logKey: { not: STOCK_COUNT_LOG_KEY } }],
+            },
             orderBy: { occurredAt: 'desc' },
           })
           return { itemId, date: log?.occurredAt?.toISOString() ?? null }

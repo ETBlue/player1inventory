@@ -22,7 +22,14 @@ import type {
   TagType,
   Vendor,
 } from '@/types'
-import { cartIdFor, DEFAULT_LOCATION_ID, parseCartId, TagColor } from '@/types'
+import {
+  cartIdFor,
+  DEFAULT_LOCATION_ID,
+  parseCartId,
+  STOCK_COUNT_LOG_KEY,
+  stockCountChange,
+  TagColor,
+} from '@/types'
 import { db } from './index'
 
 // ── ItemStock helpers ──────────────────────────────────────────────────────
@@ -311,12 +318,52 @@ export async function getStockedItems(
 // wikidataUrl, note) AND stock configuration (units, packaging, expiration
 // mode/threshold/days, consume amount) — stays on the Item, where it applies to
 // every location at once.
+//
+// The stock count log (design 2026-11-25, inventory log layout). This is the
+// local write behind the Stock tab Save and Quick update (`useUpdateItem`),
+// the two manual paths. When the save changes the on-hand total at
+// `locationId`, ONE `stockCount` log row is written in the SAME Dexie
+// transaction as the stock write, the same rule the server's
+// `upsertItemStock` applies (`stockCountChange` from `@p1i/types`).
+//
+// It is HERE and not in `upsertItemStock` or `writeItemUpdate`, on purpose:
+// local `checkout`, `createItem`, `addItemToLocation` and the unit switch
+// (`applyUnitSwitchBatch`) write stock through those two as well, and none of
+// them is a stock count.
 export async function updateItem(
   id: string,
   updates: Partial<Omit<Item, 'id' | 'createdAt'>> & Partial<StockFields>,
   locationId: string = DEFAULT_LOCATION_ID,
 ): Promise<void> {
-  await writeItemUpdate(id, updates, locationId, new Date())
+  const now = new Date()
+  await db.transaction(
+    'rw',
+    [db.items, db.itemStocks, db.inventoryLogs],
+    async () => {
+      const before = await getItemStock(id, locationId)
+      await writeItemUpdate(id, updates, locationId, now)
+      const after = await getItemStock(id, locationId)
+      // No row after the write: the update named no stock field and the item
+      // is not stocked here, so nothing changed at this location.
+      if (!after) return
+      // Read after the write, so a save that also changes `amountPerPackage`
+      // uses the new value for BOTH totals, as the server does.
+      const item = await db.items.get(id)
+      const change = stockCountChange(before, after, item?.amountPerPackage)
+      if (!change) return
+      await db.inventoryLogs.add({
+        id: crypto.randomUUID(),
+        itemId: id,
+        locationId,
+        // Both in PACKAGES, like a checkout row.
+        delta: change.delta,
+        quantity: change.quantity,
+        occurredAt: now,
+        createdAt: now,
+        logKey: STOCK_COUNT_LOG_KEY,
+      })
+    },
+  )
 }
 
 // The field-routing half of `updateItem`, factored out so the transactional
@@ -555,7 +602,7 @@ type CreateLogInput = {
   occurredAt: Date
   note?: string
   logKey?: string
-  logParams?: Record<string, string>
+  logParams?: Record<string, unknown>
 }
 
 export async function addInventoryLog(
@@ -607,8 +654,12 @@ export async function getLastPurchaseDate(
   itemId: string,
   locationId: string = DEFAULT_LOCATION_ID,
 ): Promise<Date | null> {
+  // Option A (design 2026-11-25, inventory log layout): a row that added
+  // stock and is not a stock count. A row with no `logKey` (written before
+  // logKey existed) still counts. The server's `lastPurchaseDates` applies the
+  // same rule.
   const logs = (await getItemLogs(itemId, locationId)).filter(
-    (log) => log.delta > 0,
+    (log) => log.delta > 0 && log.logKey !== STOCK_COUNT_LOG_KEY,
   )
 
   if (logs.length === 0) return null
@@ -815,7 +866,7 @@ export async function getCartItems(cartId: string): Promise<CartItem[]> {
 
 export async function checkout(
   cartId: string,
-  logDescriptor?: { logKey?: string; logParams?: Record<string, string> },
+  logDescriptor?: { logKey?: string; logParams?: Record<string, unknown> },
 ): Promise<void> {
   // The cart id encodes the location; stock writes + logs target that location.
   const { locationId } = parseCartId(cartId)
@@ -1082,7 +1133,7 @@ type ConsumeRecipesBatchInput = {
     quantity: number
     note?: string
     logKey?: string
-    logParams?: Record<string, string>
+    logParams?: Record<string, unknown>
   }>
 }
 
