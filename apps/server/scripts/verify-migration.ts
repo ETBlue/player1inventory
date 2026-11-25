@@ -1268,7 +1268,10 @@ async function assertLocationMigrationsBeforeDrop(): Promise<void> {
   // FK cascade: deleting an Item must cascade-delete its ItemStock rows.
   // item-a2 (Eggs) has no other FK references (no CartItem/InventoryLog/tags
   // point at it), so deleting it exercises only the ItemStock cascade.
-  await prisma.item.delete({ where: { id: 'item-a2' } })
+  // `select`: this runs before the "last" deploy, so "Item"."consumable" does
+  // not exist yet, and the client built from the final schema would ask for
+  // it (P2022). The same rule as for "Location" in this file.
+  await prisma.item.delete({ where: { id: 'item-a2' }, select: { id: true } })
   assert(
     (await prisma.itemStock.count({ where: { itemId: 'item-a2' } })) === 0,
     'deleting an Item cascades to delete its ItemStock rows',
@@ -1543,7 +1546,8 @@ async function assertDropUserScope(): Promise<void> {
       garage.members[0]?.role === 'organizer',
     "user-a's 'Garage' from the old server is in user-a's household, with user-a as its only organizer",
   )
-  const lateItem = await prisma.item.findUnique({ where: { id: 'item-late' } })
+  // `select` for the same reason as the `item-a2` delete: no "consumable" yet.
+  const lateItem = await prisma.item.findUnique({ where: { id: 'item-late' }, select: { householdId: true } })
   const ghostVendor = await prisma.vendor.findUnique({ where: { id: 'vendor-ghost' } })
   const lateType = await prisma.tagType.findUnique({ where: { id: 'tt-a-late' } })
   const lateTag = await prisma.tag.findUnique({ where: { id: 'tag-a-late' } })
@@ -2097,6 +2101,7 @@ const HOUSEHOLD_INVITES_MIGRATION = '20261118000000_add_household_invites'
 const HOUSEHOLD_ACTIVITY_MIGRATION = '20261120000000_add_household_activity'
 const OWNERSHIP_OFFERS_MIGRATION = '20261120100000_add_ownership_offers'
 const LOCATION_PREFERENCES_MIGRATION = '20261122000000_add_location_preferences'
+const ITEM_CONSUMABLE_MIGRATION = '20261125000000_add_item_consumable'
 
 const PARKED_ROOT = join(SERVER_DIR, '.migration-under-test')
 const migrationDir = (name: string) => join(SERVER_DIR, 'prisma/migrations', name)
@@ -3384,10 +3389,107 @@ async function assertLocationPreferences(): Promise<void> {
   await prisma.$executeRaw`DELETE FROM "User" WHERE "id" LIKE 'lp-%'`
 }
 
+// ══════════════════════════════════════════════════════════════════════
+// 20261125000000 — "Item"."consumable"
+// ══════════════════════════════════════════════════════════════════════
+//
+// One NOT NULL column with DEFAULT true and no backfill: Postgres fills every
+// existing row with the default while it adds the column. So the checks are:
+//
+//   1. the column is on "Item" and NOT on "ItemStock" (the two tables share
+//      field names, so "present on Item" alone cannot catch the wrong table)
+//   2. it is a NOT NULL boolean with DEFAULT true
+//   3. every "Item" row written BEFORE the migration reads true. The ids are
+//      read before the last deploy, in `itemIdsBeforeConsumable`
+//   4. a row inserted without the column reads true, an explicit NULL is
+//      refused (23502), and false is stored as false, so check 3 cannot pass
+//      by the column being unwritable
+
+// Read in the pre-deploy phase. Raw SQL: the Prisma client knows
+// "consumable", which is not there yet.
+async function itemIdsBeforeConsumable(): Promise<string[]> {
+  const rows = await prisma.$queryRaw<{ id: string }[]>`SELECT "id" FROM "Item"`
+  return rows.map((r) => r.id)
+}
+
+async function assertItemConsumable(idsBefore: readonly string[]): Promise<void> {
+  console.log('add_item_consumable:')
+
+  // ── 1. On the right table ──
+  assert((await columnNamesOf('Item')).has('consumable'), '"Item"."consumable" exists')
+  assert(
+    !(await columnNamesOf('ItemStock')).has('consumable'),
+    '"consumable" is NOT on "ItemStock" — it is global item configuration, not per-location state',
+  )
+
+  // ── 2. NOT NULL boolean, DEFAULT true ──
+  const meta = await columnMetaOf('Item', 'consumable')
+  const defaults = await prisma.$queryRaw<{ column_default: string | null }[]>`
+    SELECT column_default::text AS column_default FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name::text = 'Item' AND column_name::text = 'consumable'
+  `
+  const columnDefault = defaults[0]?.column_default ?? null
+  assert(
+    meta?.dataType === 'boolean' && meta.isNullable === 'NO',
+    `"Item"."consumable" is a NOT NULL boolean (read: ${meta ? `${meta.dataType}, nullable=${meta.isNullable}` : 'column missing'})`,
+  )
+  assert(columnDefault === 'true', `"Item"."consumable" defaults to true (read: ${columnDefault ?? 'no default'})`)
+
+  // ── 3. Every row written before the migration reads true ──
+  // Some of those rows were deleted by later checks, so read the ones left.
+  const before = await prisma.$queryRaw<{ id: string; consumable: boolean | null }[]>`
+    SELECT "id", "consumable" FROM "Item" WHERE "id" = ANY(${[...idsBefore]})
+  `
+  assert(
+    before.length > 0,
+    `at least one "Item" row written before the migration is still there to check (read: ${before.length} of ${idsBefore.length})`,
+  )
+  const notTrue = before.filter((r) => r.consumable !== true).map((r) => `${r.id}=${String(r.consumable)}`)
+  assert(
+    notTrue.length === 0,
+    `every "Item" row written before the migration reads consumable = true (${before.length} rows; not true: ${notTrue.join(', ') || 'none'})`,
+  )
+
+  // ── 4. Writes after the migration ──
+  const householdId = (
+    await prisma.$queryRaw<{ id: string }[]>`SELECT "id" FROM "Household" WHERE "ownerId" = 'user-a'`
+  )[0]?.id
+  assert(householdId !== undefined, "user-a's household exists, for the consumable write checks")
+  await prisma.$executeRaw`
+    INSERT INTO "Item" ("id","name","targetUnit","consumeAmount","expirationMode","householdId","createdAt","updatedAt")
+    VALUES ('item-consumable-default','Rice','package',1,'disabled',${householdId},NOW(),NOW())
+  `
+  const omitted = await prisma.$queryRaw<{ consumable: boolean | null }[]>`
+    SELECT "consumable" FROM "Item" WHERE "id" = 'item-consumable-default'
+  `
+  assert(
+    omitted[0]?.consumable === true,
+    `an "Item" inserted without "consumable" reads true (read: ${String(omitted[0]?.consumable)})`,
+  )
+  const nullCode = await postgresCodeOf(
+    () => prisma.$executeRaw`
+      INSERT INTO "Item" ("id","name","targetUnit","consumeAmount","expirationMode","consumable","householdId","createdAt","updatedAt")
+      VALUES ('item-consumable-null','Cup','package',1,'disabled',NULL,${householdId},NOW(),NOW())
+    `,
+  )
+  assert(nullCode === '23502', `an explicit NULL "consumable" is refused with 23502 (read: ${nullCode ?? 'no error'})`)
+  await prisma.$executeRaw`
+    INSERT INTO "Item" ("id","name","targetUnit","consumeAmount","expirationMode","consumable","householdId","createdAt","updatedAt")
+    VALUES ('item-consumable-false','Cup','package',1,'disabled',false,${householdId},NOW(),NOW())
+  `
+  const stored = await prisma.item.findUnique({ where: { id: 'item-consumable-false' }, select: { consumable: true } })
+  assert(stored?.consumable === false, `an "Item" written with consumable = false reads false (read: ${String(stored?.consumable)})`)
+
+  // Clean up, so no later block counts these rows.
+  await prisma.$executeRaw`DELETE FROM "Item" WHERE "id" LIKE 'item-consumable-%'`
+}
+
 async function main(): Promise<void> {
   // Self-heal: if a previous run was killed between parking and restoring,
   // recover instead of throwing on the renameSync below.
   restoreIfParked()
+
+  let itemIdsBeforeLastDeploy: string[] = []
 
   // `prisma migrate reset` applies EVERY committed migration — including the
   // one under test. Seeding after that would run the backfill against an
@@ -3458,6 +3560,10 @@ async function main(): Promise<void> {
     // Stock rows with fixed times, which add_location_preferences' backfill
     // reads (households H7b task M.1). Raw SQL only: see the function.
     await seedLocationPreferenceBackfill()
+
+    // The "Item" rows that exist before add_item_consumable, so its check can
+    // prove each of them reads true after the deploy.
+    itemIdsBeforeLastDeploy = await itemIdsBeforeConsumable()
   } finally {
     restoreIfParked()
     parked = false
@@ -3489,6 +3595,9 @@ async function main(): Promise<void> {
 
   console.log(`Asserting, after ${LOCATION_PREFERENCES_MIGRATION}...`)
   await assertLocationPreferences()
+
+  console.log(`Asserting, after ${ITEM_CONSUMABLE_MIGRATION}...`)
+  await assertItemConsumable(itemIdsBeforeLastDeploy)
 
   // ══════════════════════════════════════════════════════════════════════
   // PR 5 — Item's five stock state columns are gone, ItemStock's are not
