@@ -908,7 +908,7 @@ describe('a cloud stock save refreshes the last purchase date', () => {
       { wrapper: makeWrapper(mocks) },
     )
     await waitFor(() =>
-      expect(result.current.sort.purchaseDates.get('item-milk')).toEqual(
+      expect(result.current.sort.purchaseDates?.get('item-milk')).toEqual(
         new Date(OLD),
       ),
     )
@@ -921,7 +921,7 @@ describe('a cloud stock save refreshes the last purchase date', () => {
 
     // Then the date the pantry shows moves to the stock count
     await waitFor(() =>
-      expect(result.current.sort.purchaseDates.get('item-milk')).toEqual(
+      expect(result.current.sort.purchaseDates?.get('item-milk')).toEqual(
         new Date(NEW),
       ),
     )
