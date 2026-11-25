@@ -508,7 +508,7 @@ production** (2026-11-23, release #403, merge `16929909`). Where a paragraph bel
 > |---|---|---|---|
 > | `CART` | location | cart mutations, `checkout`, `removeItemFromLocation`, `deleteItem`, `createVendor`, `deleteVendor`, `removeAllLocationItems` (H6a) | the 5 cart queries |
 > | `STOCK` | location | `upsertItemStock`, `addItemToLocation`, `checkout`, `consumeRecipes`, `applyUnitSwitch`, stock imports, `deleteItem`, `removeAllLocationItems` (H6a) | `PantryData`, `ItemStocksForItem` |
-> | `LOG` | location | `addInventoryLog`, `checkout`, `consumeRecipes`, log imports, `deleteItem` | `ItemLogs`, `InventoryLogCountByItem`, `LastPurchaseDates` |
+> | `LOG` | location | `addInventoryLog`, `checkout`, `consumeRecipes`, `upsertItemStock` (only when it wrote a stock count row, since 2026-11-25), log imports, `deleteItem` | `ItemLogs`, `InventoryLogCountByItem`, `LastPurchaseDates` |
 > | `LOCATION` | household (`locationId: null`) | the location mutations and imports (not `reorderLocations` since H7b: the order is personal), `clearAllData`, `deleteAllLocations` (H6a), the household and member mutations (H5b, H5c), the four offer writes and the `user.deleted` hand-over (H6b) | **every active query** (`'all'`) |
 > | `CATALOG` | household (`locationId: null`) | every catalog mutation and import, `renameHousehold`, `clearAllData` | `PantryData` and the 15 catalog queries |
 >

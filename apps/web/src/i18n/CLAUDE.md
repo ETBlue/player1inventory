@@ -148,19 +148,30 @@ Four things to keep in mind when editing these:
 
 **`items.searchTail.filterPicks.*` keys** (PR D's `ShelfFilterPicksDialog`, the per-axis picker a filter shelf's `groupAction` always opens — since a 2026-08-28 designer ruling reversed the original direct-apply bypass, it opens even when every axis offers just one pre-selected option): `title` (`"Add {{name}} to {{shelf}}"` — the dialog heading), `vendorAxis` / `recipeAxis` (`"Vendor"` / `"Recipe"` — labels for those two axis kinds; a tag axis is labelled by its own tag type's name instead, read directly off `FilterAxis.typeName` rather than translated), `met` (`"Already set: {{name}}"` — the read-only line for an axis the item already satisfies), `error` (`"Couldn't add to this shelf. Try again."` — shown inline on a rejected `onConfirm`, dialog stays open), `confirm` (`"Add"`) and `cancel` (`"Cancel"`).
 
-**Dynamic inventory log descriptions (`logKey`/`logParams` pattern):**
+**Inventory log rows store data, not text** (since 2026-11-25, design
+`docs/features/items/2026-11-25-inventory-log-layout-design.md`). A new row stores no
+`note`. `logKey` names the KIND, not an i18n key, and `logParams` holds ids plus a name
+snapshot. The Log tab builds the label when it shows the row, in the reader's language.
 
-Inventory log entries store a translation key + params instead of a pre-translated string, so descriptions re-render in the current language regardless of when the log was created.
+| `logKey` (`@p1i/types`) | `logParams` | Written by |
+|---|---|---|
+| `purchase` (`PURCHASE_LOG_KEY`) | `{ vendorId, vendorName }`, both `null` for the no-vendor cart | checkout (`routes/shopping/$vendorId.tsx`), both modes |
+| `cooking` (`COOKING_LOG_KEY`) | `{ recipes: [{ id, name }] }`, maybe empty | cooking (`routes/cooking.tsx`), both modes |
+| `stockCount` (`STOCK_COUNT_LOG_KEY`) | none | the server's `upsertItemStock` and local `updateItem` |
 
-- `InventoryLog.logKey?: string` — i18n key, e.g. `'shopping.log.purchasedAt'`
-- `InventoryLog.logParams?: Record<string, string>` — interpolation params, e.g. `{ vendor: 'Costco' }`
+`logParams` is `Record<string, unknown>` (it holds an array for cooking), not
+`Record<string, string>` as before.
 
-**Write:** Pass `logKey`/`logParams` to `addInventoryLog()` / `checkout()` / `consumeRecipesBatch()` instead of a translated `note`. For the cloud path (GraphQL), also pass `note` (pre-translated) as GraphQL only has the `note` field.
+**Read:** every rule is in `lib/inventoryLogDisplay.ts` (`logLabelOf`, `logAmountsOf`,
+`formatLogTime`). The keys are `items.history.kind.*` (`purchaseAt`, `purchase`,
+`cookingIn`, `cooking`, `stockCount`), `items.history.listSeparator` (`", "` / `"、"`),
+`items.history.when` (the order of date, weekday and time per language) and
+`items.history.afterLabel` (screen readers only). A vendor or recipe that still exists shows
+its CURRENT name; a deleted one shows the stored snapshot.
 
-**Read:** In `items/$id/log.tsx`, resolve the description as:
-```ts
-log.logKey ? t(log.logKey, log.logParams) : log.note
-```
-Legacy entries (pre-deploy) with only `note` continue to display their stored string.
-
-**Applies to:** shopping checkout (`shopping.log.purchasedAt`, `shopping.log.purchased`) and cooking consumption (`cooking.log.consumedVia`, `cooking.log.consumedViaRecipe`).
+**Old rows still show.** `shopping.log.purchasedAt` reads as a purchase with
+`logParams.vendor` (the translated "No vendor" text of either language reads as "Bought");
+`cooking.log.consumedVia` / `cooking.log.consumedViaRecipe` read as cooking with
+`logParams.recipes` (one string). A row with no `logKey`, or a key this bundle does not
+know, shows its `note`; the raw key is never shown. The old keys `shopping.log.*` and
+`cooking.log.*` stay in the locale files, but no code calls `t()` on them any more.

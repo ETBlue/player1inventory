@@ -96,3 +96,49 @@ shows new rows with `t('stockCount')`, which prints the raw key until the web de
 - Editing or deleting log rows.
 - Rows from before a unit switch are converted with today's `amountPerPackage`, and a cooking
   amount written before a unit switch may show in the wrong unit. Known, not fixed here.
+
+## As built (2026-11-25)
+
+Built on `feature/inventory-log-layout`. No migration and no GraphQL schema change; the
+old-bundle test (`apps/server/src/test/oldBundleCompat.test.ts`) stays green.
+
+| Part | Where |
+|---|---|
+| The kinds and the stock count rule, shared | `packages/types/src/inventoryLog.ts`: `PURCHASE_LOG_KEY`, `COOKING_LOG_KEY`, `STOCK_COUNT_LOG_KEY`, `PurchaseLogParams`, `CookingLogParams`, `stockCountChange(before, after, amountPerPackage)` |
+| Server stock count row | `upsertItemStock` (`apps/server/src/resolvers/itemStock.resolver.ts`): one `$transaction` with `SELECT … FOR UPDATE` on the stock row, read the old row, `writeStock`, read the item's `amountPerPackage`, then `inventoryLog.create` when `stockCountChange` says the total moved. Publishes `['STOCK', 'LOG']` only when it wrote the row |
+| Server last purchase date | `lastPurchaseDates`: `OR: [{ logKey: null }, { logKey: { not: 'stockCount' } }]` |
+| Local stock count row | `updateItem` (`apps/web/src/db/operations.ts`), one Dexie transaction over `items`, `itemStocks`, `inventoryLogs` |
+| Local last purchase date | `getLastPurchaseDate` skips `stockCount` rows |
+| Writers | checkout sends `logKey: 'purchase'`, `{ vendorId, vendorName }`, no `note`; cooking sends `logKey: 'cooking'`, `{ recipes: [{ id, name }] }`, no `note` |
+| Display | `apps/web/src/lib/inventoryLogDisplay.ts` (`logKindOf`, `logUnitOf`, `logAmountsOf`, `logLabelOf`, `formatLogDelta`, `formatLogNumber`, `formatLogTime`); `routes/items/$id/log.tsx` lays it out |
+| Strings | `items.history.kind.*`, `items.history.listSeparator`, `items.history.when`, `items.history.afterLabel` |
+
+Differences from the design above:
+
+- **Item create writes no stock count row, in either mode, in practice.** The *Writing*
+  table lists "an item's first amount" as a local manual path, and the *Tests* section says
+  "local checkout and item create write no stock count row". These two disagree. Local
+  `createItem` writes no row (it writes stock through `upsertItemStock`, not `updateItem`).
+  The server would write one if a create sent a non-zero amount, because cloud create calls
+  `upsertItemStock`. Every create path in the web sends 0 for all amounts today
+  (`NewItemDialog`, the shelf, recipe, tag and vendor Items tabs, the cart page), and onboarding
+  is local only, so neither mode writes a row on create. If a create with an amount is added
+  later, the two modes will differ.
+- **An unknown `logKey` shows the row's `note` if it has one**, else no label. The design
+  said "nothing as the label"; a `note` is human text, so it is shown.
+- **The list of recipes is joined with a translated separator** (`", "` / `"、"`), not
+  `Intl.ListFormat`. The web's TypeScript `lib` is ES2020, which has no `ListFormat` type.
+- **An old purchase row of the no-vendor cart** stored the translated "No vendor" text as
+  the vendor name. The Log tab reads that text, in either language, as "Bought".
+- **A save that changes only `amountPerPackage` is not a stock count.** Both totals use the
+  item's `amountPerPackage` after the write, in both modes.
+- The log list is a `<ul>` named "Log" (`items.detail.tabs.history`), one `<li>` per row, and
+  the date is in a `<time>`. The right-hand number has a screen-reader prefix,
+  "After the change:".
+
+Known gaps:
+
+- The design's "Not in this design" items stand: rows from before a unit switch use today's
+  `amountPerPackage`.
+- No E2E test checks a renamed vendor or recipe; the unit tests and the `NewLogShapes` story
+  do.
