@@ -111,10 +111,23 @@ Decisions taken during the build (the brief left them open):
 | Question | Choice | Why |
 |---|---|---|
 | Hide `consumeAmount` too? | **No**, it stays | the design lists measurement, opened packs and expiration only. It is the recipe step, and recipes and cooking do not change |
-| A non-consumable's Stock tab bar | `ItemProgressBar`, unchanged | the design says only `ItemCard` uses the new bar |
+| A non-consumable's Stock tab bar | `ItemProgressBar`, unchanged (changed 2026-11-26, see below) | the design says only `ItemCard` uses the new bar |
 | Where Quick update hides fields | it hides them too | it shows opened packs and the due date, which the design hides for a non-consumable |
 | Onboarding's template filter | no Consumable dropdown | the controlled `ItemFilters` has no URL state and the template items are not stored items |
 | More pieces than the target | all drawn filled | the design names only "missing up to the target" |
+
+### As built: the count bar in the stock row (2026-11-26)
+
+Owner request 2026-11-26: a non-consumable item shows `ItemCountBar` in the quick edit
+dialog and on the item Stock tab too, not only on its card. Branch
+`feature/count-bar-stock-row`, from `develop` at `bd0dac96`. No server change.
+
+| Part | As built |
+|---|---|
+| `StockProgressRow` | a new REQUIRED prop `consumable: boolean`. `false` draws `ItemCountBar` instead of `ItemProgressBar`. Clear, the `x / y` label and Fill to Full are unchanged |
+| pieces | `getPieceScale` in `lib/quantityUtils.ts`: `amountPerPackage` for an item still tracked in a measurement unit, else 1. The row divides `current`, `target` and `refillThreshold` by it and floors `current` and `target`, the same rule as `ItemCard` |
+| callers | `QuickUpdateDialog` passes `isConsumable(item)`. `ItemForm` passes its `consumable` form value, so with both sections the bar follows the switch before Save |
+| not changed | `ItemCard` keeps its own `pieceScale` copy (another branch was editing it); `GroupCard` keeps `ItemProgressBar` (a group total, not one item) |
 
 ## Not changing
 

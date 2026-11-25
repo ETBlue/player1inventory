@@ -404,6 +404,8 @@ export function QuickUpdateDialog({
                 current={localTotal}
                 target={localTarget}
                 status={localProgressStatus}
+                // Squares for a non-consumable item, like its pantry card.
+                consumable={consumable}
                 targetUnit={item.targetUnit}
                 packed={localDisplayPacked}
                 unpacked={localUnpacked}

@@ -10,6 +10,7 @@ import {
   getCurrentQuantity,
   getItemPackUnits,
   getPackedTotal,
+  getPieceScale,
   getStockPreview,
   getStockStatus,
   isEmptyStock,
@@ -1424,5 +1425,26 @@ describe('suggestedCartAmount', () => {
         unpackedQuantity: 0,
       }),
     ).toBe(7)
+  })
+})
+
+describe('getPieceScale', () => {
+  it('is 1 for an item tracked in packages, whatever the rate', () => {
+    expect(
+      getPieceScale({ targetUnit: 'package', amountPerPackage: 250 }),
+    ).toBe(1)
+  })
+
+  it('is the rate for an item tracked in a measurement unit', () => {
+    expect(
+      getPieceScale({ targetUnit: 'measurement', amountPerPackage: 250 }),
+    ).toBe(250)
+  })
+
+  it('is 1 for a measurement item with no rate or a rate of 0', () => {
+    expect(getPieceScale({ targetUnit: 'measurement' })).toBe(1)
+    expect(
+      getPieceScale({ targetUnit: 'measurement', amountPerPackage: 0 }),
+    ).toBe(1)
   })
 })

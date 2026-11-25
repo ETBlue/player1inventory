@@ -180,6 +180,24 @@ const seedStockedHereOnly = async () => {
   return item.id
 }
 
+// A non-consumable item (cups): the stock row draws one square per piece,
+// like the item's pantry card.
+const seedNotConsumableItem = async () => {
+  const item = await createItem({
+    name: 'Cups',
+    tagIds: [],
+    packageUnit: 'cup',
+    targetUnit: 'package',
+    targetQuantity: 5,
+    refillThreshold: 2,
+    packedQuantity: 3,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+    consumable: false,
+  })
+  return item.id
+}
+
 export const PackageItem: Story = {
   name: 'Single location — no pager chrome',
   render: () => <LocalStockHarness seed={seedSingleLocation} />,
@@ -187,6 +205,11 @@ export const PackageItem: Story = {
 
 export const MeasurementItem: Story = {
   render: () => <LocalStockHarness seed={seedMeasurementItem} />,
+}
+
+export const NotConsumableItem: Story = {
+  name: 'Not consumable — one square per piece',
+  render: () => <LocalStockHarness seed={seedNotConsumableItem} />,
 }
 
 // The route-level counterpart of `ItemForm`'s `StockSectionDateMode` story:

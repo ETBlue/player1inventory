@@ -382,6 +382,32 @@ export function getStockPreview(
   }
 }
 
+/**
+ * How many tracking units make one piece of a non-consumable item.
+ *
+ * A non-consumable item (cups) counts whole pieces and its stock bar is
+ * `ItemCountBar`, one square per piece. Such an item normally tracks in
+ * packages, so one piece is one package and the scale is 1. An item that
+ * still tracks in a measurement unit (for example from an old backup) has
+ * `amountPerPackage` units per piece. Divide a quantity, a target or a
+ * refill threshold by this number to get pieces. A missing or 0 rate gives 1,
+ * the same "no conversion rate" rule as `getStockPreview`.
+ *
+ * `StockProgressRow` uses it. `ItemCard` has its own copy of the same rule
+ * (`pieceScale`).
+ */
+export function getPieceScale(config: {
+  targetUnit: 'package' | 'measurement'
+  amountPerPackage?: number | undefined
+}): number {
+  const { targetUnit, amountPerPackage } = config
+  return targetUnit === 'measurement' &&
+    amountPerPackage &&
+    amountPerPackage > 0
+    ? amountPerPackage
+    : 1
+}
+
 // Location predicates — guard against the ZERO_STOCK trap: joinItemStock()
 // returns targetQuantity: 0 (no stockId) for an item with no ItemStock row in
 // the active location, so isInactive() alone reports a merely-unstocked item
