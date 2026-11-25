@@ -4,7 +4,9 @@ import {
   type Page,
   test,
 } from '@playwright/test'
+import { injectAxe } from 'axe-playwright'
 import { CLOUD_WEB_URL } from '../constants'
+import { checkDialogA11y } from '../helpers/axe'
 import { seedCloudFixture } from '../helpers/cloudSeed'
 import { cleanupCloudData } from '../helpers/cloudTeardown'
 import type { Fixture } from '../helpers/fixture'
@@ -722,6 +724,121 @@ test('user picks per axis in the dialog when a filter shelf spans two tag types 
   await expect(pantry.getNotInThisListDivider()).toHaveCount(0)
   await expect(pantry.getItemCard('Bread')).toBeVisible()
 })
+
+// ─── A filter shelf whose rule names a PARENT tag (2026-11-25) ─────────────
+//
+// The rule names Dairy only. Dairy has two children, Cheese and Plant milk,
+// and Plant milk has a child of its own, Oat milk. The dialog lists all four,
+// with the children indented, and Dairy picked by default. See
+// docs/features/shelf/2026-11-25-shelf-pick-child-tags-design.md.
+const DAIRY_TYPE = 'tagtype-category'
+const DAIRY = 'tag-dairy'
+const CHEESE = 'tag-cheese'
+const PLANT_MILK = 'tag-plant-milk'
+const OAT_MILK = 'tag-oat-milk'
+const DAIRY_SHELF = 'shelf-dairy'
+
+const WITH_DAIRY_TREE: Fixture = {
+  ...BASE,
+  tagTypes: [{ id: DAIRY_TYPE, name: 'Category', color: 'blue' }],
+  // The child tags are listed BEFORE their parent on purpose. The seeders
+  // must still link them (cloud `bulkCreateTags` writes parents first).
+  tags: [
+    {
+      id: OAT_MILK,
+      name: 'Oat milk',
+      typeId: DAIRY_TYPE,
+      parentId: PLANT_MILK,
+    },
+    { id: PLANT_MILK, name: 'Plant milk', typeId: DAIRY_TYPE, parentId: DAIRY },
+    { id: CHEESE, name: 'Cheese', typeId: DAIRY_TYPE, parentId: DAIRY },
+    { id: DAIRY, name: 'Dairy', typeId: DAIRY_TYPE },
+  ],
+  shelves: [
+    {
+      id: DAIRY_SHELF,
+      name: 'Dairy Shelf',
+      type: 'filter',
+      order: 0,
+      itemIds: [],
+      filterConfig: { tagIds: [DAIRY] },
+    },
+  ],
+}
+
+/** Seeds the Dairy tree, searches Bread on the Dairy shelf, opens the dialog. */
+async function openDairyPicksDialog(
+  page: Page,
+  request: APIRequestContext,
+  baseURL: string | undefined,
+) {
+  const pantry = new PantryPage(page)
+  await seedFixture(page, request, baseURL, WITH_DAIRY_TREE)
+  // Precondition: the rule reached the backend (see the Snacks test above).
+  const seeded = await readShelf(page, request, baseURL, DAIRY_SHELF)
+  expect(seeded?.filterConfig?.tagIds ?? []).toEqual([DAIRY])
+
+  await pantry.gotoWithSearch({ groupBy: 'shelf', id: DAIRY_SHELF, q: 'bread' })
+  await expect(pantry.getNotInThisListDivider()).toBeVisible()
+  await pantry.getTailActionButton('Add to shelf', 'Bread').click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toBeVisible()
+  return { pantry, dialog }
+}
+
+test('user can pick a child tag when adding an item to a filter shelf whose rule names the parent tag', async ({
+  page,
+  request,
+  baseURL,
+}) => {
+  // Given a filter shelf whose rule names only Dairy, and Bread with no tags
+  const { pantry, dialog } = await openDairyPicksDialog(page, request, baseURL)
+
+  // Then the dialog lists Dairy and every tag below it, in the tag settings
+  // order (by name at each level), with Dairy picked by default
+  await expect(dialog.getByRole('radio')).toHaveCount(4)
+  const names = await dialog
+    .getByRole('radio')
+    .evaluateAll((radios) =>
+      radios.map((r) => r.parentElement?.textContent?.trim() ?? ''),
+    )
+  expect(names).toEqual(['Dairy', 'Cheese', 'Plant milk', 'Oat milk'])
+  await expect(dialog.getByRole('radio', { name: 'Dairy' })).toBeChecked()
+
+  // When the user picks the grandchild Oat milk and presses Add
+  await dialog.getByRole('radio', { name: 'Oat milk' }).click()
+  await expect(dialog.getByRole('radio', { name: 'Oat milk' })).toBeChecked()
+  await dialog.getByRole('button', { name: 'Add' }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+
+  // Then Bread carries Oat milk, and NOT the broad Dairy tag
+  await expect
+    .poll(
+      async () => (await readItem(page, request, baseURL, BREAD))?.tagIds ?? [],
+    )
+    .toEqual([OAT_MILK])
+
+  // And Bread shows on the shelf, because the shelf counts child tags
+  await expect(pantry.getNotInThisListDivider()).toHaveCount(0)
+  await expect(pantry.getItemCard('Bread')).toBeVisible()
+})
+
+for (const theme of ['light', 'dark'] as const) {
+  test(`user sees an accessible add-to-shelf dialog with child tags in ${theme} mode`, async ({
+    page,
+    request,
+    baseURL,
+  }) => {
+    if (theme === 'dark') {
+      await page.addInitScript(() => {
+        localStorage.setItem('theme-preference', 'dark')
+      })
+    }
+    await openDairyPicksDialog(page, request, baseURL)
+    await injectAxe(page)
+    await checkDialogA11y(page, '[role="dialog"]')
+  })
+}
 
 // Unified item search, PR C — the same tail wired onto vendor detail and
 // recipe detail, the last two of the five surfaces. Both probe with
