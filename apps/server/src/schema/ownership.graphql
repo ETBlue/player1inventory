@@ -12,7 +12,7 @@
 #             design's table names. The first accept wins.
 #
 # This file only ADDS types, fields, queries and mutations. Nothing here
-# changes an existing field (the old-bundle shim, `oldBundleCompat.test.ts`).
+# changes an existing field.
 
 enum OfferKind {
   transfer

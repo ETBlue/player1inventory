@@ -44,35 +44,17 @@ resolver did not read `amountPerPackage`. The resolver now reads `Item` and the
 `getPackedTotal` from `@p1i/types`, the rule local mode uses. A total computed
 by the client could also be out of date by the time it arrived.
 
-── OLD-BUNDLE SHIM (remove in the release after households) ──
+── THE OLD-BUNDLE SHIM IS GONE ──
 
-An old web bundle (`main` before the households release) still sends
-`{ itemId, quantity }`, where `quantity` is its own stock total. On 2026-11-15
-the owner accepted that such a bundle fails. On 2026-11-17 the owner chose to
-deploy the server BEFORE the web for the households release (option 4 in
-section 8.3 of docs/global/backend/2026-11-17-deploy-runbook-households-h4.md),
-so for ONE release the server accepts the old shape too:
-
-- `cartItemId` is optional in the schema. The resolver still needs, in every
-  entry, exactly one of `cartItemId` and `itemId`, and the same one in every
-  entry. Anything else is `BAD_USER_INPUT`.
-- An old-shape entry names the cart row by its item (a cart has at most one row
-  per item). The server reads that row's stored amount and buys it, as the old
-  server did. The old `quantity` (a stock total) is ignored.
-- An `itemId` with no row being bought is skipped, as the old server did.
-- NOT every `CART_CHANGED` rule applies. The amount rule cannot fire: the
-  amount is copied from the same read it would be compared with, so a change
-  that committed before the read is bought at the new amount (as on the old
-  server). Still `CART_CHANGED`: the same `itemId` twice, a row being bought
-  that the input leaves out, and a row changed or deleted between the read and
-  the claim. The claim still stops a double buy.
-
-When the shim goes, make `cartItemId` `ID!` again and delete `itemId`.
+For the households release only, `cartItemId` was optional and an old web
+bundle could send `{ itemId, quantity }` instead (the old-bundle shim, owner
+decision 2026-11-17, section 8.3 of
+docs/global/backend/2026-11-17-deploy-runbook-households-h4.md). It was removed
+on branch `chore/remove-old-bundle-shim`: `cartItemId` is `ID!` again and
+`itemId` is gone. A bundle from before households fails GraphQL validation here.
 """
 input CheckoutItemInput {
-  cartItemId: ID
-  itemId: ID
-    @deprecated(reason: "Old web bundles only. Remove in the release after households.")
+  cartItemId: ID!
   quantity: Float!
 }
 
