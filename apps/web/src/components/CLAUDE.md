@@ -349,7 +349,7 @@ Two rules keep this true. **No `onOpenChange` on these seven dialogs**: Radix ca
 | Part | Rule |
 |---|---|
 | Title | the item name (`capitalize`) |
-| Description | `shopping.amountDialog.context`: "In stock {stock} · target {target} {unit}", the numbers and unit the card shows (tracking unit), 2 decimals at most |
+| Description | `shopping.amountDialog.context`: "In stock {stock} · target {target} {unit}", the numbers and unit the card shows (tracking unit), 2 decimals at most. In the body (`DialogMain`), above the amount, since 2026-11-25; it was in the header before. Still the dialog's description |
 | Amount | `QuantityStepper` (step 1) over a number field labelled `Amount ({package unit})`, focused on open. Enter in the field saves |
 | 0 note | `shopping.amountDialog.zeroNote`, only while the field is 0; the field names it in `aria-describedby` |
 | Save | `primary`, with a spinner. Off when the field is not a whole number of 0 or more, when `mode` is `edit` and the amount equals `initialAmount`, or while a save runs. `add` mode is on from the start |

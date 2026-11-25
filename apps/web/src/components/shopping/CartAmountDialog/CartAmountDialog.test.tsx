@@ -47,6 +47,24 @@ describe('CartAmountDialog', () => {
     expect(screen.getByText('In stock 1 · target 4 bottle')).toBeInTheDocument()
   })
 
+  it('user sees the stock line in the dialog body, not in the header', () => {
+    setup()
+    const line = screen.getByText('In stock 1 · target 4 bottle')
+    // The header row holds the title and the close button only
+    const header = screen.getByRole('heading', { name: 'Milk' }).parentElement
+    expect(header).not.toContainElement(line)
+    // The line comes before the amount field, in the same body block
+    const field = screen.getByRole('spinbutton', { name: /Amount/ })
+    expect(
+      line.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(line.parentElement).toContainElement(field)
+    // It is still the dialog's description
+    expect(screen.getByRole('dialog')).toHaveAccessibleDescription(
+      'In stock 1 · target 4 bottle',
+    )
+  })
+
   it('user sees a measurement item stocked in its tracking unit', () => {
     setup({
       item: {
