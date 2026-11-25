@@ -1655,6 +1655,23 @@ made again from `main` at `56d7de3a`. See `docs/global/backend/2026-11-23-househ
 when no PR has merged into `develop` since the release. Check that
 `git log origin/develop..origin/main --oneline` prints nothing.
 
+**When `main` has commits `develop` lacks AND `develop` has its own, rebase `develop` onto
+`main`.** Owner decision 2026-11-25. Do not merge `main` into `develop`. The owner must
+say yes each time, because it rewrites a shared branch:
+
+1. Check that no open PR targets `develop` and no local branch is built on it.
+2. Try it on a throwaway branch first: `git rebase --rebase-merges origin/main`. Without
+   `--rebase-merges` the PR merge commits are lost.
+3. Rebase `develop`, run the root `pnpm build`, then
+   `git push --force-with-lease=develop:<old sha> origin develop` (the pre-push hook runs
+   `pnpm test`).
+4. Every commit only on `develop` gets a new id. Search the docs for the old ids and
+   replace them.
+
+First done on 2026-11-25, after #424 (the consumable items server change) went straight to
+`main` as a server-first release: `develop` moved from `a217ce37` to `ebdfb717`, with no
+conflicts and all 13 PR merges kept.
+
 **When the web needs a server change first, put them in two releases.** For example, the web
 selects a new field or sends a new argument that today's server does not know. One release
 deploys both apps at about the same time, so the new web would talk to the old server for a

@@ -1,6 +1,6 @@
 # Design: Save in the unsaved-changes dialog
 
-Date: 2026-11-25. Branch `feature/unsaved-dialog-save`, from `develop` at `a38934f5`.
+Date: 2026-11-25. Branch `feature/unsaved-dialog-save`, from `develop` at `306ddb4a`.
 Brainstorming: `2026-11-25-brainstorming-unsaved-dialog-save.md`.
 
 ## Summary

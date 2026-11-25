@@ -30,7 +30,9 @@ Date: 2026-11-25. Brainstorming: `2026-11-25-brainstorming-item-consumable.md`.
 ### As built: PR 1
 
 Branch `feature/item-consumable-server`, from `main` at `56d7de3a`. Migration folder
-`20261125000000_add_item_consumable`.
+`20261125000000_add_item_consumable`. Merged into `main` as #424 (merge `b3b419bd`) and
+deployed by Railway on 2026-11-25. `develop` was then rebased onto `main`. The dev database
+has the migration too.
 
 | Part | As built |
 |---|---|
