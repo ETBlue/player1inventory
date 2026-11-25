@@ -245,10 +245,14 @@ export class ItemPage {
   }
 
   getLogEntries() {
-    // Each log entry shows a quantity change line like "+1 → 1 pkg" (src/routes/items/$id/log.tsx:34-38)
-    // The → character (Unicode U+2192) is the reliable unique identifier for log entry quantity lines.
-    // We use getByText with the arrow character since Tailwind v4 class names may not be stable DOM selectors.
-    return this.page.getByText(/→\s*\d+/)
+    // One <li> per log row, newest first, inside a list named by the tab's
+    // label "Log" (`items.detail.tabs.history`, src/routes/items/$id/log.tsx).
+    // Since 2026-11-25 (inventory log layout) a row reads
+    // "−30 g · Stock count … 470 g" and then the date; the old "+1 → 1 pkg"
+    // text and its arrow are gone.
+    return this.page
+      .getByRole('list', { name: 'Log', exact: true })
+      .getByRole('listitem')
   }
 
   getLogEntryByText(text: string) {

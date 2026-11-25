@@ -4,7 +4,9 @@ import {
   type Page,
   test,
 } from '@playwright/test'
+import { checkA11y, injectAxe } from 'axe-playwright'
 import { CLOUD_WEB_URL } from '../constants'
+import { AXE_OPTIONS } from '../helpers/axe'
 import { ensureCloudHomeLocation } from '../helpers/cloudSeed'
 import { cleanupCloudData } from '../helpers/cloudTeardown'
 import { CookingPage } from '../pages/CookingPage'
@@ -139,6 +141,94 @@ async function seedCookingData(
   return { milkId }
 }
 
+// Seed one item that carries one vendor, stocked at the home location with
+// a target of 2 and NO packs, so its vendor cart lists it and the seed itself
+// writes no stock count row (0 packs before, 0 after).
+// Local mode: IndexedDB. Cloud mode: GraphQL.
+async function seedVendorItem(
+  page: Page,
+  request: APIRequestContext,
+  baseURL: string | undefined,
+): Promise<{ itemId: string; vendorId: string }> {
+  if (baseURL === CLOUD_WEB_URL) {
+    const gql = makeGql(request)
+    const home = await ensureCloudHomeLocation(request)
+    const { createVendor: vendor } = await gql<{
+      createVendor: { id: string }
+    }>(
+      'mutation V($name: String!, $locationId: ID) { createVendor(name: $name, locationId: $locationId) { id } }',
+      { name: 'Test Mart', locationId: home.id },
+    )
+    const { createItem: bread } = await gql<{ createItem: { id: string } }>(
+      'mutation I($name: String!, $vendorIds: [String!]) { createItem(input: { name: $name, vendorIds: $vendorIds }) { id } }',
+      { name: 'Test Bread', vendorIds: [vendor.id] },
+    )
+    await gql(
+      `mutation Upsert($itemId: ID!, $locationId: ID!, $input: ItemStockInput!) {
+        upsertItemStock(itemId: $itemId, locationId: $locationId, input: $input) { id }
+      }`,
+      {
+        itemId: bread.id,
+        locationId: home.id,
+        input: { targetQuantity: 2, refillThreshold: 0, packedQuantity: 0 },
+      },
+    )
+    return { itemId: bread.id, vendorId: vendor.id }
+  }
+
+  await page.goto('/')
+  const itemId = crypto.randomUUID()
+  const vendorId = crypto.randomUUID()
+  await page.evaluate(
+    async ({ itemId, vendorId }) => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const req = indexedDB.open('Player1Inventory')
+        req.onsuccess = () => resolve(req.result)
+        req.onerror = () => reject(req.error)
+      })
+      const now = new Date()
+      // Resolve on transaction COMMIT (see seedCookingData above).
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(
+          ['vendors', 'items', 'itemStocks'],
+          'readwrite',
+        )
+        tx.objectStore('vendors').put({
+          id: vendorId,
+          name: 'Test Mart',
+          createdAt: now,
+        })
+        tx.objectStore('items').put({
+          id: itemId,
+          name: 'Test Bread',
+          tagIds: [],
+          vendorIds: [vendorId],
+          targetUnit: 'package',
+          consumeAmount: 1,
+          createdAt: now,
+          updatedAt: now,
+        })
+        tx.objectStore('itemStocks').put({
+          id: `stock-${itemId}`,
+          itemId,
+          locationId: 'local',
+          targetQuantity: 2,
+          refillThreshold: 0,
+          packedQuantity: 0,
+          unpackedQuantity: 0,
+          createdAt: now,
+          updatedAt: now,
+        })
+        tx.oncomplete = () => resolve()
+        tx.onerror = () => reject(tx.error)
+        tx.onabort = () => reject(tx.error)
+      })
+    },
+    { itemId, vendorId },
+  )
+  return { itemId, vendorId }
+}
+
 test.beforeEach(async ({ page, request, baseURL }) => {
   // Prevent empty-data redirect to /onboarding so tests can navigate freely.
   await page.addInitScript(() => {
@@ -225,9 +315,13 @@ test('user can see inventory log after cooking', async ({
   await page.goto(`/items/${milkId}/log`)
   await page.waitForURL(`/items/${milkId}/log`)
 
-  // Then: a negative-delta log entry is visible and the empty state is gone
+  // Then: the newest row is the cook, labelled with the recipe, and the
+  // empty state is gone (inventory log layout, 2026-11-25)
   await expect(item.getEmptyLogMessage()).not.toBeVisible()
-  await expect(item.getLogEntries().first()).toBeVisible()
+  await expect(item.getLogEntries().first()).toContainText(
+    'Used in Test Recipe',
+  )
+  await expect(item.getLogEntries().first()).toContainText('\u22121 pack')
 })
 
 test('user can see inventory log after checkout', async ({ page }) => {
@@ -258,7 +352,90 @@ test('user can see inventory log after checkout', async ({ page }) => {
   await page.goto(`/items/${itemId}/log`)
   await page.waitForURL(`/items/${itemId}/log`)
 
-  // Then: at least one log entry is visible and the empty state is gone
+  // Then: one row, a purchase from the no-vendor cart: "Bought", with no
+  // vendor name (inventory log layout, 2026-11-25)
   await expect(item.getEmptyLogMessage()).not.toBeVisible()
-  await expect(item.getLogEntries().first()).toBeVisible()
+  await expect(item.getLogEntries()).toHaveCount(1)
+  await expect(item.getLogEntries().first()).toContainText('+1 pack')
+  await expect(item.getLogEntries().first()).toContainText('Bought')
+  await expect(item.getLogEntries().first()).not.toContainText('Bought at')
+})
+
+test('user can see "Bought at" the vendor after checking out that vendor\'s cart', async ({
+  page,
+  request,
+  baseURL,
+}) => {
+  const shopping = new ShoppingPage(page)
+  const item = new ItemPage(page)
+
+  // Given: "Test Bread" carries the vendor "Test Mart"
+  const { itemId, vendorId } = await seedVendorItem(page, request, baseURL)
+
+  // When: buy it from Test Mart's cart
+  await shopping.navigateToVendorCart(vendorId)
+  await shopping.addItemToCart('Test Bread')
+  await shopping.clickDone()
+  await shopping.confirmCheckout()
+  await page.waitForURL(/\/shopping(\?|$)/)
+
+  // Then: the log row names the vendor
+  await page.goto(`/items/${itemId}/log`)
+  await expect(item.getLogEntries()).toHaveCount(1)
+  await expect(item.getLogEntries().first()).toContainText('+1 pack')
+  await expect(item.getLogEntries().first()).toContainText(
+    'Bought at Test Mart',
+  )
+})
+
+// A Stock tab save that changes the amount writes a stock count row. Cloud:
+// the server writes it inside `upsertItemStock`; local: `updateItem` in the
+// same Dexie transaction (design 2026-11-25, inventory log layout).
+async function countStockOnStockTab(page: Page) {
+  const pantry = new PantryPage(page)
+  const item = new ItemPage(page)
+  await pantry.navigateTo()
+  await pantry.clickAddItem()
+  await item.fillName('Test Rice')
+  await item.save()
+  await item.fillPackedQuantity('3')
+  await item.saveExisting()
+  await item.navigateToLogTab()
+  await page.waitForURL(/\/items\/[^/]+\/log/)
+  return item
+}
+
+test('user can see a stock count row after changing the amount on the Stock tab', async ({
+  page,
+}) => {
+  // Given/When: a new item, then 3 packs saved on the Stock tab
+  const item = await countStockOnStockTab(page)
+
+  // Then: exactly one row, "+3 pack · Stock count", 3 packs after
+  await expect(item.getLogEntries()).toHaveCount(1)
+  const row = item.getLogEntries().first()
+  await expect(row).toContainText('+3 pack')
+  await expect(row).toContainText('Stock count')
+  await expect(row).toContainText('After the change: 3 pack')
+})
+
+test('user can view the Log tab without accessibility violations', async ({
+  page,
+}) => {
+  const item = await countStockOnStockTab(page)
+  await expect(item.getLogEntries()).toHaveCount(1)
+  await injectAxe(page)
+  await checkA11y(page, undefined, AXE_OPTIONS)
+})
+
+test('user can view the Log tab without accessibility violations in dark mode', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('theme-preference', 'dark')
+  })
+  const item = await countStockOnStockTab(page)
+  await expect(item.getLogEntries()).toHaveCount(1)
+  await injectAxe(page)
+  await checkA11y(page, undefined, AXE_OPTIONS)
 })
