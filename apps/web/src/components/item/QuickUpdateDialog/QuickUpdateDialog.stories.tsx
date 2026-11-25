@@ -128,3 +128,22 @@ export const WithExpirationDate: Story = {
     isOpen: true,
   },
 }
+
+// A non-consumable item (cups): the stock row draws one square per piece,
+// like the item's pantry card, and there are no opened packs.
+export const NotConsumable: Story = {
+  name: 'Not consumable — one square per piece',
+  args: {
+    item: {
+      ...mockItem,
+      name: 'cups',
+      packageUnit: 'cup',
+      consumable: false,
+      packedQuantity: 3,
+      unpackedQuantity: 0,
+      targetQuantity: 5,
+      refillThreshold: 2,
+    },
+    isOpen: true,
+  },
+}

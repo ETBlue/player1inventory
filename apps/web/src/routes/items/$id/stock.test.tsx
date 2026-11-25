@@ -433,6 +433,64 @@ describe('Item stock tab', () => {
     })
   })
 
+  it('user sees one square per piece on the stock tab for a non-consumable item', async () => {
+    const user = userEvent.setup()
+
+    // Given cups, not consumable: 3 of 5, refill below 2
+    const item = await createItem({
+      name: 'Cups',
+      packageUnit: 'cup',
+      targetUnit: 'package',
+      targetQuantity: 5,
+      refillThreshold: 2,
+      packedQuantity: 3,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      consumable: false,
+      tagIds: [],
+    })
+
+    renderStockTab(item.id)
+
+    // Then the stock row draws 5 squares, 3 filled
+    const filled = () =>
+      screen
+        .getAllByTestId('count-square')
+        .filter((s) => s.dataset.filled === 'true')
+    await waitFor(() => {
+      expect(screen.getAllByTestId('count-square')).toHaveLength(5)
+    })
+    expect(filled()).toHaveLength(3)
+
+    // When the user presses Fill to Full, before saving, the squares follow
+    await user.click(screen.getByRole('button', { name: /fill to full/i }))
+    expect(filled()).toHaveLength(5)
+  })
+
+  it('user sees the progress bar, not squares, on the stock tab for a consumable item', async () => {
+    // Given milk, consumable
+    const item = await createItem({
+      name: 'Milk',
+      packageUnit: 'bottle',
+      targetUnit: 'package',
+      targetQuantity: 4,
+      refillThreshold: 2,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      consumable: true,
+      tagIds: [],
+    })
+
+    renderStockTab(item.id)
+
+    // Then the progress bar draws its refill tick and there are no squares
+    await waitFor(() => {
+      expect(screen.getByTestId('refill-marker')).toBeInTheDocument()
+    })
+    expect(screen.queryAllByTestId('count-square')).toHaveLength(0)
+  })
+
   // The regression guard for commit 2fe372a1: `hasFieldError` gated the Stock
   // tab's Save on info-only fields this tab never renders, so an item whose
   // consumeAmount is 0 could not have its stock saved at all — no error text,

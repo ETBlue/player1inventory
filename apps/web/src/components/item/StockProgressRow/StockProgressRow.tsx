@@ -1,6 +1,8 @@
 import { ArrowLeftToLine, ArrowRightToLine } from 'lucide-react'
+import { ItemCountBar } from '@/components/item/ItemCountBar'
 import { ItemProgressBar } from '@/components/item/ItemProgressBar'
 import { Button } from '@/components/ui/button'
+import { getPieceScale } from '@/lib/quantityUtils'
 
 export interface StockProgressRowProps {
   // Display values — computed by the caller (localTotal, status, the "x / y"
@@ -10,6 +12,11 @@ export interface StockProgressRowProps {
   current: number
   target: number
   status: 'ok' | 'warning' | 'error' | 'inactive'
+  // `isConsumable(item)`. A non-consumable item (cups) draws `ItemCountBar`,
+  // one square per whole piece, like its `ItemCard`; a consumable one draws
+  // `ItemProgressBar`. Required, not optional: a caller that forgot it would
+  // otherwise draw the wrong bar with no compiler error.
+  consumable: boolean
   targetUnit: 'package' | 'measurement'
   packed: number
   unpacked: number
@@ -42,6 +49,7 @@ export function StockProgressRow({
   current,
   target,
   status,
+  consumable,
   targetUnit,
   packed,
   unpacked,
@@ -59,6 +67,14 @@ export function StockProgressRow({
   // Same mapping as QuantityStepper — keep the two in step, and do not add a
   // third size here without adding it there.
   const buttonSize = size === 'default' ? 'icon' : 'icon-sm'
+
+  // The count bar takes pieces. `current`, `target` and `refillThreshold`
+  // are in the tracking unit, so they are divided by the piece size. This is
+  // the same rule `ItemCard` uses (its `pieceScale`).
+  const pieceScale = getPieceScale({
+    targetUnit,
+    ...(amountPerPackage ? { amountPerPackage } : {}),
+  })
 
   // `type="button"` matters here for the same reason it does on QuantityStepper:
   // ItemForm renders this row inside its `<form>`, where an untyped `<button>`
@@ -82,17 +98,28 @@ export function StockProgressRow({
               (docs/global/bugs/2026-08-29-bug-unit-badge-contrast.md). */}
           <span>{`${quantityLabel} ${unitLabel}`}</span>
         </div>
-        <ItemProgressBar
-          current={current}
-          target={target}
-          status={status}
-          targetUnit={targetUnit}
-          packed={packed}
-          unpacked={unpacked}
-          {...(measurementUnit ? { measurementUnit } : {})}
-          {...(amountPerPackage ? { amountPerPackage } : {})}
-          {...(refillThreshold !== undefined ? { refillThreshold } : {})}
-        />
+        {consumable ? (
+          <ItemProgressBar
+            current={current}
+            target={target}
+            status={status}
+            targetUnit={targetUnit}
+            packed={packed}
+            unpacked={unpacked}
+            {...(measurementUnit ? { measurementUnit } : {})}
+            {...(amountPerPackage ? { amountPerPackage } : {})}
+            {...(refillThreshold !== undefined ? { refillThreshold } : {})}
+          />
+        ) : (
+          <ItemCountBar
+            current={Math.floor(current / pieceScale)}
+            target={Math.floor(target / pieceScale)}
+            status={status}
+            {...(refillThreshold !== undefined
+              ? { refillThreshold: refillThreshold / pieceScale }
+              : {})}
+          />
+        )}
       </div>
       <Button
         type="button"

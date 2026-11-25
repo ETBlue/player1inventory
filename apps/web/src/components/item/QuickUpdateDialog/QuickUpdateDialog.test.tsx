@@ -882,4 +882,37 @@ describe('QuickUpdateDialog — a non-consumable item', () => {
     ).toBeInTheDocument()
     expect(screen.getByLabelText(/expires on/i)).toBeInTheDocument()
   })
+
+  it('user sees one square per piece, not the progress bar, for a non-consumable item', async () => {
+    // Given cups, not consumable: 3 of 5, refill below 2
+    const user = userEvent.setup()
+    renderDialog(
+      makeItem({
+        consumable: false,
+        packageUnit: 'cup',
+        packedQuantity: 3,
+        unpackedQuantity: 0,
+        targetQuantity: 5,
+        refillThreshold: 2,
+      }),
+    )
+
+    // Then the row draws 5 squares, 3 filled
+    const filled = () =>
+      screen
+        .getAllByTestId('count-square')
+        .filter((s) => s.dataset.filled === 'true')
+    expect(screen.getAllByTestId('count-square')).toHaveLength(5)
+    expect(filled()).toHaveLength(3)
+
+    // When the user adds one before saving, the squares follow
+    await user.click(screen.getByRole('button', { name: /increase packed/i }))
+    expect(filled()).toHaveLength(4)
+  })
+
+  it('user sees the progress bar, not squares, for a consumable item', () => {
+    renderDialog(makeItem({ consumable: true }))
+    expect(screen.queryAllByTestId('count-square')).toHaveLength(0)
+    expect(screen.getByTestId('refill-marker')).toBeInTheDocument()
+  })
 })

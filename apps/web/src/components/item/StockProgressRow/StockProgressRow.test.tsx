@@ -10,6 +10,7 @@ const baseProps = {
   current: 3,
   target: 4,
   status: 'ok' as const,
+  consumable: true,
   targetUnit: 'package' as const,
   packed: 3,
   unpacked: 0,
@@ -83,5 +84,68 @@ describe('StockProgressRow refill threshold', () => {
     render(<StockProgressRow {...baseProps} />)
 
     expect(screen.queryByTestId('refill-marker')).not.toBeInTheDocument()
+  })
+})
+
+describe('StockProgressRow bar choice', () => {
+  // Only the count bar draws `count-square` elements, so they show which bar
+  // is drawn (the same check as ItemCard.test.tsx).
+  it('user sees one square per piece for a non-consumable item', () => {
+    // Given cups, not consumable: 3 of 5, refill below 2
+    render(
+      <StockProgressRow
+        {...baseProps}
+        consumable={false}
+        current={3}
+        target={5}
+        refillThreshold={2}
+      />,
+    )
+
+    // Then 5 squares, 3 filled, with the refill marker at 2
+    const squares = screen.getAllByTestId('count-square')
+    expect(squares).toHaveLength(5)
+    expect(squares.filter((s) => s.dataset.filled === 'true')).toHaveLength(3)
+    expect(screen.getByTestId('refill-marker')).toHaveAttribute(
+      'data-threshold',
+      '2',
+    )
+    // And Clear and Fill to Full are still there
+    expect(clearButton()).toBeEnabled()
+    expect(fillButton()).toBeEnabled()
+  })
+
+  it('user sees the progress bar, not squares, for a consumable item', () => {
+    render(<StockProgressRow {...baseProps} refillThreshold={2} />)
+
+    expect(screen.queryAllByTestId('count-square')).toHaveLength(0)
+    // The progress bar still draws its tick
+    expect(screen.getByTestId('refill-marker')).toBeInTheDocument()
+  })
+
+  it('a non-consumable item tracked in a measurement unit shows whole pieces', () => {
+    // Given 750 ml of a 1000 ml target, 250 ml per piece, refill below 500 ml
+    render(
+      <StockProgressRow
+        {...baseProps}
+        consumable={false}
+        targetUnit="measurement"
+        measurementUnit="ml"
+        amountPerPackage={250}
+        current={750}
+        target={1000}
+        packed={750}
+        refillThreshold={500}
+      />,
+    )
+
+    // Then 4 squares, 3 filled, and the marker at 2 pieces
+    const squares = screen.getAllByTestId('count-square')
+    expect(squares).toHaveLength(4)
+    expect(squares.filter((s) => s.dataset.filled === 'true')).toHaveLength(3)
+    expect(screen.getByTestId('refill-marker')).toHaveAttribute(
+      'data-threshold',
+      '2',
+    )
   })
 })

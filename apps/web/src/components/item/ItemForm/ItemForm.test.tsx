@@ -1711,6 +1711,34 @@ describe('ItemForm — the Consumable switch', () => {
     expect(screen.getByLabelText(/^expires in/i)).toHaveValue(30)
   })
 
+  it('user turning it off swaps the stock bar for squares before saving', async () => {
+    const user = userEvent.setup()
+    render(
+      <ItemForm
+        onSubmit={vi.fn()}
+        sections={['info', 'stock']}
+        initialValues={{
+          ...flour,
+          targetUnit: 'package',
+          targetQuantity: 4,
+          packedQuantity: 2,
+          unpackedQuantity: 0,
+        }}
+      />,
+    )
+
+    // Before: the progress bar, no squares
+    expect(screen.queryAllByTestId('count-square')).toHaveLength(0)
+
+    // When the user turns Consumable off
+    await user.click(screen.getByRole('switch', { name: /^consumable$/i }))
+
+    // Then the stock row draws one square per piece: 4 wanted, 2 filled
+    const squares = screen.getAllByTestId('count-square')
+    expect(squares).toHaveLength(4)
+    expect(squares.filter((s) => s.dataset.filled === 'true')).toHaveLength(2)
+  })
+
   it('user turning it off keeps the hidden values in what is saved', async () => {
     const user = userEvent.setup()
     const onSubmit = submitSpy()

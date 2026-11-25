@@ -100,6 +100,7 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
 const {
   PackageItem,
   MeasurementItem,
+  NotConsumableItem,
   DateModeItem,
   MultipleLocations,
   ViewingAnotherLocation,
@@ -120,6 +121,14 @@ describe('Item detail stock tab stories smoke tests', () => {
   it('MeasurementItem renders the Packed stock field after setup', async () => {
     render(<MeasurementItem />)
     expect(await screen.findByLabelText(/^packed/i)).toBeInTheDocument()
+  })
+
+  it('NotConsumableItem draws one square per piece', async () => {
+    render(<NotConsumableItem />)
+    await screen.findByLabelText(/^packed/i)
+    const squares = await screen.findAllByTestId('count-square')
+    expect(squares).toHaveLength(5)
+    expect(squares.filter((s) => s.dataset.filled === 'true')).toHaveLength(3)
   })
 
   it('DateModeItem renders the "Expires on" row holding the stored date', async () => {

@@ -1003,6 +1003,10 @@ export function ItemForm({
             current={currentStockQuantity}
             target={targetQuantity}
             status={stockStatus}
+            // The form's own value. The Stock tab does not show the switch,
+            // so here it is the saved value; with both sections it follows
+            // the switch before Save.
+            consumable={consumable}
             targetUnit={targetUnit}
             packed={displayPackedQuantity}
             unpacked={unpackedQuantity}

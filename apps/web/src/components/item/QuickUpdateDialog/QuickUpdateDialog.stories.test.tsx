@@ -13,6 +13,7 @@ const {
   Inactive,
   NearRefillThreshold,
   WithExpirationDate,
+  NotConsumable,
 } = composeStories(stories)
 
 // Default story: mockItem — targetUnit:'package', packageUnit:'gallon',
@@ -317,5 +318,15 @@ describe('QuickUpdateDialog — Expires on field (date mode)', () => {
   it('does not show the field for a story without date mode', () => {
     render(<Default />)
     expect(screen.queryByLabelText(/expires on/i)).not.toBeInTheDocument()
+  })
+})
+
+describe('QuickUpdateDialog — NotConsumable story', () => {
+  it('draws one square per piece instead of the progress bar', () => {
+    render(<NotConsumable />)
+    const squares = screen.getAllByTestId('count-square')
+    expect(squares).toHaveLength(5)
+    expect(squares.filter((s) => s.dataset.filled === 'true')).toHaveLength(3)
+    expect(screen.getByText('3 / 5 cup')).toBeInTheDocument()
   })
 })

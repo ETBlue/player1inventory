@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './StockProgressRow.stories'
 
-const { Ok, DefaultSize, Low, Inactive, MeasurementUnit } =
+const { Ok, DefaultSize, Low, Inactive, MeasurementUnit, NotConsumable } =
   composeStories(stories)
 
 const STATUS_CLASSES = {
@@ -91,5 +91,14 @@ describe('StockProgressRow stories smoke tests', () => {
     expect(screen.getByText('Refill when below 0.75')).toBeInTheDocument()
     // And no stray bare-unit node is left behind by the removed badge
     expect(screen.queryByText('L')).not.toBeInTheDocument()
+  })
+
+  it('NotConsumable draws one square per piece', () => {
+    render(<NotConsumable />)
+    const squares = screen.getAllByTestId('count-square')
+    expect(squares).toHaveLength(5)
+    expect(squares.filter((s) => s.dataset.filled === 'true')).toHaveLength(3)
+    expect(screen.getByText('3 / 5 cup')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Fill to Full' })).toBeEnabled()
   })
 })

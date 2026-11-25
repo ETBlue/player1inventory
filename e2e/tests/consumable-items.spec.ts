@@ -258,6 +258,51 @@ test('user can filter the shopping cart to items that are not consumable', async
   ).toBeVisible()
 })
 
+test('user sees one square per piece in the quick edit dialog and on the Stock tab', async ({
+  page,
+  request,
+  baseURL,
+}) => {
+  // Given Cups, not consumable, 3 of 5 in stock
+  await seedFixture(page, request, baseURL, FIXTURE_CUPS_NOT_CONSUMABLE)
+  const pantry = new PantryPage(page)
+  await pantry.navigateTo()
+  await expect(squaresOf(page, 'Cups')).toHaveCount(5)
+
+  // When the user opens the quick edit dialog for Cups
+  await pantry.clickQuickUpdate('Cups')
+  const dialog = pantry.getQuickUpdateDialog()
+  await expect(dialog).toBeVisible()
+
+  // Then its stock row shows 5 squares, 3 filled
+  const dialogSquares = dialog.getByTestId('count-square')
+  await expect(dialogSquares).toHaveCount(5)
+  await expect(
+    dialogSquares.and(page.locator('[data-filled="true"]')),
+  ).toHaveCount(3)
+  // And the squares follow the stepper before Update is pressed
+  await dialog.getByRole('button', { name: /increase packed/i }).click()
+  await expect(
+    dialogSquares.and(page.locator('[data-filled="true"]')),
+  ).toHaveCount(4)
+  await page.keyboard.press('Escape')
+
+  // When the user opens the Stock tab of Cups
+  await page.goto(`/items/${CUPS}/stock`)
+
+  // Then the stock row there shows the same squares
+  const main = page.getByRole('main')
+  await expect(main.getByTestId('count-square')).toHaveCount(5)
+  await expect(
+    main.getByTestId('count-square').and(page.locator('[data-filled="true"]')),
+  ).toHaveCount(3)
+
+  // The control: Tissue, which is consumable, has no squares on its Stock tab
+  await page.goto(`/items/${TISSUE}/stock`)
+  await expect(main.getByLabel(/^packed/i)).toBeVisible()
+  await expect(main.getByTestId('count-square')).toHaveCount(0)
+})
+
 async function scanConsumableUi(
   page: Page,
   request: APIRequestContext,
