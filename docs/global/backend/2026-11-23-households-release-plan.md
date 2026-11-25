@@ -674,7 +674,7 @@ A restore from D.1 loses every write made after D.1.
 
 **Only after every device of B.3 shows the new bundle** (D.10), and as R7 decides.
 
-- [ ] **F.1 (a normal code PR, by a subagent like any code task):** remove, together, as the
+- [x] **F.1 (a normal code PR, by a subagent like any code task):** remove, together, as the
   H4 runbook 8.3 *Removing the shim* and the root `CLAUDE.md` *Old-bundle shim* list:
   - `Location.isDefault` and its resolver, with `firstLocationIdOf` in
     `apps/server/src/resolvers/location.resolver.ts`, the `firstLocationIds` entry of
@@ -693,6 +693,12 @@ A restore from D.1 loses every write made after D.1.
 
   Measured 2026-11-23: `git grep -n "@deprecated" -- apps/server/src/schema/` finds **5**
   fields (1 in `cart.graphql`, 1 in `location.graphql`, 3 in `recipe.graphql`).
+
+  **Built 2026-11-25** on `chore/remove-old-bundle-shim`, into `develop` (not yet
+  released). The same command now finds **0**. The three shim tests in
+  `cart-checkout.resolver.test.ts` and `recipe-consume.resolver.test.ts` became tests that
+  the old input is refused with `BAD_USER_INPUT`; the `isDefault` block of
+  `location-roles.resolver.test.ts` is deleted.
 - [ ] **F.2:** the follow-up release only removes fields that the households bundle does not
   send (the shim test's check 4 proves that no current web document selects a deprecated
   field). Once every device has the households bundle, no deployed bundle sends them, so the

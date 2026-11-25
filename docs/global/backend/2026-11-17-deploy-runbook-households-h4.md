@@ -339,6 +339,12 @@ its `delete` in `forgetLocationRoles` (`lib/authz.ts`); `CheckoutItemInput.itemI
 `main-web-operations/`, the schema copy `main-server-schema.graphql`, and
 `oldBundleCompat.test.ts`. Only after every device has the households bundle.
 
+**Done on 2026-11-25** (branch `chore/remove-old-bundle-shim`, into `develop`). Everything in
+the paragraph above is deleted, and `cartItemId` is `ID!` again. The release that ships it
+needs no special deploy order: the server change only removes fields that no households
+bundle uses. A device still on a bundle from before households then fails every location
+query, checkout and cook until it accepts the update prompt.
+
 ### 8.4 Checks after the deploy
 
 1. As the owner, open **Settings → Household → Locations**. Every location shows a role
