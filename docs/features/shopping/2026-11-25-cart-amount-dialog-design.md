@@ -66,3 +66,49 @@ Brainstorming: `2026-11-25-brainstorming-cart-amount-dialog.md`.
 
 - Fractional cart amounts (the server type is `Int`).
 - The Cooking page's controls.
+
+## As built (2026-11-25)
+
+Built on `feature/cart-amount-dialog`. Web only, as designed: no server, schema or Dexie
+change. Not merged, not deployed.
+
+| Part | Where |
+|---|---|
+| the dialog | `apps/web/src/components/shopping/CartAmountDialog/` (component, stories, smoke test, unit tests) |
+| the amount button | `ItemCard`'s new `onAmountEdit` and `amountUnit` props |
+| the suggested amount | `suggestedCartAmount(item)` in `apps/web/src/lib/quantityUtils.ts` |
+| the page | `apps/web/src/routes/shopping/$vendorId.tsx`: `amountDialog` state, `handleToggleCart`, `handleSaveAmount`. `handleUpdateCartQuantity` is deleted |
+| texts | `shopping.amountDialog.*` in `en.json` and `tw.json` |
+
+**Where the build differs from the design, or adds to it:**
+
+1. **`ItemCard` gets a callback, not a mode.** `onAmountEdit` switches the `− n +` group to
+   one button. `onAmountChange` keeps the group, so the Cooking page and the recipe items tab
+   need no change. When both are passed, `onAmountEdit` wins.
+2. **The suggested amount is counted in packs, with the card's numbers turned into packs
+   first.** The card shows stock and target in the TRACKING unit (`getCurrentQuantity`,
+   `targetQuantity`, the measurement unit for a measurement item). A cart amount counts
+   packages. So `suggestedCartAmount` uses `getItemPackUnits` (packed + open stock, and the
+   target, both in packs) and takes `max(1, ceil(target − stock))`. Without this, a 750 ml
+   bottle with a 2000 ml target would suggest 1150 bottles. A measurement item with no
+   `amountPerPackage` gets 1. The difference is rounded to 6 places before `ceil`, because
+   `2.1 / 0.3` is `7.000000000000001` in JavaScript (that would suggest 8, not 7).
+3. **The context line uses the card's numbers and unit**, with at most 2 decimals. So a
+   measurement item reads "In stock 1.7 · target 2 L", and the amount field below reads
+   "Amount (bottle)".
+4. **Adding with 0 is allowed.** Neither `addToCart` in `db/operations.ts` nor the
+   `addToCart` resolver checks the amount, so 0 writes a pinned row in both modes, the same
+   as `updateCartItem(0)`. The suggested amount is never 0, so this happens only when the
+   person types 0, and the 0 note says what it means.
+5. **A failed save shows only in the dialog**, as `common.saveFailed` in a `role="alert"`
+   line. The old `−`/`+` path showed a toast; the dialog does not add one.
+6. **Enter in the amount field saves**, the same as Save, and only when Save is enabled.
+7. **The English 0 note was split into two sentences:** "Amount 0 keeps the item in the cart.
+   It is not bought this time. Buy it next time." The Chinese text is the owner's, unchanged.
+8. **The dialog is mounted only while open**, keyed by item and mode, and keeps the amount it
+   opened with. A live refetch of the cart does not reset what the person typed.
+
+**A defect found on the way:** the cart page story `WithCartItems` added its two rows to the
+bare vendor id, not to `${locationId}:${vendorId}`, so it showed an EMPTY cart, and its smoke
+test only checked that "Milk" was on the page. The story now uses `cartIdFor`, and the smoke
+test checks both amount buttons.
