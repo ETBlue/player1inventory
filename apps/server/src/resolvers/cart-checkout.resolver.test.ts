@@ -760,12 +760,12 @@ describe("checkout writes the CART's location", () => {
   })
 })
 
-// ─── OLD-BUNDLE SHIM: the `{ itemId, quantity }` input ───────────────────────
+// ─── The old `{ itemId, quantity }` input is refused ─────────────────────────
 //
-// Remove with `CheckoutItemInput.itemId`, in the release after households
-// (see `cart.graphql` and `src/test/oldBundleCompat.test.ts`). `main`'s web
-// bundle sends one entry per bought item, with its own STOCK TOTAL as
-// `quantity`. The server buys the stored amount of that item's row.
+// For the households release only, the server also took `{ itemId, quantity }`
+// from web bundles older than households (the old-bundle shim). The shim was
+// removed on `chore/remove-old-bundle-shim`: `cartItemId` is `ID!` again and
+// `itemId` is gone. So GraphQL refuses these inputs before the resolver runs.
 
 async function checkoutRaw(items: Array<Record<string, unknown>>, userId: string) {
   const res = await server.executeOperation(
@@ -776,109 +776,9 @@ async function checkoutRaw(items: Array<Record<string, unknown>>, userId: string
   return res.body.singleResult
 }
 
-describe('checkout from an old web bundle', () => {
-  it('user on an old bundle checks out: the stored amounts are bought, the old totals are ignored', async () => {
-    // Given the old bundle sends item ids and stock totals that are wrong on
-    // purpose (999), as a stale screen could
-    const res = await checkoutRaw(
-      [
-        { itemId: 'item_milk', quantity: 999 },
-        { itemId: 'item_bread', quantity: 999 },
-      ],
-      ALICE,
-    )
-
-    // Then the stored amounts (milk 1, bread 3) are bought, not 999
-    expect(res.errors).toBeUndefined()
-    expect(stockAt('item_milk', LOC_HOME)).toMatchObject({ packedQuantity: 3, unpackedQuantity: 3 })
-    expect(stockAt('item_bread', LOC_HOME)?.packedQuantity).toBe(4)
-    // And the rows are gone, the pinned row stays
-    expect(rowIds(HOME_CART)).toEqual(['ci_bob_eggs_pinned'])
-    // And the logs carry the bought amount and the total the SERVER computed:
-    // 3 packs and 3 loose at 6 to a pack is 3.5
-    expect(
-      logs.state.logs
-        .map((l) => ({ itemId: l.itemId, delta: l.delta, quantity: l.quantity }))
-        .sort((a, b) => a.itemId.localeCompare(b.itemId)),
-    ).toEqual([
-      { itemId: 'item_bread', delta: 3, quantity: 4 },
-      { itemId: 'item_milk', delta: 1, quantity: 3.5 },
-    ])
-  })
-
-  it('user on an old bundle checks out with an entry for an item with no row being bought: that entry is skipped, as main did', async () => {
-    // Given the old screen still lists eggs, whose row is pinned (amount 0),
-    // and an item whose row is gone. `main`'s server ignored both.
-    const res = await checkoutRaw(
-      [
-        { itemId: 'item_milk', quantity: 1 },
-        { itemId: 'item_bread', quantity: 1 },
-        { itemId: 'item_eggs', quantity: 1 },
-        { itemId: 'item_gone', quantity: 1 },
-      ],
-      ALICE,
-    )
-
-    // Then milk and bread are bought, and nothing is written for the other two
-    expect(res.errors).toBeUndefined()
-    expect(stockAt('item_milk', LOC_HOME)?.packedQuantity).toBe(3)
-    expect(stockAt('item_bread', LOC_HOME)?.packedQuantity).toBe(4)
-    expect(logs.state.logs.map((l) => l.itemId).sort()).toEqual(['item_bread', 'item_milk'])
-    // And the pinned eggs row stays
-    expect(rowIds(HOME_CART)).toEqual(['ci_bob_eggs_pinned'])
-  })
-
-  it('an old-shape input that names the same item twice is CART_CHANGED, and nothing is written', async () => {
-    const before = writable()
-    const res = await checkoutRaw(
-      [
-        { itemId: 'item_milk', quantity: 1 },
-        { itemId: 'item_bread', quantity: 1 },
-        { itemId: 'item_milk', quantity: 1 },
-      ],
-      ALICE,
-    )
-
-    expect(code(res)).toBe('CART_CHANGED')
-    expect(writable()).toEqual(before)
-  })
-
-  it('an old-shape checkout whose row a co-member changes between the read and the claim is CART_CHANGED', async () => {
-    // Given BOB changes the bread from 3 to 5 while ALICE's old-bundle
-    // checkout waits. The amount rule cannot see this (the old shape copies
-    // the amount from the read); the claim can.
-    hooks.beforeClaim = () => {
-      hooks.beforeClaim = undefined
-      const bread = carts.state.cartItems.find((r) => r.id === 'ci_bob_bread')
-      if (bread) bread.quantity = 5
-    }
-    const stockBefore = structuredClone(world.stock.state.itemStocks)
-
-    const res = await checkoutRaw(
-      [
-        { itemId: 'item_milk', quantity: 1 },
-        { itemId: 'item_bread', quantity: 1 },
-      ],
-      ALICE,
-    )
-
-    // Then refused, and no stock is added (the fake's rollback also restores
-    // the cart rows, which Postgres would not, so they are not asserted)
-    expect(code(res)).toBe('CART_CHANGED')
-    expect(world.stock.state.itemStocks).toEqual(stockBefore)
-    expect(logs.state.logs).toHaveLength(0)
-  })
-
-  it('an old-shape input that leaves a row out is CART_CHANGED, and nothing is written', async () => {
-    // Given a co-member added the bread after the old screen loaded
-    const before = writable()
-    const res = await checkoutRaw([{ itemId: 'item_milk', quantity: 1 }], ALICE)
-
-    expect(code(res)).toBe('CART_CHANGED')
-    expect(writable()).toEqual(before)
-  })
-
+describe('checkout input without a cartItemId', () => {
   it.each([
+    { name: 'an old-shape entry (itemId only)', items: [{ itemId: 'item_milk', quantity: 1 }] },
     { name: 'an entry with both ids', items: [{ cartItemId: 'ci_alice_milk', itemId: 'item_milk', quantity: 1 }] },
     { name: 'an entry with neither id', items: [{ quantity: 1 }] },
     {
@@ -894,5 +794,6 @@ describe('checkout from an old web bundle', () => {
 
     expect(code(res)).toBe('BAD_USER_INPUT')
     expect(writable()).toEqual(before)
+    expect(logs.state.logs).toHaveLength(0)
   })
 })

@@ -128,68 +128,6 @@ function matchCheckoutInput(
   return stored
 }
 
-type CheckoutEntry = { cartItemId?: string | null; itemId?: string | null; quantity: number }
-
-/**
- * OLD-BUNDLE SHIM. Remove in the release after households, with
- * `CheckoutItemInput.itemId` (see `cart.graphql`).
- *
- * Checks the input's shape, before anything is read. Returns `'new'` when every
- * entry names a `cartItemId`, `'old'` when every entry names an `itemId` (the
- * shape of `main`'s web bundle before households). An entry with both, with
- * neither, or a list that mixes the two is `BAD_USER_INPUT`. An empty list is
- * `'new'`.
- */
-function checkoutInputShape(items: ReadonlyArray<CheckoutEntry>): 'new' | 'old' {
-  const isNew = (e: CheckoutEntry) => e.cartItemId != null && e.itemId == null
-  const isOld = (e: CheckoutEntry) => e.itemId != null && e.cartItemId == null
-  if (items.every(isNew)) return 'new'
-  if (items.every(isOld)) return 'old'
-  throw new GraphQLError(
-    'Every checkout entry must name exactly one of cartItemId and itemId, the same one in every entry.',
-    { extensions: { code: 'BAD_USER_INPUT' } },
-  )
-}
-
-/**
- * OLD-BUNDLE SHIM. Turns old-shape entries (`{ itemId, quantity }`, where
- * `quantity` was the client's stock total) into new-shape entries. A cart has
- * at most one row per item (H3b), so the item names the row. The amount is the
- * STORED amount: `main`'s server bought what the cart held, and so does this.
- * The old `quantity` is ignored.
- *
- * An `itemId` with no row being bought is SKIPPED, as `main`'s server did
- * (it looked each cart row up in the input and never the other way round).
- * Refusing it would leave an old device failing on every retry until a
- * reload, because its stale entry would come back each time.
- *
- * What still refuses an old-shape checkout:
- *
- * | Case                                               | Refused by                          |
- * |----------------------------------------------------|-------------------------------------|
- * | the same `itemId` twice                            | `matchCheckoutInput` (same row twice) |
- * | a row being bought that the input leaves out       | `matchCheckoutInput`                |
- * | the row deleted or changed between the read and the claim | the claim's `deleteMany` count |
- *
- * The amount rule of `matchCheckoutInput` CANNOT fire here: the amount is
- * copied from the same read it is compared with. So a co-member's change
- * that committed BEFORE the read is bought silently, at the new amount. That
- * is what `main`'s server did too. A change that commits between the read and
- * the claim still gives `CART_CHANGED`, and the claim still stops a double
- * buy.
- */
-function fromOldCheckoutInput(
-  stored: StoredRow[],
-  items: ReadonlyArray<CheckoutEntry>,
-): Array<{ cartItemId: string; quantity: number }> {
-  const byItem = new Map(stored.map((r) => [r.itemId, r]))
-  return items.flatMap((e) => {
-    const row = byItem.get(e.itemId as string)
-    if (!row) return []
-    return [{ cartItemId: row.id, quantity: row.quantity }]
-  })
-}
-
 /**
  * ── HOW CART DATA IS SCOPED (households H3b) ──
  *
@@ -435,10 +373,6 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
       // and a cart id at a location that does not exist, both get the same
       // `FORBIDDEN` from `requireLocationRole`.
       const cartLocationId = await requireCartLocation(ctx, cartId, 'participant')
-      // OLD-BUNDLE SHIM: which input shape this is. Refused before any cart
-      // read when the entries mix the two shapes. (The role check above has
-      // already read.)
-      const shape = checkoutInputShape(items)
       // The locations a copy-on-add may copy stock settings from: the ones the
       // caller holds a role on (households H3a, task 3.8). Read once, before
       // the transaction opens, because it reads only membership rows.
@@ -463,12 +397,7 @@ export const cartResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Cart'> = {
           })
 
           // Step 2. Throws `CART_CHANGED` before anything is written.
-          const bought = matchCheckoutInput(
-            stored,
-            shape === 'old'
-              ? fromOldCheckoutInput(stored, items)
-              : (items as Array<{ cartItemId: string; quantity: number }>),
-          )
+          const bought = matchCheckoutInput(stored, items)
 
           // Step 3. ── WHY THE CLAIM, AND WHY IT NAMES THE AMOUNT ──
           //

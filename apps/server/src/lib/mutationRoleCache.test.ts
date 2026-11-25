@@ -43,8 +43,6 @@ function filledContext(): Context {
       householdId: Promise.resolve('hh-1'),
       locationRoles: new Map([['hh-1', Promise.resolve(new Map())]]),
       organizedLocations: new Map([['hh-1', Promise.resolve(new Set<string>())]]),
-      // OLD-BUNDLE SHIM. Remove with `Location.isDefault`.
-      firstLocationIds: new Map([['hh-1', Promise.resolve('loc-1')]]),
     },
   }
 }
@@ -62,13 +60,12 @@ describe('forgetRolesAroundEach', () => {
         seen = [
           c.requestCache?.locationRoles,
           c.requestCache?.organizedLocations,
-          c.requestCache?.firstLocationIds,
         ]
         return true
       },
     )
     await f({}, {}, ctx, {})
-    expect(seen).toEqual([undefined, undefined, undefined])
+    expect(seen).toEqual([undefined, undefined])
   })
 
   it('forgets the role caches after the field, so its sub-fields read fresh rows', async () => {
@@ -90,14 +87,12 @@ describe('forgetRolesAroundEach', () => {
       async (_p: unknown, _a: unknown, c: Context) => {
         c.requestCache!.locationRoles = new Map([['hh-1', Promise.resolve(new Map())]])
         c.requestCache!.organizedLocations = new Map([['hh-1', Promise.resolve(new Set<string>())]])
-        c.requestCache!.firstLocationIds = new Map([['hh-1', Promise.resolve('loc-1')]])
         throw boom
       },
     )
     await expect(f({}, {}, ctx, {})).rejects.toBe(boom)
     expect(ctx.requestCache?.locationRoles).toBeUndefined()
     expect(ctx.requestCache?.organizedLocations).toBeUndefined()
-    expect(ctx.requestCache?.firstLocationIds).toBeUndefined()
   })
 
   it('forgets the household id between two fields, so the second reads it again (decision T15)', async () => {
@@ -180,7 +175,7 @@ describe('every Mutation field forgets the role caches', () => {
         // expected
       }
       const c = ctx.requestCache
-      if (c?.householdId || c?.locationRoles || c?.organizedLocations || c?.firstLocationIds) kept.push(name)
+      if (c?.householdId || c?.locationRoles || c?.organizedLocations) kept.push(name)
     }
     expect(kept).toEqual([])
   })
