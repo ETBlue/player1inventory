@@ -66,7 +66,10 @@ const publishes: Record<string, { kinds: Kind[] }> = {
   // ── Stock and logs (H3c-2 task D.2) ──
   addInventoryLog: { kinds: ['LOG'] },
   addItemToLocation: { kinds: ['STOCK'] },
-  upsertItemStock: { kinds: ['STOCK'] },
+  // LOG since the inventory log layout (design 2026-11-25): a save that
+  // changes the on-hand total writes a `stockCount` log row. A save that
+  // changes only the target or the due date sends STOCK alone.
+  upsertItemStock: { kinds: ['STOCK', 'LOG'] },
   // It deletes the item's cart rows at that location too. The web does not
   // refetch carts for STOCK or LOG, so it sends CART itself (decision Q1).
   removeItemFromLocation: { kinds: ['STOCK', 'LOG', 'CART'] },

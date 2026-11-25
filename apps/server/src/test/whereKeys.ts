@@ -75,6 +75,10 @@ export class UnsupportedWhereFilterError extends Error {
  *   activity log's cursor (households H6, decision T54).
  * - `idCursor` — a string, `{ in: [...] }`, or `{ lt: string }`. The other
  *   half of that cursor: rows with the same `createdAt` are ordered by `id`.
+ * - `nullableNot` — `null`, a string, or `{ not: string }`. For a nullable
+ *   text column filtered by "is not this value", such as `InventoryLog.logKey`
+ *   in `lastPurchaseDates`. The matcher must follow SQL: `{ not: 'x' }` does
+ *   NOT match a NULL column.
  * - `{ nested }` — a relation filter or a compound unique key: an object whose
  *   own keys are checked against `nested`.
  * - `{ or }` — Prisma's `OR`: an array of `where` objects, each checked
@@ -90,6 +94,7 @@ export type WhereKeyKind =
   | 'dateGt'
   | 'dateCompare'
   | 'idCursor'
+  | 'nullableNot'
   | { nested: WhereSpec }
   | { or: WhereSpec }
 
@@ -179,6 +184,15 @@ function checkValue(label: string, key: string, value: unknown, kind: WhereKeyKi
         Object.keys(value).length === 1 &&
         typeof value.lt === 'string'
       if (!ok) refuse('a string, { in: [...] } or { lt: string }')
+      return
+    }
+    case 'nullableNot': {
+      if (value === null || typeof value === 'string') return
+      const ok =
+        isPlainObject(value) &&
+        Object.keys(value).length === 1 &&
+        typeof value.not === 'string'
+      if (!ok) refuse('null, a string or { not: string }')
       return
     }
     case 'number': {

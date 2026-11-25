@@ -460,7 +460,17 @@
       }
     },
     "history": {
-      "empty": "No history yet."
+      "empty": "No history yet.",
+      "kind": {
+        "purchaseAt": "Bought at {{vendor}}",
+        "purchase": "Bought",
+        "cookingIn": "Used in {{recipes}}",
+        "cooking": "Used in cooking",
+        "stockCount": "Stock count"
+      },
+      "listSeparator": ", ",
+      "when": "{{weekday}}, {{date}} · {{time}}",
+      "afterLabel": "After the change:"
     }
   },
   "itemFilters": {

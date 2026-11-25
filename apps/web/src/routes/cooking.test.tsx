@@ -306,7 +306,7 @@ describe('Use (Cooking) Page', () => {
   it('user can confirm consumption and inventory is reduced', async () => {
     // Given a recipe with an item (packedQuantity = 5)
     const item = await makeItem('Flour', 1, 5)
-    await createRecipe({
+    const pasta = await createRecipe({
       name: 'Pasta',
       items: [{ itemId: item.id, defaultAmount: 2 }],
     })
@@ -359,7 +359,13 @@ describe('Use (Cooking) Page', () => {
         .filter((l) => l.itemId === item.id)
         .toArray()
       expect(logs.length).toBeGreaterThan(0)
-      expect(elementAt(logs, 0).note).toBe('consumed via Pasta')
+      // Data, not text (design 2026-11-25, inventory log layout): the kind
+      // and the recipe's id plus a name snapshot, and no note.
+      expect(elementAt(logs, 0).logKey).toBe('cooking')
+      expect(elementAt(logs, 0).logParams).toEqual({
+        recipes: [{ id: pasta.id, name: 'Pasta' }],
+      })
+      expect(elementAt(logs, 0).note).toBeUndefined()
       expect(elementAt(logs, 0).delta).toBeLessThan(0)
     })
 
@@ -1671,10 +1677,10 @@ describe('Use (Cooking) Page', () => {
     })
   })
 
-  it('user can see recipe name in inventory log note after confirming done', async () => {
+  it('user can see the recipe in the inventory log after confirming done', async () => {
     // Given a recipe named "Pasta Bolognese" with an item
     const item = await makeItem('Flour', 1, 5)
-    await createRecipe({
+    const recipe = await createRecipe({
       name: 'Pasta Bolognese',
       items: [{ itemId: item.id, defaultAmount: 2 }],
     })
@@ -1711,13 +1717,15 @@ describe('Use (Cooking) Page', () => {
     })
     await user.click(screen.getByRole('button', { name: /confirm/i }))
 
-    // Then the inventory log note names the recipe
+    // Then the inventory log names the recipe by id, with a name snapshot
     await waitFor(async () => {
       const logs = await db.inventoryLogs
         .filter((l) => l.itemId === item.id)
         .toArray()
       expect(logs.length).toBeGreaterThan(0)
-      expect(elementAt(logs, 0).note).toBe('consumed via Pasta Bolognese')
+      expect(elementAt(logs, 0).logParams).toEqual({
+        recipes: [{ id: recipe.id, name: 'Pasta Bolognese' }],
+      })
     })
   })
 

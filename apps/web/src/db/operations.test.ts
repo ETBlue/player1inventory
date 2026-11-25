@@ -2874,3 +2874,193 @@ describe('applyShelfFilterPicksBatch', () => {
     expect(savedRecipe?.items[0]?.defaultAmount).toBe(1)
   })
 })
+
+// ── The stock count log (design 2026-11-25, inventory log layout) ──
+//
+// Local `updateItem` is the write behind the Stock tab Save and Quick update.
+// When it changes the on-hand total it writes ONE `stockCount` row in the
+// same Dexie transaction. The other local stock writers (`checkout`,
+// `createItem`, `addItemToLocation`, the unit switch) write none.
+describe('stock count log rows', () => {
+  async function flour(packedQuantity = 2, unpackedQuantity = 0) {
+    // 500 g per bag, tracked in grams
+    return createItem({
+      name: 'Flour',
+      packageUnit: 'bag',
+      measurementUnit: 'g',
+      amountPerPackage: 500,
+      targetUnit: 'measurement',
+      tagIds: [],
+      targetQuantity: 1000,
+      refillThreshold: 0,
+      packedQuantity,
+      unpackedQuantity,
+      consumeAmount: 100,
+    })
+  }
+
+  function stockCounts(logs: Awaited<ReturnType<typeof getItemLogs>>) {
+    return logs.filter((l) => l.logKey === 'stockCount')
+  }
+
+  it('user saving a new amount writes one stock count row in packs', async () => {
+    // Given 2 bags and 0 g
+    const item = await flour()
+
+    // When the user saves 1 bag and 470 g
+    await updateItem(item.id, { packedQuantity: 1, unpackedQuantity: 470 })
+
+    // Then one row says −0.06 bags, 1.94 bags after, with no note
+    const logs = await getItemLogs(item.id)
+    expect(logs).toHaveLength(1)
+    const row = defined(logs[0], 'the stock count row')
+    expect(row.logKey).toBe('stockCount')
+    expect(row.delta).toBeCloseTo(-0.06, 9)
+    expect(row.quantity).toBeCloseTo(1.94, 9)
+    expect(row.locationId).toBe(DEFAULT_LOCATION_ID)
+    expect(row.note).toBeUndefined()
+    expect(row.logParams).toBeUndefined()
+  })
+
+  it('a save at another location logs at that location', async () => {
+    // Given flour stocked at a second location
+    const item = await flour()
+    const garage = await createLocation('Garage')
+    await addItemToLocation(item.id, garage.id)
+
+    // When the user saves 3 bags at the garage
+    await updateItem(item.id, { packedQuantity: 3 }, garage.id)
+
+    // Then the row is at the garage, and it starts from the garage's 0
+    expect(await getItemLogs(item.id)).toHaveLength(0)
+    expect(await getItemLogs(item.id, garage.id)).toMatchObject([
+      { logKey: 'stockCount', delta: 3, quantity: 3 },
+    ])
+  })
+
+  it('a save that changes only the target writes no row', async () => {
+    const item = await flour()
+
+    await updateItem(item.id, { targetQuantity: 2000 })
+
+    expect(await getItemLogs(item.id)).toHaveLength(0)
+  })
+
+  it('opening a bag (same total) writes no row', async () => {
+    const item = await flour()
+
+    await updateItem(item.id, { packedQuantity: 1, unpackedQuantity: 500 })
+
+    expect(await getItemLogs(item.id)).toHaveLength(0)
+  })
+
+  it('a configuration save that changes amountPerPackage writes no row', async () => {
+    // Given 2 bags and 300 g (2.6 bags at 500 g per bag)
+    const item = await flour(2, 300)
+
+    // When the Info tab saves 1000 g per bag, with no stock field
+    await updateItem(item.id, { amountPerPackage: 1000 })
+
+    // Then no row: the stock did not change
+    expect(await getItemLogs(item.id)).toHaveLength(0)
+  })
+
+  it('creating an item with an amount writes no stock count row', async () => {
+    const item = await flour(4)
+
+    expect(await getItemLogs(item.id)).toHaveLength(0)
+  })
+
+  it('a checkout writes its purchase row and no stock count row', async () => {
+    const vendor = await createVendor('Costco')
+    const item = await flour()
+    await addToCart(localCartId(vendor.id), item.id, 2)
+
+    await checkout(localCartId(vendor.id), {
+      logKey: 'purchase',
+      logParams: { vendorId: vendor.id, vendorName: 'Costco' },
+    })
+
+    const logs = await getItemLogs(item.id)
+    expect(logs).toHaveLength(1)
+    expect(stockCounts(logs)).toHaveLength(0)
+    expect(logs[0]?.logParams).toEqual({
+      vendorId: vendor.id,
+      vendorName: 'Costco',
+    })
+  })
+
+  it('a unit switch writes no stock count row', async () => {
+    const item = await flour(2, 300)
+
+    await applyUnitSwitchBatch({
+      itemId: item.id,
+      updates: { targetUnit: 'package' },
+      stockConversions: [
+        {
+          locationId: DEFAULT_LOCATION_ID,
+          quantities: { unpackedQuantity: 0.6 },
+        },
+      ],
+      recipeUpdates: [],
+    })
+
+    expect(await getItemLogs(item.id)).toHaveLength(0)
+  })
+
+  it('a failing log write leaves no stock change: the two are one transaction', async () => {
+    // Given the log table refuses the write
+    const item = await flour()
+    const add = vi
+      .spyOn(db.inventoryLogs, 'add')
+      .mockRejectedValueOnce(new Error('log write failed on purpose'))
+
+    // When the user saves 5 bags. `finally`: when the write is not reached
+    // (a broken `updateItem`), the queued rejection must not leak into the
+    // next test.
+    try {
+      await expect(updateItem(item.id, { packedQuantity: 5 })).rejects.toThrow(
+        'log write failed on purpose',
+      )
+    } finally {
+      add.mockRestore()
+    }
+
+    // Then the stock is still 2 bags
+    expect((await getItemStock(item.id))?.packedQuantity).toBe(2)
+  })
+})
+
+describe('getLastPurchaseDate skips stock count rows (option A)', () => {
+  it('user sees an old purchase with no logKey, not a newer positive stock count', async () => {
+    const item = await createItem({
+      name: 'Milk',
+      tagIds: [],
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 0,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+    })
+    const bought = new Date('2026-03-01T00:00:00.000Z')
+    // An old purchase row, written before logKey existed
+    await addInventoryLog({
+      itemId: item.id,
+      delta: 2,
+      quantity: 2,
+      occurredAt: bought,
+    })
+    // A NEWER stock count that added stock
+    await addInventoryLog({
+      itemId: item.id,
+      delta: 5,
+      quantity: 7,
+      occurredAt: new Date('2026-03-05T00:00:00.000Z'),
+      logKey: 'stockCount',
+    })
+
+    expect((await getLastPurchaseDate(item.id))?.getTime()).toBe(
+      bought.getTime(),
+    )
+  })
+})

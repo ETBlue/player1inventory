@@ -168,6 +168,27 @@ The **cart rows themselves survive** (they are shared by every item in the locat
 
 **6. Log (`/items/$id/log`, `History` icon)**
 - History/logs tab (view-only); never has unsaved changes
+- **Layout since 2026-11-25** (design `docs/features/items/2026-11-25-inventory-log-layout-design.md`).
+  One `<li>` per row, newest first, in a `<ul>` named "Log" (`items.detail.tabs.history`):
+
+  | Part | What |
+  |---|---|
+  | row 1, left | sign, amount and unit (`−30 g`, U+2212 for minus), then the label of the kind: "Bought at {vendor}" / "Bought", "Used in {recipes}" / "Used in cooking", "Stock count" (Chinese: 在 {vendor} 購買 / 購買, 用於 {recipes} / 烹飪使用, 盤點) |
+  | row 1, right | the quantity after the change, with the unit; a screen reader hears "After the change:" first |
+  | row 2 | `Wed, Nov 25, 2026 · 14:30` / `2026/11/25（週三）14:30`, through `Intl`, in a `<time>` |
+  | unit | the item's tracking unit: `measurementUnit` when the item tracks in measurement (with a measurement unit AND an `amountPerPackage`, the `consumeItem` test), else `packageUnit`. Purchase and stock count rows store `delta` and `quantity` in packs and are multiplied by `amountPerPackage`; a cooking row stores `delta` in the tracking unit already, so only its `quantity` is converted |
+  | numbers | at most 2 decimals, no trailing zeros |
+
+  Every rule is in `lib/inventoryLogDisplay.ts` (tests: `lib/inventoryLogDisplay.test.ts`, both
+  languages). The page reads `useVendors()` and `useRecipes()` for current names. Tests:
+  `$id/log.test.tsx` (the page, both languages), `$id/log.stories.tsx` → `NewLogShapes`
+  (renamed vendor, deleted vendor, deleted recipe, a real stock count, in grams)
+- **What writes a row.** Checkout (`purchase`), cooking (`cooking`), and since 2026-11-25 a
+  manual save that changes the on-hand total (`stockCount`): the Stock tab Save and the pantry
+  Quick update. The server writes it in cloud (`upsertItemStock`), local `updateItem` in local
+  mode. A save that changes only the target, the refill level or the due date writes none, and
+  neither does opening a pack (same total). Item create, Add to location and the unit switch
+  write none
 
 **Measurement Tracking Behavior:**
 
@@ -294,7 +315,8 @@ Users can manually set current inventory quantities in the item detail form:
 - Pre-populates with current `item.packedQuantity` and `item.unpackedQuantity`
 - Validates non-negative values
 - Warns when unpacked ≥ amountPerPackage
-- Saves directly to database without creating inventory log entries
+- A save that changes the on-hand total writes one "Stock count" log row (since 2026-11-25;
+  before, it wrote no log). See *6. Log* above
 - Use for initial setup, corrections, or adjustments
 
 **Files:**

@@ -140,8 +140,13 @@ export interface InventoryLog {
   delta: number
   quantity: number
   note?: string
+  // The kind of change: `purchase`, `cooking` or `stockCount` (see
+  // `inventoryLog.ts`). Older rows hold an i18n key path instead, such as
+  // `shopping.log.purchasedAt`, and the oldest rows only a `note`.
   logKey?: string
-  logParams?: Record<string, string>
+  // Data, not text: ids plus a name snapshot for new rows (a list of recipes
+  // is an array), plain names for older rows.
+  logParams?: Record<string, unknown>
   occurredAt: Date
   createdAt: Date
 }
@@ -291,3 +296,7 @@ export * from './quantity'
 // decision T33): the rank map, `locationRoleAtLeast` and
 // `canChangeLocationRole`.
 export * from './locationRoles'
+
+// The inventory log kinds and the stock count rule shared by the web and the
+// server (design 2026-11-25, inventory log layout).
+export * from './inventoryLog'

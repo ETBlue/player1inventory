@@ -62,7 +62,13 @@ import {
 } from '@/lib/quantityUtils'
 import { showSaveError } from '@/lib/saveError'
 import { sortItems } from '@/lib/sortUtils'
-import { DEFAULT_PACKAGE_UNIT, isBeingBought, type PantryItem } from '@/types'
+import {
+  DEFAULT_PACKAGE_UNIT,
+  isBeingBought,
+  type PantryItem,
+  PURCHASE_LOG_KEY,
+  type PurchaseLogParams,
+} from '@/types'
 
 export const Route = createFileRoute('/shopping/$vendorId')({
   component: VendorCartRoute,
@@ -699,17 +705,20 @@ function VendorCart() {
               isLoading={checkout.isPending}
               onClick={async () => {
                 if (cart) {
-                  const logKey = 'shopping.log.purchasedAt'
-                  const logParams = {
-                    vendor: vendor?.name ?? t('shopping.noVendor'),
+                  // Data, not text (design 2026-11-25, inventory log
+                  // layout): the vendor's id and a snapshot of its name,
+                  // both `null` for the no-vendor cart. No `note`: the Log
+                  // tab builds the label in the reader's language, with the
+                  // vendor's CURRENT name while it still exists.
+                  const logParams: PurchaseLogParams = {
+                    vendorId: cartVendorId,
+                    vendorName: vendor?.name ?? null,
                   }
-                  const note = t(logKey, logParams)
                   try {
                     await checkout.mutateAsync({
                       cartId: cart.id,
                       items: checkoutRows,
-                      note,
-                      logKey,
+                      logKey: PURCHASE_LOG_KEY,
                       logParams,
                     })
                     navigate({

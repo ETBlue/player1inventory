@@ -343,7 +343,7 @@ export interface ConsumeRecipeItem {
   delta: number
   note?: string
   logKey?: string
-  logParams?: Record<string, string>
+  logParams?: Record<string, unknown>
 }
 
 export interface ConsumeRecipesArgs {

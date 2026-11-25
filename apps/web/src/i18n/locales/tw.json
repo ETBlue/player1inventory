@@ -460,7 +460,17 @@
       }
     },
     "history": {
-      "empty": "尚無歷史紀錄"
+      "empty": "尚無歷史紀錄",
+      "kind": {
+        "purchaseAt": "在 {{vendor}} 購買",
+        "purchase": "購買",
+        "cookingIn": "用於 {{recipes}}",
+        "cooking": "烹飪使用",
+        "stockCount": "盤點"
+      },
+      "listSeparator": "、",
+      "when": "{{date}}（{{weekday}}）{{time}}",
+      "afterLabel": "變動後："
     }
   },
   "itemFilters": {
