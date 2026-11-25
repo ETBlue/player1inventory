@@ -76,6 +76,13 @@
       "description": "All items will be removed from the cart."
     },
     "cartChanged": "This cart changed. Please check and try again.",
+    "amountDialog": {
+      "context": "In stock {{stock}} · target {{target}} {{unit}}",
+      "amountLabel": "Amount ({{unit}})",
+      "decrease": "Decrease amount",
+      "increase": "Increase amount",
+      "zeroNote": "Amount 0 keeps the item in the cart. It is not bought this time. Buy it next time."
+    },
     "checkoutDialog": {
       "title": "Complete shopping trip?",
       "description": "Quantities will be updated based on your cart."
