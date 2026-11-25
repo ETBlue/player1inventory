@@ -2208,3 +2208,95 @@ describe('ItemCard - controlsDescribedBy', () => {
     ).not.toHaveAttribute('aria-describedby')
   })
 })
+
+// The cart page's amount button (cart amount dialog, 2026-11-25). With
+// `onAmountEdit` the card shows ONE button instead of `− n +`.
+describe('ItemCard - amount button (onAmountEdit)', () => {
+  const milk = makeItem({
+    name: 'Milk',
+    packageUnit: 'bottle',
+    targetUnit: 'package',
+    targetQuantity: 4,
+    refillThreshold: 1,
+    packedQuantity: 1,
+    unpackedQuantity: 0,
+  })
+
+  it('user can press the amount button, and it calls onAmountEdit once', async () => {
+    const user = userEvent.setup()
+    const onAmountEdit = vi.fn()
+    const onAmountChange = vi.fn()
+    await renderWithRouter(
+      <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
+        item={milk}
+        tags={[]}
+        tagTypes={[]}
+        mode="shopping"
+        isChecked
+        onCheckboxToggle={vi.fn()}
+        controlAmount={10}
+        amountUnit="bottle"
+        onAmountEdit={onAmountEdit}
+        onAmountChange={onAmountChange}
+      />,
+    )
+
+    // One button with the amount and unit; no − n + even with onAmountChange
+    const button = screen.getByRole('button', {
+      name: 'Edit amount of Milk: 10 bottle',
+    })
+    expect(button).toHaveTextContent('10 bottle')
+    expect(
+      screen.queryByRole('button', { name: /Increase quantity of Milk/ }),
+    ).toBeNull()
+
+    await user.click(button)
+    expect(onAmountEdit).toHaveBeenCalledTimes(1)
+    expect(onAmountChange).not.toHaveBeenCalled()
+  })
+
+  it('shows no amount button for an item not in the cart', async () => {
+    await renderWithRouter(
+      <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
+        item={milk}
+        tags={[]}
+        tagTypes={[]}
+        mode="shopping"
+        isChecked={false}
+        onCheckboxToggle={vi.fn()}
+        amountUnit="bottle"
+        onAmountEdit={vi.fn()}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: /^Edit amount of/ })).toBeNull()
+  })
+
+  it('location viewer sees the amount button disabled, and told why', async () => {
+    await renderWithRouter(
+      <>
+        <p id="why">You can view this location, but not change it.</p>
+        <ItemCard
+          lastPurchaseDate={lastPurchaseToday()}
+          item={milk}
+          tags={[]}
+          tagTypes={[]}
+          mode="shopping"
+          isChecked
+          disabled
+          controlsDescribedBy="why"
+          onCheckboxToggle={vi.fn()}
+          controlAmount={3}
+          amountUnit="bottle"
+          onAmountEdit={vi.fn()}
+        />
+      </>,
+    )
+    const button = screen.getByRole('button', { name: /^Edit amount of Milk/ })
+    expect(button).toBeDisabled()
+    expect(button).toHaveAccessibleDescription(
+      'You can view this location, but not change it.',
+    )
+  })
+})

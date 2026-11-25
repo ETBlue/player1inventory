@@ -4,6 +4,7 @@ import {
   ChefHat,
   Loader2,
   Minus,
+  Pencil,
   Plus,
   Store,
   TriangleAlert,
@@ -56,6 +57,15 @@ interface ItemCardProps {
   controlAmount?: number // shown in right-side controls (cart qty, recipe amount)
   minControlAmount?: number // minimum before minus disables (default: 1)
   onAmountChange?: (delta: number) => void
+  // Shows ONE amount button instead of the `− n +` group: the amount, the
+  // `amountUnit` and a pencil. Pressing it calls this, and the caller opens a
+  // dialog to set the amount in one request (the cart page, since
+  // 2026-11-25; `CartAmountDialog`). A separate callback, not another
+  // `mode`, so the cooking page and the recipe items tab keep `− n +` with
+  // no change. When both are passed, this one wins.
+  onAmountEdit?: () => void
+  // The unit word on the amount button, for example "pack" or "bottle".
+  amountUnit?: string
   onQuickUpdate?: () => void
   disabled?: boolean // disables checkbox and amount buttons (e.g. while saving)
   // The id of an element that says why the checkbox and amount buttons are
@@ -95,6 +105,8 @@ export function ItemCard({
   controlAmount,
   minControlAmount = 0,
   onAmountChange,
+  onAmountEdit,
+  amountUnit,
   onQuickUpdate,
   disabled,
   controlsDescribedBy,
@@ -136,8 +148,15 @@ export function ItemCard({
     'cooking',
   ].includes(mode)
 
-  if (import.meta.env.DEV && isAmountControllable && !onAmountChange) {
-    console.warn('ItemCard: controlAmount requires onAmountChange to function.')
+  if (
+    import.meta.env.DEV &&
+    isAmountControllable &&
+    !onAmountChange &&
+    !onAmountEdit
+  ) {
+    console.warn(
+      'ItemCard: controlAmount requires onAmountChange or onAmountEdit to function.',
+    )
   }
 
   // "Inactive" is targetQuantity === 0 — a per-location fact. When stock is
@@ -179,7 +198,27 @@ export function ItemCard({
             className="absolute -ml-10"
           />
         ))}
-      {isChecked && isAmountControllable && (
+      {isChecked && isAmountControllable && onAmountEdit && (
+        <Button
+          variant="neutral-outline"
+          size="sm"
+          className="absolute -right-26 top-1.5 w-[6.5rem] justify-between gap-1 px-2"
+          onClick={(e) => {
+            e.preventDefault()
+            onAmountEdit()
+          }}
+          // The visible text ("10 pack") is inside the name (WCAG 2.5.3).
+          aria-label={`Edit amount of ${item.name}: ${controlAmount ?? 0} ${amountUnit ?? ''}`.trimEnd()}
+          aria-describedby={controlsDescribedBy}
+          disabled={disabled || isPending}
+        >
+          <span className="truncate">
+            {controlAmount ?? 0} {amountUnit}
+          </span>
+          <Pencil className="h-4 w-4 shrink-0" />
+        </Button>
+      )}
+      {isChecked && isAmountControllable && !onAmountEdit && (
         <div className="flex items-stretch absolute -right-26 top-1.5">
           <Button
             variant="neutral-outline"
