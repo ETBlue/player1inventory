@@ -16,6 +16,8 @@ Brainstorming: `2026-11-25-brainstorming-inventory-log-layout.md`.
    - Amounts in the item's own unit. Vendor and recipe names follow renames, and the label
      follows the reader's language.
    - A stock count never changes the "last purchased" date or the expiry date.
+     **Reversed on 2026-11-26** (owner decision): a stock count that raises the amount now
+     counts. See `2026-11-26-expiry-from-last-restock-design.md`.
 4. **What the developer gets:**
    - Logs store data, not text. One mapping in the web turns a row into a label.
    - The stock count log cannot be forgotten by a client: the server writes it.
@@ -64,6 +66,10 @@ Brainstorming: `2026-11-25-brainstorming-inventory-log-layout.md`.
   Both are manual paths, so the server rule fits.
 
 ## Last purchase date
+
+> **Replaced on 2026-11-26.** The owner chose to count every row with `delta > 0`, stock
+> counts included. See `2026-11-26-expiry-from-last-restock-design.md`. The text below is
+> the rule from 2026-11-25 to 2026-11-26.
 
 Option A, the same in both modes: the newest row with `delta > 0` whose `logKey` is not
 `stockCount`. In Prisma this must keep rows whose `logKey` is `null`:
