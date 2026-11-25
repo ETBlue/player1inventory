@@ -15,6 +15,9 @@ type Item {
   estimatedDueDays: Int
   expirationThreshold: Int
   expirationMode: String
+  # false for an item that is not used up (cups, slippers). Every item is
+  # consumable unless someone turned it off.
+  consumable: Boolean!
   createdAt: String!
   updatedAt: String!
 }
@@ -47,6 +50,8 @@ input CreateItemInput {
   expirationMode: String
   wikidataUrl: String
   note: String
+  # Optional. Omitted or null: the default, true.
+  consumable: Boolean
 }
 
 input UpdateItemInput {
@@ -63,4 +68,6 @@ input UpdateItemInput {
   expirationMode: String
   wikidataUrl: String
   note: String
+  # Optional. Omitted or null: the stored value stays. Never written as null.
+  consumable: Boolean
 }

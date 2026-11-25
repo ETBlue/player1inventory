@@ -94,6 +94,10 @@ model Item {
   estimatedDueDays    Int?
   expirationThreshold Int?
   expirationMode      ExpirationMode @default(disabled)
+  // false for an item that is not used up (cups, slippers): the web shows its
+  // count of pieces, not a percentage of the target. Every item written before
+  // this column existed is consumable, so the default is true.
+  consumable          Boolean        @default(true)
   householdId         String
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt

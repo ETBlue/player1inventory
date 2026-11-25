@@ -168,14 +168,29 @@ describe("the current schema against main's schema", () => {
     )
   })
 
-  it('the only dangerous change is the new optional cartItemId on CheckoutItemInput', () => {
+  it('the dangerous changes are only new optional input fields the old bundle never sends', () => {
     // A "dangerous" change cannot fail an old request on its own, but it can
-    // change what the request means. `cartItemId` is the new checkout shape,
-    // and the old bundle never sends it (see `cart.graphql`).
-    const dangerous = findDangerousChanges(mainSchema, schema).map((c) => `${c.type}: ${c.description}`)
-    expect(dangerous).toEqual([
-      'OPTIONAL_INPUT_FIELD_ADDED: An optional field cartItemId on input type CheckoutItemInput was added.',
-    ])
+    // change what the request means. graphql-js reports EVERY new optional
+    // input field here, so each one is listed on purpose:
+    //
+    //   - `cartItemId` is the new checkout shape, and the old bundle never
+    //     sends it (see `cart.graphql`).
+    //   - `consumable` (2026-11-25, docs/features/items/
+    //     2026-11-25-item-consumable-design.md) on the three item inputs. No
+    //     old document or variable names it (`main-web-operations/items.graphql`
+    //     and `import.graphql`), and an omitted value is safe: create and
+    //     import write `true`, update keeps the stored value.
+    const dangerous = findDangerousChanges(mainSchema, schema)
+      .map((c) => `${c.type}: ${c.description}`)
+      .sort()
+    expect(dangerous).toEqual(
+      [
+        'OPTIONAL_INPUT_FIELD_ADDED: An optional field cartItemId on input type CheckoutItemInput was added.',
+        'OPTIONAL_INPUT_FIELD_ADDED: An optional field consumable on input type CreateItemInput was added.',
+        'OPTIONAL_INPUT_FIELD_ADDED: An optional field consumable on input type UpdateItemInput was added.',
+        'OPTIONAL_INPUT_FIELD_ADDED: An optional field consumable on input type ItemInput was added.',
+      ].sort(),
+    )
   })
 })
 

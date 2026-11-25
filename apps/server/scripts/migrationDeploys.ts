@@ -62,6 +62,9 @@ export const MIGRATION_DEPLOYS = [
     // either. Its one backfill reads "ItemStock" rows, and
     // seedLocationPreferenceBackfill in verify-migration.ts writes the rows
     // it needs before this deploy.
+    // add_item_consumable (2026-11-25) needs no seed step of its own: one
+    // NOT NULL column with DEFAULT true. Its "an old row reads true" check
+    // uses Item rows the earlier seed steps already wrote.
     // This deploy runs AFTER the `finally` in main(), where restoreIfParked
     // has put back every parked migration. So the LAST group is whatever is
     // still parked at that point, and it must be the last group here.
@@ -72,6 +75,7 @@ export const MIGRATION_DEPLOYS = [
       '20261120000000_add_household_activity',
       '20261120100000_add_ownership_offers',
       '20261122000000_add_location_preferences',
+      '20261125000000_add_item_consumable',
     ],
   },
 ] as const
