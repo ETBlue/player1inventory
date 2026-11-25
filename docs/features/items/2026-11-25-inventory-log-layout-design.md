@@ -136,6 +136,12 @@ Differences from the design above:
   the date is in a `<time>`. The right-hand number has a screen-reader prefix,
   "After the change:".
 
+- **Any `upsertItemStock` that changes the amount logs, including a test seed or a script.**
+  Five cloud E2E specs set stock with it and counted logs exactly; 14 cloud tests (4 on
+  Neon) failed until they were updated (commit "expect the stock count rows that stock
+  seeds now write"). A new spec that seeds stock this way and counts logs must leave
+  `stockCount` rows out, or count them.
+
 Known gaps:
 
 - The design's "Not in this design" items stand: rows from before a unit switch use today's
