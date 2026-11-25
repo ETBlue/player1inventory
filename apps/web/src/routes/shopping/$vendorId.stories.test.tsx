@@ -18,11 +18,16 @@ describe('ShoppingVendorCart page stories smoke tests', () => {
     expect(backButton).toBeInTheDocument()
   })
 
-  it('WithCartItems renders an item name', async () => {
+  it('WithCartItems renders the cart rows with their amount buttons', async () => {
     render(<WithCartItems />)
-    await waitFor(() => {
-      expect(screen.getByText(/milk/i)).toBeInTheDocument()
-    })
+    expect(
+      await screen.findByRole('button', {
+        name: 'Edit amount of Milk: 2 pack',
+      }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Edit amount of Eggs: 1 pack' }),
+    ).toBeInTheDocument()
   })
 
   it('WithNoVendorCart renders no vendor text', async () => {
