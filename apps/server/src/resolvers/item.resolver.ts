@@ -246,7 +246,19 @@ export const itemResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       // onto the caller's default `ItemStock` row, for a browser on a pre-PR-2
       // bundle that sent them here with no location to name. Stock is written
       // by `upsertItemStock(itemId, locationId)` and nothing else.
-      await prisma.item.update({ where: { id }, data: buildItemUpdateData(input) })
+      //
+      // Only consumable items can be in a recipe (lib/consumable.ts). A save
+      // that makes the item non-consumable also deletes its recipe links, in
+      // ONE transaction with the item write, so a recipe never holds a
+      // non-consumable item. `CATALOG` below covers the recipe change too.
+      if (input.consumable === false) {
+        await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+          await tx.item.update({ where: { id }, data: buildItemUpdateData(input) })
+          await tx.recipeItem.deleteMany({ where: { itemId: id } })
+        })
+      } else {
+        await prisma.item.update({ where: { id }, data: buildItemUpdateData(input) })
+      }
 
       // `CATALOG` in `finally`, for the same reason as `createItem`: the
       // writes below are not one transaction with the update above.

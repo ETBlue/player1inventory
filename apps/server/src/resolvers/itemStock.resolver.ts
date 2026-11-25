@@ -11,6 +11,7 @@ import {
   requireLocationRole,
 } from '../lib/authz.js'
 import { ensureStockAtLocation, writeStock } from '../lib/itemStockWrite.js'
+import { nonConsumableItemIds, notConsumableError } from '../lib/consumable.js'
 import { prisma } from '../lib/prisma.js'
 import { publishChange, publishHouseholdChange } from '../lib/publishChange.js'
 import { buildItemUpdateData, toGraphQL as itemToGraphQL } from './item.resolver.js'
@@ -403,6 +404,36 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         }
       }
 
+      // ── ONLY CONSUMABLE ITEMS IN A RECIPE (lib/consumable.ts) ────────────
+      //
+      // Also before the transaction. A recipe list may not ATTACH a
+      // non-consumable item. The switched item counts as it will be AFTER
+      // this switch (`updates.consumable`), the others as they are stored.
+      // A link the recipe already holds is not "attached", so a switch that
+      // turns the item off may still name its own old links: they are
+      // deleted in the transaction below.
+      const switchedTo = updates.consumable
+      const blocked = await nonConsumableItemIds(
+        householdId,
+        recipeUpdates.flatMap((update) => update.items.map((i) => i.itemId)),
+      )
+      if (switchedTo === true) blocked.delete(itemId)
+      if (switchedTo === false) blocked.add(itemId)
+      for (const update of recipeUpdates) {
+        const named = update.items.map((i) => i.itemId).filter((id) => blocked.has(id))
+        if (named.length === 0) continue
+        const linked = new Set(
+          (
+            await prisma.recipeItem.findMany({
+              where: { recipeId: update.recipeId },
+              select: { itemId: true },
+            })
+          ).map((r) => r.itemId),
+        )
+        const attached = named.filter((id) => !linked.has(id))
+        if (attached.length > 0) throw notConsumableError(attached)
+      }
+
       // Whether the switch changed the catalog (the item's own settings, or a
       // recipe's item list). Set inside the callback, read only after
       // `$transaction` has resolved, for the live event below.
@@ -458,6 +489,14 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
               })),
             })
           }
+        }
+
+        // The switch makes the item non-consumable: its recipe links go, in
+        // this same transaction (lib/consumable.ts). After the recipe updates
+        // above, so a list that still named it cannot bring a link back.
+        if (switchedTo === false) {
+          const { count } = await tx.recipeItem.deleteMany({ where: { itemId } })
+          if (count > 0) catalogChanged = true
         }
       })
 

@@ -9,6 +9,7 @@ import {
 } from '../lib/authz.js'
 import { prisma } from '../lib/prisma.js'
 import { writeStock } from '../lib/itemStockWrite.js'
+import { notConsumableError, requireConsumableAttachments } from '../lib/consumable.js'
 import { publishChange, publishHouseholdChange } from '../lib/publishChange.js'
 import { consumeItem, getPackedTotal } from '@p1i/types'
 import { requireAuth } from '../context.js'
@@ -54,6 +55,13 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
       // Issue #273: every item the recipe names must be the household's.
       // Checked BEFORE the recipe is created, so a refused call writes nothing.
       await requireCatalogIds(ctx, householdId, 'item', (items ?? []).map((i) => i.itemId))
+      // Only consumable items can be in a recipe (lib/consumable.ts). A new
+      // recipe holds no link yet, so every non-consumable item is refused.
+      await requireConsumableAttachments(
+        householdId,
+        (items ?? []).map((i) => i.itemId),
+        async () => new Set<string>(),
+      )
       const recipe = await prisma.recipe.create({ data: { name, householdId } })
       // `CATALOG` in `finally` (households H3c-2 task D.4): the recipe and
       // its ingredient rows are separate writes, so once the recipe is saved
@@ -75,6 +83,18 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
       if (!existing) throw new GraphQLError('Recipe not found', { extensions: { code: 'NOT_FOUND' } })
       // Issue #273: checked BEFORE any write, so a refused call changes nothing.
       await requireCatalogIds(ctx, householdId, 'item', (items ?? []).map((i) => i.itemId))
+      // Only consumable items can be in a recipe (lib/consumable.ts). Also
+      // before any write. A link the recipe already holds is not refused.
+      await requireConsumableAttachments(
+        householdId,
+        (items ?? []).map((i) => i.itemId),
+        async () =>
+          new Set(
+            (
+              await prisma.recipeItem.findMany({ where: { recipeId: id }, select: { itemId: true } })
+            ).map((r) => r.itemId),
+          ),
+      )
       const data: { name?: string } = {}
       if (name != null) data.name = name
       await prisma.recipe.update({ where: { id }, data })
@@ -176,8 +196,14 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
               measurementUnit: true,
               amountPerPackage: true,
               consumeAmount: true,
+              consumable: true,
             },
           })
+          // Cooking is only for consumable items (owner decision 2026-11-26,
+          // lib/consumable.ts). Checked before the first write, so a refused
+          // cook writes nothing. `=== false`: the column is NOT NULL.
+          const notConsumable = itemRows.filter((i) => i.consumable === false).map((i) => i.id)
+          if (notConsumable.length > 0) throw notConsumableError(notConsumable)
           const itemById = new Map(itemRows.map((i) => [i.id, i]))
 
           // Items in id order, so two cooks lock the same stock rows in the
