@@ -36,7 +36,7 @@ The tag type dialog: the second `AddNameDialog` in `tags.tsx` gets no `isPending
 
 Web only. No server or schema change.
 
-**The new badge (commit `2036a44a`).** `tags.tsx` and `vendors.tsx` keep the new id in
+**The new badge (commit `860152f1`).** `tags.tsx` and `vendors.tsx` keep the new id in
 local state (`assigningTagIds` / `assigningVendorIds`) from the moment the create returns
 until the assign is done.
 
@@ -52,7 +52,7 @@ until the assign is done.
 The Vendors tab now awaits the assign with `mutateAsync` (it used `mutate` with `onError`),
 so it knows when to clear the state.
 
-**The tag type dialog (commit `cf45f739`).** `tags.tsx` calls `useCreateTagType` directly and
+**The tag type dialog (commit `b0c83c19`).** `tags.tsx` calls `useCreateTagType` directly and
 passes its `isPending` to the second `AddNameDialog`. The Add button is disabled and shows a
 spinner while the tag type is created. `useAddTagType` was a thin wrapper with no `isPending`,
 and this tab was its only caller, so it is deleted.
@@ -81,4 +81,4 @@ the reload is what checks the saved state.
 
 ## PR / commit
 
-PR #418 into `develop`. Commits `2036a44a` (the badge), `cf45f739` (the tag type dialog).
+PR #418 into `develop`. Commits `860152f1` (the badge), `b0c83c19` (the tag type dialog).

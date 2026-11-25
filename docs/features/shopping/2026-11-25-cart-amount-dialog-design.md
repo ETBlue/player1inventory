@@ -1,6 +1,6 @@
 # Design: set a cart amount in a dialog
 
-Date: 2026-11-25. Branch `feature/cart-amount-dialog`, from `develop` at `333dc2ca`.
+Date: 2026-11-25. Branch `feature/cart-amount-dialog`, from `develop` at `aba1f314`.
 Brainstorming: `2026-11-25-brainstorming-cart-amount-dialog.md`.
 
 ## Summary

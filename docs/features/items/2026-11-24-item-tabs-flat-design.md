@@ -1,6 +1,6 @@
 # Design: item page tabs (stay after Save, one flat tab row)
 
-Date: 2026-11-24. Branch `feature/item-tabs-flat`, from `develop` at `1fa610b2`.
+Date: 2026-11-24. Branch `feature/item-tabs-flat`, from `develop` at `34693751`.
 Brainstorming: `2026-11-24-brainstorming-item-tabs-flat.md`.
 
 ## Summary

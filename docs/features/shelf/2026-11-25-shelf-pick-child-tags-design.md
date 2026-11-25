@@ -1,6 +1,6 @@
 # Design: pick a child tag when adding to a filter shelf
 
-Date: 2026-11-25. Branch `feature/shelf-pick-child-tags`, from `develop` at `333dc2ca`.
+Date: 2026-11-25. Branch `feature/shelf-pick-child-tags`, from `develop` at `aba1f314`.
 Brainstorming: `2026-11-25-brainstorming-shelf-pick-child-tags.md`.
 
 ## Summary

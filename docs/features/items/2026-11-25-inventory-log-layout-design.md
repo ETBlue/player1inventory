@@ -1,6 +1,6 @@
 # Design: inventory log layout and stock count rows
 
-Date: 2026-11-25. Branch `feature/inventory-log-layout`, from `develop` at `333dc2ca`.
+Date: 2026-11-25. Branch `feature/inventory-log-layout`, from `develop` at `aba1f314`.
 Brainstorming: `2026-11-25-brainstorming-inventory-log-layout.md`.
 
 ## Summary
