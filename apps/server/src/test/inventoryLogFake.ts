@@ -18,6 +18,13 @@
 //     locations sees the difference.
 //   - `delta: { gt: n }`, the filter `lastPurchaseDates` uses to skip
 //     consumption logs and find purchases.
+//   - `logKey`, `OR` and `NOT`, with SQL's NULL rules (design 2026-11-25,
+//     inventory log layout). `lastPurchaseDates` skips stock count rows with
+//     `OR: [{ logKey: null }, { logKey: { not: 'stockCount' } }]`. In SQL,
+//     `logKey <> 'x'` and `NOT (logKey = 'x')` are both NULL for a NULL
+//     column, so the row is NOT returned. This fake does the same, so a
+//     resolver that drops the `logKey: null` branch, or uses `NOT` instead of
+//     the `OR`, loses the old NULL-key purchase rows here too.
 //   - `orderBy: { occurredAt: 'asc' | 'desc' }`, so "most recent" is a real
 //     sort rather than the order the fixture happened to be seeded in.
 //   - `create` stores the row, so a write can be read back through the same
@@ -85,6 +92,11 @@ const LOG_WHERE: WhereSpec = {
   locationId: 'in',
   delta: 'number',
   quantity: 'number',
+  logKey: 'nullableNot',
+  OR: { or: { logKey: 'nullableNot' } },
+  // `NOT: { logKey: 'x' }` only. Modelled so the mutation check "use NOT
+  // instead of the OR" fails here the way it fails in SQL.
+  NOT: { nested: { logKey: 'equals' } },
 }
 
 function checkLogWhere(where: Where | undefined): void {
@@ -107,7 +119,29 @@ function matchesLog(row: FakeInventoryLog, where: Where): boolean {
   }
   if (!matchesNumber(row.delta, where.delta)) return false
   if (!matchesNumber(row.quantity, where.quantity)) return false
+  if (where.logKey !== undefined && !matchesLogKey(row.logKey ?? null, where.logKey)) {
+    return false
+  }
+  if (where.OR !== undefined) {
+    const branches = where.OR as Where[]
+    if (!branches.some((branch) => matchesLog(row, branch))) return false
+  }
+  if (where.NOT !== undefined) {
+    // SQL: `NOT (logKey = 'x')` is NULL, so false, when `logKey` is NULL.
+    const key = row.logKey ?? null
+    const not = (where.NOT as { logKey: string }).logKey
+    if (key === null || key === not) return false
+  }
   return true
+}
+
+// `null` = IS NULL; a string = equal; `{ not: s }` = `<> s`, which is never
+// true for a NULL column (SQL three-valued logic).
+function matchesLogKey(value: string | null, filter: unknown): boolean {
+  if (filter === null) return value === null
+  if (typeof filter === 'string') return value === filter
+  const not = (filter as { not: string }).not
+  return value !== null && value !== not
 }
 
 function sortRows(

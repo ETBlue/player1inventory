@@ -1,4 +1,5 @@
 import { GraphQLError } from 'graphql'
+import { STOCK_COUNT_LOG_KEY, stockCountChange } from '@p1i/types'
 import { requireAuth } from '../context.js'
 import {
   householdOfLocation,
@@ -132,30 +133,79 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
 
   Mutation: {
     upsertItemStock: async (_, { itemId, locationId, input }, ctx) => {
-      // No `requireAuth` of its own: `requireLocationRole` runs it first, so
-      // an unauthenticated caller still fails before any read.
+      // The author of the stock count log below. `requireLocationRole` would
+      // also refuse a caller with no user, with the same error.
+      const userId = requireAuth(ctx)
       await requireLocationRole(ctx, locationId, 'participant')
       // The item must be an item of the location's household (households
       // H3a, task 3.8). Checked before the write, so a refusal writes nothing.
       await requireLocationItems(ctx, locationId, [itemId])
       const data = toData(input as StockInput)
       // `writeStock` (lib/itemStockWrite.ts) is the one place per-location
-      // stock is written. This resolver used to hold its own
-      // `findUnique`-then-`update`-or-`create` block with the same zero
-      // defaults — a second copy of the same upsert, which is how the two
-      // could have drifted apart on what an omitted field means.
+      // stock is written. Until cloud locations PR 5 this was followed by a
+      // REVERSE mirror onto `Item`'s five legacy state columns; PR 5 dropped
+      // those columns, so there is nothing to mirror onto.
       //
-      // One write, and nothing after it. Until cloud locations PR 5 this was
-      // followed by a REVERSE mirror onto `Item`'s five legacy state columns,
-      // run only when the location written was the caller's default, so a
-      // browser on a pre-PR-2 bundle kept seeing its quantities move. PR 5
-      // drops those columns: `ItemStock` is the only place a quantity lives
-      // and there is nothing to mirror it onto. That is also why this resolver
-      // no longer reads `isDefault` off the authorized row.
-      const saved = await writeStock(itemId, locationId, data)
-      // After the write (households H3c-2 task D.2). `writeStock` always
-      // writes a row, so there is always something to tell other tabs.
-      await publishChange(ctx, ['STOCK'], [{ locationId }])
+      // ── THE STOCK COUNT LOG (design 2026-11-25, inventory log layout) ──
+      //
+      // A manual save (the Stock tab, Quick update) is a stock count, 盤點.
+      // When it changes the on-hand total, ONE `stockCount` log row is written
+      // in the SAME transaction as the stock write, so a failed log write
+      // leaves no stock change and a stock change never misses its log. The
+      // server writes it, not the web, so no client can forget it.
+      //
+      // The web calls this mutation only from `useUpdateItem` and
+      // `useCreateItem` (`apps/web/src/hooks/useItems.ts`), and both are manual
+      // paths. Checkout, cooking, `addItemToLocation` and `applyUnitSwitch`
+      // write stock through `writeStock` directly and log nothing here.
+      //
+      // `SELECT … FOR UPDATE` first, as in `consumeRecipes`: two saves of the
+      // same row at once then read the old row one after the other, so the
+      // second log's `delta` starts from the first save's total. A missing row
+      // locks nothing; two first saves then both start from 0.
+      const { saved, logged } = await prisma.$transaction(
+        async (tx: Prisma.TransactionClient) => {
+          await tx.$queryRaw`SELECT id FROM "ItemStock" WHERE "itemId" = ${itemId} AND "locationId" = ${locationId} FOR UPDATE`
+          const before = await tx.itemStock.findUnique({
+            where: { itemId_locationId: { itemId, locationId } },
+          })
+          const saved = await writeStock(itemId, locationId, data, tx)
+          // Read after the write, through `tx`. `useUpdateItem` saves the
+          // item's configuration first, so this is the new `amountPerPackage`,
+          // and both totals use it (`stockCountChange`).
+          const item = await tx.item.findUnique({
+            where: { id: itemId },
+            select: { amountPerPackage: true },
+          })
+          const change = stockCountChange(before, saved, item?.amountPerPackage)
+          // Set only after the row is written, so `LOG` is published for a
+          // written row and never for a skipped one.
+          let logged = false
+          if (change) {
+            await tx.inventoryLog.create({
+              data: {
+                itemId,
+                locationId,
+                userId,
+                // Both in PACKAGES, like a checkout row. The Log tab converts
+                // to the item's tracking unit when it shows the row.
+                delta: change.delta,
+                quantity: change.quantity,
+                occurredAt: new Date(),
+                // Data only: no `note`, no `logParams`.
+                logKey: STOCK_COUNT_LOG_KEY,
+              },
+            })
+            logged = true
+          }
+          return { saved, logged }
+        },
+      )
+      // After the commit (households H3c-2 task D.2). `writeStock` always
+      // writes a row, so `STOCK` is always sent. `LOG` only when a row was
+      // written: a save that changed only the target or the due date logs
+      // nothing.
+      await publishChange(ctx, logged ? ['STOCK', 'LOG'] : ['STOCK'], [{ locationId }])
       return toGraphQL(saved)
     },
 

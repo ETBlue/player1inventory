@@ -26,6 +26,7 @@ import {
   upsertItemStock,
 } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
+import { elementAt } from '@/test/narrow'
 import { watchUnhandledRejections } from '@/test/unhandledRejections'
 import { DEFAULT_LOCATION_ID } from '@/types'
 
@@ -107,12 +108,21 @@ describe('Item detail page - manual quantity input', () => {
       expect(updatedItem?.packedQuantity).toBe(5)
     })
 
-    // And no inventory log is created
-    const logs = await db.inventoryLogs
-      .where('itemId')
-      .equals(item.id)
-      .toArray()
-    expect(logs).toHaveLength(0)
+    // And one stock count log row is written: +3, 5 packs after
+    // (design 2026-11-25, inventory log layout; until then a manual save
+    // wrote no log)
+    await waitFor(async () => {
+      const logs = await db.inventoryLogs
+        .where('itemId')
+        .equals(item.id)
+        .toArray()
+      expect(logs).toHaveLength(1)
+      expect(elementAt(logs, 0)).toMatchObject({
+        logKey: 'stockCount',
+        delta: 3,
+        quantity: 5,
+      })
+    })
   })
 
   it('user can manually set unpacked quantity for dual-unit items', async () => {
