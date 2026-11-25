@@ -58,6 +58,10 @@ export type ItemFormValues = {
   expirationMode: ExpirationMode
   estimatedDueDays: string | number
   expirationThreshold: string | number
+  // `false` for an item that is not used up (cups). Off hides the measurement
+  // settings, the opened packs and the expiration settings, and KEEPS their
+  // values, so turning it on again shows them as they were.
+  consumable: boolean
 }
 
 // The five values held as NUMBERS and edited through a `type="number"` input.
@@ -93,6 +97,7 @@ const DEFAULT_VALUES: ItemFormValues = {
   targetUnit: 'package',
   measurementUnit: '',
   amountPerPackage: '',
+  consumable: true,
 }
 
 interface ItemFormProps {
@@ -189,6 +194,7 @@ export function ItemForm({
   const [amountPerPackage, setAmountPerPackage] = useState(
     merged.amountPerPackage,
   )
+  const [consumable, setConsumable] = useState(merged.consumable)
 
   // A number input that stores a NUMBER cannot represent what the user is
   // half-way through typing. `Number('') === 0`, so backspacing the last digit
@@ -224,6 +230,7 @@ export function ItemForm({
     targetUnit,
     measurementUnit,
     amountPerPackage,
+    consumable,
   }
   currentValuesRef.current = currentValues
 
@@ -243,7 +250,8 @@ export function ItemForm({
     expirationThreshold !== baseValues.expirationThreshold ||
     targetUnit !== baseValues.targetUnit ||
     measurementUnit !== baseValues.measurementUnit ||
-    amountPerPackage !== baseValues.amountPerPackage
+    amountPerPackage !== baseValues.amountPerPackage ||
+    consumable !== baseValues.consumable
 
   const isDirtyRef = useRef(isDirty)
   isDirtyRef.current = isDirty
@@ -286,6 +294,7 @@ export function ItemForm({
     setTargetUnit(next.targetUnit)
     setMeasurementUnit(next.measurementUnit)
     setAmountPerPackage(next.amountPerPackage)
+    setConsumable(next.consumable)
     setBaseValues({ ...next })
     // A form reset replaces every value, so no in-progress text may survive it.
     setNumericDrafts({})
@@ -313,6 +322,18 @@ export function ItemForm({
       setConsumeAmount((prev) => round(prev * factor))
     }
     setTargetUnit(checked ? 'measurement' : 'package')
+  }
+
+  // Turning Consumable off on an item tracked in a measurement unit also moves
+  // it to packages (design, PR 2): a non-consumable counts whole pieces. It
+  // is the same change as turning "Track in measurement" off, so the same
+  // conversion runs, and on Save the Info tab shows the same converted
+  // amounts dialog as a unit change (`applyUnitSwitch`). Turning it on again
+  // does NOT move the item back to the measurement unit; the person can do
+  // that with the switch, which shows again.
+  const handleConsumableChange = (checked: boolean) => {
+    if (!checked && targetUnit === 'measurement') handleTargetUnitChange(false)
+    setConsumable(checked)
   }
 
   // `value` / `onChange` / `onBlur` for one number input. Spread it LAST so it
@@ -564,6 +585,27 @@ export function ItemForm({
           </div>
 
           <div>
+            <div className="flex items-center gap-3">
+              <Switch
+                id="consumable"
+                checked={consumable}
+                onCheckedChange={handleConsumableChange}
+                disabled={readOnly}
+                aria-describedby={`${formId}-consumable-hint`}
+              />
+              <Label htmlFor="consumable" className="cursor-pointer">
+                {t('items.form.consumable.label')}
+              </Label>
+            </div>
+            <p
+              id={`${formId}-consumable-hint`}
+              className="text-xs text-foreground-muted"
+            >
+              {t('items.form.consumable.hint')}
+            </p>
+          </div>
+
+          <div>
             <Label htmlFor="packageUnit">
               {t('items.form.packageUnit.label')}
             </Label>
@@ -606,176 +648,186 @@ export function ItemForm({
             </p>
           </div>
 
-          <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-center pt-2">
-            <div className="h-px bg-accessory-emphasized" />
-            <h2 className="text-sm font-medium uppercase">
-              {t('items.form.advancedStockSettingsHeading')}
-            </h2>
-            <div className="h-px bg-accessory-emphasized" />
-          </div>
+          {/* A non-consumable item has no measurement unit, opened packs or
+              expiry. The values stay in the form and are saved unchanged. */}
+          {consumable && (
+            <>
+              <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-center pt-2">
+                <div className="h-px bg-accessory-emphasized" />
+                <h2 className="text-sm font-medium uppercase">
+                  {t('items.form.advancedStockSettingsHeading')}
+                </h2>
+                <div className="h-px bg-accessory-emphasized" />
+              </div>
 
-          <div>
-            <div className="flex items-center gap-3">
-              <Switch
-                id="targetUnit"
-                checked={targetUnit === 'measurement'}
-                onCheckedChange={handleTargetUnitChange}
-                disabled={readOnly}
-              />
-              <Label htmlFor="targetUnit" className="cursor-pointer">
-                {t('items.form.trackInMeasurement.label')}{' '}
-                <UnitInline
-                  unit={measurementUnit || undefined}
-                  placeholder="?"
-                />
-              </Label>
-            </div>
-            <p className="text-xs text-foreground-muted">
-              {t('items.form.trackInMeasurement.hint')}
-            </p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="measurementUnit">
-                {t('items.form.measurementUnit.label')}
-              </Label>
-              <Input
-                id="measurementUnit"
-                readOnly={readOnly}
-                value={measurementUnit}
-                onChange={(e) => setMeasurementUnit(e.target.value)}
-                disabled={targetUnit !== 'measurement'}
-                error={
-                  targetUnit === 'measurement'
-                    ? measurementUnitError
-                    : undefined
-                }
-              />
-              <p className="text-xs text-foreground-muted">
-                {t('items.form.measurementUnit.hint')}
-              </p>
-            </div>
-
-            <div>
-              <Label htmlFor="amountPerPackage">
-                {t('items.form.amountPerPackage.label')}
-                {measurementUnit && (
-                  <span className="text-xs font-normal">
-                    {' '}
-                    ({measurementUnit})
-                  </span>
-                )}
-              </Label>
-              <Input
-                id="amountPerPackage"
-                readOnly={readOnly}
-                type="number"
-                step="1"
-                min={1}
-                value={amountPerPackage}
-                onChange={(e) => setAmountPerPackage(e.target.value)}
-                disabled={targetUnit !== 'measurement'}
-                error={
-                  targetUnit === 'measurement'
-                    ? amountPerPackageError
-                    : undefined
-                }
-              />
-              <p className="text-xs text-foreground-muted">
-                {t('items.form.amountPerPackage.hint', {
-                  unit: measurementUnit || '?',
-                })}
-              </p>
-            </div>
-          </div>
-
-          <div>
-            <Label htmlFor="expirationMode">
-              {t('items.form.expirationMode.label')}
-            </Label>
-            <Select
-              value={expirationMode}
-              onValueChange={(value: ExpirationMode) =>
-                setExpirationMode(value)
-              }
-              disabled={readOnly}
-            >
-              <SelectTrigger id="expirationMode">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="disabled">
-                  <div className="flex items-center gap-2">
-                    <InfinityIcon className="h-4 w-4" />
-                    <span>
-                      {t('items.form.expirationMode.options.disabled')}
-                    </span>
-                  </div>
-                </SelectItem>
-                <SelectItem value="date">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4" />
-                    <span>{t('items.form.expirationMode.options.date')}</span>
-                  </div>
-                </SelectItem>
-                <SelectItem value="days from purchase">
-                  <div className="flex items-center gap-2">
-                    <Clock className="h-4 w-4" />
-                    <span>
-                      {t('items.form.expirationMode.options.daysFromPurchase')}
-                    </span>
-                  </div>
-                </SelectItem>
-              </SelectContent>
-            </Select>
-            {expirationMode === 'date' && (
-              <p className="text-xs text-foreground-muted">
-                {t('items.form.expirationMode.dateHint')}
-              </p>
-            )}
-          </div>
-
-          {expirationMode !== 'disabled' && (
-            <div className="grid grid-cols-2 gap-4">
-              {expirationMode === 'days from purchase' && (
-                <div>
-                  <Label htmlFor="expirationDueDays">
-                    {t('items.form.estimatedDueDays.label')}{' '}
-                    <span className="text-xs font-normal">
-                      {t('items.form.daysUnit')}
-                    </span>
-                  </Label>
-                  <Input
-                    id="expirationDueDays"
-                    readOnly={readOnly}
-                    type="number"
-                    min={1}
-                    value={estimatedDueDays}
-                    onChange={(e) => setEstimatedDueDays(e.target.value)}
-                  />
-                </div>
-              )}
               <div>
-                <Label htmlFor="expirationThreshold">
-                  {t('items.form.expirationThreshold.label')}{' '}
-                  <span className="text-xs font-normal">
-                    {t('items.form.daysUnit')}
-                  </span>
-                </Label>
-                <Input
-                  id="expirationThreshold"
-                  readOnly={readOnly}
-                  type="number"
-                  min={0}
-                  value={expirationThreshold}
-                  onChange={(e) => setExpirationThreshold(e.target.value)}
-                />
+                <div className="flex items-center gap-3">
+                  <Switch
+                    id="targetUnit"
+                    checked={targetUnit === 'measurement'}
+                    onCheckedChange={handleTargetUnitChange}
+                    disabled={readOnly}
+                  />
+                  <Label htmlFor="targetUnit" className="cursor-pointer">
+                    {t('items.form.trackInMeasurement.label')}{' '}
+                    <UnitInline
+                      unit={measurementUnit || undefined}
+                      placeholder="?"
+                    />
+                  </Label>
+                </div>
                 <p className="text-xs text-foreground-muted">
-                  {t('items.form.expirationThreshold.hint')}
+                  {t('items.form.trackInMeasurement.hint')}
                 </p>
               </div>
-            </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="measurementUnit">
+                    {t('items.form.measurementUnit.label')}
+                  </Label>
+                  <Input
+                    id="measurementUnit"
+                    readOnly={readOnly}
+                    value={measurementUnit}
+                    onChange={(e) => setMeasurementUnit(e.target.value)}
+                    disabled={targetUnit !== 'measurement'}
+                    error={
+                      targetUnit === 'measurement'
+                        ? measurementUnitError
+                        : undefined
+                    }
+                  />
+                  <p className="text-xs text-foreground-muted">
+                    {t('items.form.measurementUnit.hint')}
+                  </p>
+                </div>
+
+                <div>
+                  <Label htmlFor="amountPerPackage">
+                    {t('items.form.amountPerPackage.label')}
+                    {measurementUnit && (
+                      <span className="text-xs font-normal">
+                        {' '}
+                        ({measurementUnit})
+                      </span>
+                    )}
+                  </Label>
+                  <Input
+                    id="amountPerPackage"
+                    readOnly={readOnly}
+                    type="number"
+                    step="1"
+                    min={1}
+                    value={amountPerPackage}
+                    onChange={(e) => setAmountPerPackage(e.target.value)}
+                    disabled={targetUnit !== 'measurement'}
+                    error={
+                      targetUnit === 'measurement'
+                        ? amountPerPackageError
+                        : undefined
+                    }
+                  />
+                  <p className="text-xs text-foreground-muted">
+                    {t('items.form.amountPerPackage.hint', {
+                      unit: measurementUnit || '?',
+                    })}
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="expirationMode">
+                  {t('items.form.expirationMode.label')}
+                </Label>
+                <Select
+                  value={expirationMode}
+                  onValueChange={(value: ExpirationMode) =>
+                    setExpirationMode(value)
+                  }
+                  disabled={readOnly}
+                >
+                  <SelectTrigger id="expirationMode">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="disabled">
+                      <div className="flex items-center gap-2">
+                        <InfinityIcon className="h-4 w-4" />
+                        <span>
+                          {t('items.form.expirationMode.options.disabled')}
+                        </span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="date">
+                      <div className="flex items-center gap-2">
+                        <Calendar className="h-4 w-4" />
+                        <span>
+                          {t('items.form.expirationMode.options.date')}
+                        </span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="days from purchase">
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-4 w-4" />
+                        <span>
+                          {t(
+                            'items.form.expirationMode.options.daysFromPurchase',
+                          )}
+                        </span>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                {expirationMode === 'date' && (
+                  <p className="text-xs text-foreground-muted">
+                    {t('items.form.expirationMode.dateHint')}
+                  </p>
+                )}
+              </div>
+
+              {expirationMode !== 'disabled' && (
+                <div className="grid grid-cols-2 gap-4">
+                  {expirationMode === 'days from purchase' && (
+                    <div>
+                      <Label htmlFor="expirationDueDays">
+                        {t('items.form.estimatedDueDays.label')}{' '}
+                        <span className="text-xs font-normal">
+                          {t('items.form.daysUnit')}
+                        </span>
+                      </Label>
+                      <Input
+                        id="expirationDueDays"
+                        readOnly={readOnly}
+                        type="number"
+                        min={1}
+                        value={estimatedDueDays}
+                        onChange={(e) => setEstimatedDueDays(e.target.value)}
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <Label htmlFor="expirationThreshold">
+                      {t('items.form.expirationThreshold.label')}{' '}
+                      <span className="text-xs font-normal">
+                        {t('items.form.daysUnit')}
+                      </span>
+                    </Label>
+                    <Input
+                      id="expirationThreshold"
+                      readOnly={readOnly}
+                      type="number"
+                      min={0}
+                      value={expirationThreshold}
+                      onChange={(e) => setExpirationThreshold(e.target.value)}
+                    />
+                    <p className="text-xs text-foreground-muted">
+                      {t('items.form.expirationThreshold.hint')}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
@@ -818,109 +870,114 @@ export function ItemForm({
                   ),
                 }}
               />
-              <Button
-                type="button"
-                variant="neutral-outline"
-                disabled={readOnly || packedQuantity < 1}
-                onClick={() => {
-                  const next = computeUnpack(
-                    {
-                      targetUnit,
-                      consumeAmount,
-                      ...(amountPerPackage
-                        ? { amountPerPackage: Number(amountPerPackage) }
-                        : {}),
-                    },
-                    { packedQuantity, unpackedQuantity },
-                  )
-                  setPackedQuantity(next.packedQuantity)
-                  setUnpackedQuantity(next.unpackedQuantity)
-                }}
-              >
-                <PackageOpen />
-                {t('items.form.unpack')}
-              </Button>
+              {consumable && (
+                <Button
+                  type="button"
+                  variant="neutral-outline"
+                  disabled={readOnly || packedQuantity < 1}
+                  onClick={() => {
+                    const next = computeUnpack(
+                      {
+                        targetUnit,
+                        consumeAmount,
+                        ...(amountPerPackage
+                          ? { amountPerPackage: Number(amountPerPackage) }
+                          : {}),
+                      },
+                      { packedQuantity, unpackedQuantity },
+                    )
+                    setPackedQuantity(next.packedQuantity)
+                    setUnpackedQuantity(next.unpackedQuantity)
+                  }}
+                >
+                  <PackageOpen />
+                  {t('items.form.unpack')}
+                </Button>
+              )}
             </div>
             <p className="text-xs text-foreground-muted">
               {t('items.form.packedQuantity.hint')}
             </p>
           </div>
 
-          <div>
-            <Label htmlFor="unpackedQuantity">
-              {t('items.form.unpackedQuantity.label')}{' '}
-              <UnitInline
-                unit={
-                  targetUnit === 'measurement'
-                    ? measurementUnit || undefined
-                    : packageUnit || undefined
-                }
-              />
-            </Label>
-            <div className="grid grid-cols-[auto_8rem] gap-2">
-              <QuantityStepper
-                value={unpackedQuantity}
-                onStep={setUnpackedQuantity}
-                step={stepperStep}
-                round={(n) => roundToStep(n, stepperStep)}
-                decreaseLabel={t('items.form.unpackedQuantity.decrease')}
-                increaseLabel={t('items.form.unpackedQuantity.increase')}
-                disabled={isPending}
-                readOnly={readOnly}
-                size="default"
-                inputProps={{
-                  id: 'unpackedQuantity',
-                  step: quantityStep,
-                  ...numericInputProps(
-                    'unpackedQuantity',
-                    unpackedQuantity,
-                    setUnpackedQuantity,
-                    // roundToStep returns the value untouched when the step is
-                    // <= 0, so an unset consume amount rounds nothing.
-                    (n) => roundToStep(n, consumeAmount),
-                  ),
-                }}
-              />
-              <Button
-                type="button"
-                variant="neutral-outline"
-                disabled={
-                  readOnly ||
-                  (targetUnit === 'package'
-                    ? unpackedQuantity < 1
-                    : targetUnit === 'measurement'
-                      ? !amountPerPackage ||
-                        unpackedQuantity < Number(amountPerPackage)
-                      : true)
-                }
-                onClick={() => {
-                  const next = computePack(
-                    {
-                      targetUnit,
-                      consumeAmount,
-                      ...(amountPerPackage
-                        ? { amountPerPackage: Number(amountPerPackage) }
-                        : {}),
-                    },
-                    { packedQuantity, unpackedQuantity },
-                  )
-                  setPackedQuantity(next.packedQuantity)
-                  setUnpackedQuantity(next.unpackedQuantity)
-                }}
-              >
-                <Package />
-                {t('items.form.pack')}
-              </Button>
+          {/* A non-consumable item counts whole packs only: no opened packs. */}
+          {consumable && (
+            <div>
+              <Label htmlFor="unpackedQuantity">
+                {t('items.form.unpackedQuantity.label')}{' '}
+                <UnitInline
+                  unit={
+                    targetUnit === 'measurement'
+                      ? measurementUnit || undefined
+                      : packageUnit || undefined
+                  }
+                />
+              </Label>
+              <div className="grid grid-cols-[auto_8rem] gap-2">
+                <QuantityStepper
+                  value={unpackedQuantity}
+                  onStep={setUnpackedQuantity}
+                  step={stepperStep}
+                  round={(n) => roundToStep(n, stepperStep)}
+                  decreaseLabel={t('items.form.unpackedQuantity.decrease')}
+                  increaseLabel={t('items.form.unpackedQuantity.increase')}
+                  disabled={isPending}
+                  readOnly={readOnly}
+                  size="default"
+                  inputProps={{
+                    id: 'unpackedQuantity',
+                    step: quantityStep,
+                    ...numericInputProps(
+                      'unpackedQuantity',
+                      unpackedQuantity,
+                      setUnpackedQuantity,
+                      // roundToStep returns the value untouched when the step is
+                      // <= 0, so an unset consume amount rounds nothing.
+                      (n) => roundToStep(n, consumeAmount),
+                    ),
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="neutral-outline"
+                  disabled={
+                    readOnly ||
+                    (targetUnit === 'package'
+                      ? unpackedQuantity < 1
+                      : targetUnit === 'measurement'
+                        ? !amountPerPackage ||
+                          unpackedQuantity < Number(amountPerPackage)
+                        : true)
+                  }
+                  onClick={() => {
+                    const next = computePack(
+                      {
+                        targetUnit,
+                        consumeAmount,
+                        ...(amountPerPackage
+                          ? { amountPerPackage: Number(amountPerPackage) }
+                          : {}),
+                      },
+                      { packedQuantity, unpackedQuantity },
+                    )
+                    setPackedQuantity(next.packedQuantity)
+                    setUnpackedQuantity(next.unpackedQuantity)
+                  }}
+                >
+                  <Package />
+                  {t('items.form.pack')}
+                </Button>
+              </div>
+              <p className="text-xs text-foreground-muted">
+                {t('items.form.unpackedQuantity.hint')}
+              </p>
             </div>
-            <p className="text-xs text-foreground-muted">
-              {t('items.form.unpackedQuantity.hint')}
-            </p>
-          </div>
+          )}
 
           {/* The due date is the one expiration field that is genuinely
               per-location — "when THIS one expires". The mode that gates it is
               global and edited on the Info tab. */}
-          {expirationMode === 'date' && (
+          {consumable && expirationMode === 'date' && (
             <div>
               <Label htmlFor="expirationDueDate">{t('common.expiresOn')}</Label>
               <Input

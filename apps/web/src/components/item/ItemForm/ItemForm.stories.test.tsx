@@ -16,6 +16,7 @@ const {
   InfoSectionReadOnly,
   StockSectionReadOnly,
   SaveInTopBar,
+  NotConsumable,
 } = composeStories(stories)
 
 describe('ItemForm stories smoke tests', () => {
@@ -105,5 +106,14 @@ describe('ItemForm stories smoke tests', () => {
     expect(
       screen.getByRole('heading', { name: 'Whole Milk' }).parentElement,
     ).toContainElement(save)
+  })
+
+  it('NotConsumable shows the switch off and hides the opened packs', () => {
+    render(<NotConsumable />)
+    expect(
+      screen.getByRole('switch', { name: /^consumable$/i }),
+    ).not.toBeChecked()
+    expect(screen.getByLabelText(/^packed/i)).toBeInTheDocument()
+    expect(screen.queryByLabelText(/^unpacked/i)).not.toBeInTheDocument()
   })
 })

@@ -598,6 +598,27 @@ describe('importLocalData', () => {
     expect(tags).toHaveLength(1)
   })
 
+  it('user can import a backup with a non-consumable item, and an item with no value imports as consumable', async () => {
+    // Given a backup with one item marked not consumable and one written
+    // before the field existed (no key at all)
+    const payload = emptyPayload({
+      items: [
+        { ...makeItem('item-cups', 'Cups'), consumable: false },
+        makeItem('item-old', 'Old item'),
+      ],
+    })
+
+    // When importing, with each of the three strategies
+    for (const strategy of ['skip', 'replace', 'clear'] as const) {
+      await clearAllTables()
+      await importLocalData(payload, strategy)
+
+      // Then the false is kept, and the missing value is stored as true
+      expect((await db.items.get('item-cups'))?.consumable).toBe(false)
+      expect((await db.items.get('item-old'))?.consumable).toBe(true)
+    }
+  })
+
   it('user can import permanent carts over a bootstrapped cart without throwing', async () => {
     // Given the app has already bootstrapped the location's 'no-vendor' cart
     await db.shoppingCarts.put({ id: 'local:no-vendor' })
@@ -1713,6 +1734,27 @@ describe('cloud import input mappers — strip server-only fields', () => {
     expect(result.note).toBeUndefined()
     expect(result).toHaveProperty('wikidataUrl')
     expect(result).toHaveProperty('note')
+  })
+
+  it('toItemInput carries consumable, and leaves it out when the backup has none', () => {
+    const base = {
+      id: 'item-cups',
+      name: 'Cups',
+      tagIds: [],
+      targetUnit: 'package',
+      consumeAmount: 1,
+      createdAt: '2026-01-15T10:00:00.000Z',
+      updatedAt: '2026-01-15T10:00:00.000Z',
+    }
+    // A stored false must reach the server, or a restore makes cups
+    // consumable again
+    expect(toItemInput({ ...base, consumable: false }).consumable).toBe(false)
+    expect(toItemInput({ ...base, consumable: true }).consumable).toBe(true)
+    // No value: undefined, dropped from the JSON, and the server writes true
+    expect(toItemInput(base).consumable).toBeUndefined()
+    expect(
+      toItemInput({ ...base, consumable: null }).consumable,
+    ).toBeUndefined()
   })
 
   it('toItemInput converts Date createdAt/updatedAt to ISO strings', () => {

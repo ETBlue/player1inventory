@@ -377,4 +377,44 @@ describe('Item info tab unit switch — cloud mode', () => {
       },
     ])
   })
+
+  it('user turning Consumable off on an item tracked in grams sees the converted amounts and saves both in ONE call', async () => {
+    const user = userEvent.setup()
+
+    // Given the flour item, tracked in grams in two locations
+    renderInfoTab()
+    await screen.findByDisplayValue('Flour')
+
+    // When the user turns Consumable off and saves
+    await user.click(screen.getByRole('switch', { name: /^consumable$/i }))
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    // Then the same converted amounts dialog as a unit change opens
+    const dialog = await screen.findByRole('alertdialog')
+    expect(within(dialog).getByText(/250\D+0\.5/)).toBeInTheDocument()
+    expect(within(dialog).getByText(/750\D+1\.5/)).toBeInTheDocument()
+
+    // When the user confirms
+    await user.click(
+      within(dialog).getByRole('button', { name: /update & save/i }),
+    )
+
+    // Then ONE applyUnitSwitch carries the switch to packages, the
+    // consumable flag, and the kept measurement settings
+    await waitFor(() => expect(sentSwitches).toHaveLength(1))
+    const sent = sentSwitches[0] as {
+      updates: Record<string, unknown>
+      stockConversions: { locationId: string }[]
+    }
+    expect(sent.updates).toMatchObject({
+      consumable: false,
+      targetUnit: 'package',
+      measurementUnit: 'g',
+      amountPerPackage: 500,
+    })
+    expect(sent.stockConversions.map((c) => c.locationId).sort()).toEqual(
+      [LOC_A, LOC_B].sort(),
+    )
+    expect(stocks.find((s) => s.locationId === LOC_B)?.targetQuantity).toBe(6)
+  })
 })

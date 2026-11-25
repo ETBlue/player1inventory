@@ -533,6 +533,7 @@ const NOTED_CLOUD_ITEM = {
   amountPerPackage: null,
   targetUnit: 'package',
   consumeAmount: 1,
+  consumable: true,
   expirationMode: null,
   estimatedDueDays: null,
   expirationThreshold: null,
@@ -573,6 +574,59 @@ describe('fetchCloudPayload — item note and wikidata URL (issue #335)', () => 
     expect(items).toHaveLength(1)
     expect(items[0]?.wikidataUrl).toBe('https://www.wikidata.org/wiki/Q1125341')
     expect(items[0]?.note).toBe('barista edition, the blue carton')
+  })
+})
+
+describe('fetchCloudPayload — consumable items (consumable PR 2)', () => {
+  it('user can export a cloud backup that keeps a non-consumable item', async () => {
+    // Given a cloud account with cups (not consumable) and oat milk
+    const client = makeRealCloudClient({
+      ...EMPTY_CLOUD_ANSWERS,
+      GetItems: {
+        items: [
+          NOTED_CLOUD_ITEM,
+          {
+            ...NOTED_CLOUD_ITEM,
+            id: 'item-cups',
+            name: 'Cups',
+            consumable: false,
+          },
+        ],
+      },
+    })
+
+    // When the cloud export payload is fetched
+    const payload = await fetchCloudPayload(client)
+
+    // Then each item keeps its own value
+    const items = (payload.items ?? []) as Array<Record<string, unknown>>
+    const byId = new Map(items.map((i) => [i.id, i.consumable]))
+    expect(byId.get('item-noted')).toBe(true)
+    expect(byId.get('item-cups')).toBe(false)
+  })
+})
+
+describe('fetchLocalPayload — consumable items (consumable PR 2)', () => {
+  beforeEach(async () => {
+    await db.items.clear()
+  })
+
+  it('user can export a local backup that keeps a non-consumable item', async () => {
+    await db.items.bulkPut([
+      {
+        id: 'item-cups',
+        name: 'Cups',
+        tagIds: [],
+        targetUnit: 'package',
+        consumeAmount: 1,
+        consumable: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ])
+    const payload = await fetchLocalPayload()
+    const items = payload.items as Array<Record<string, unknown>>
+    expect(items[0]?.consumable).toBe(false)
   })
 })
 

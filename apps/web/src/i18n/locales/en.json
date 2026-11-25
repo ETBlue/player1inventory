@@ -402,7 +402,11 @@
         "increase": "Increase unpacked"
       },
       "unpack": "Unpack",
-      "pack": "Pack"
+      "pack": "Pack",
+      "consumable": {
+        "label": "Consumable",
+        "hint": "Used up over time, like tissue paper. Turn it off for things you keep, like cups: the item then counts whole pieces only, and measurement, opened packs and expiration are hidden."
+      }
     },
     "detail": {
       "notFound": "Item not found",
@@ -474,7 +478,13 @@
     }
   },
   "itemFilters": {
-    "editTags": "Edit Tags"
+    "editTags": "Edit Tags",
+    "consumable": {
+      "label": "Consumable",
+      "all": "All",
+      "consumable": "Consumable",
+      "notConsumable": "Not consumable"
+    }
   },
   "filterStatus": {
     "showing": "Showing {{filtered}} of {{total}} items",
@@ -1160,5 +1170,8 @@
     "gone": "This offer is no longer open.",
     "failed": "Could not send your answer. Please try again.",
     "close": "Close"
+  },
+  "itemCountBar": {
+    "more": "+{{count}}"
   }
 }

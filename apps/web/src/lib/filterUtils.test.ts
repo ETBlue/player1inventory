@@ -3,6 +3,7 @@ import type { PantryItem, Recipe, Tag } from '@/types'
 import {
   calculateTagCount,
   filterItems,
+  filterItemsByConsumable,
   filterItemsByRecipes,
   filterItemsByVendors,
 } from './filterUtils'
@@ -548,5 +549,55 @@ describe('filterItemsByRecipes', () => {
   it('excludes items not in any selected recipe', () => {
     const result = filterItemsByRecipes(items, ['r2'], recipes)
     expect(result.every((i) => i.name !== 'Eggs')).toBe(true)
+  })
+})
+
+describe('filterItemsByConsumable', () => {
+  // Three items: one marked consumable, one marked not, and one with NO
+  // value. The third is what tells "missing means consumable" apart from
+  // "missing means not consumable" or "missing is dropped".
+  const tissue = makePantryItem({
+    id: 'tissue',
+    name: 'Tissue',
+    tagIds: [],
+    targetQuantity: 4,
+    refillThreshold: 1,
+    consumable: true,
+  })
+  const cups = makePantryItem({
+    id: 'cups',
+    name: 'Cups',
+    tagIds: [],
+    targetQuantity: 6,
+    refillThreshold: 2,
+    consumable: false,
+  })
+  const oldItem = makePantryItem({
+    id: 'old',
+    name: 'Old item',
+    tagIds: [],
+    targetQuantity: 1,
+    refillThreshold: 0,
+  })
+  const items = [tissue, cups, oldItem]
+
+  it('All keeps every item', () => {
+    expect(filterItemsByConsumable(items, 'all').map((i) => i.id)).toEqual([
+      'tissue',
+      'cups',
+      'old',
+    ])
+  })
+
+  it('Consumable keeps consumable items, and an item with no value', () => {
+    expect(
+      filterItemsByConsumable(items, 'consumable').map((i) => i.id),
+    ).toEqual(['tissue', 'old'])
+  })
+
+  it('Not consumable keeps only items marked not consumable', () => {
+    expect(
+      filterItemsByConsumable(items, 'notConsumable').map((i) => i.id),
+    ).toEqual(['cups'])
   })
 })

@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import type React from 'react'
 import { Fragment, useEffect, useState } from 'react'
+import { ItemCountBar } from '@/components/item/ItemCountBar'
 import { ItemProgressBar } from '@/components/item/ItemProgressBar'
 import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -25,7 +26,7 @@ import {
 import { sortTagsByTypeAndName } from '@/lib/tagSortUtils'
 import { cn } from '@/lib/utils'
 import type { PantryItem, Recipe, Tag, TagType, Vendor } from '@/types'
-import { DEFAULT_PACKAGE_UNIT } from '@/types'
+import { DEFAULT_PACKAGE_UNIT, isConsumable } from '@/types'
 
 interface ItemCardProps {
   item: PantryItem
@@ -141,6 +142,21 @@ export function ItemCard({
     item.targetUnit === 'measurement' && item.measurementUnit
       ? item.measurementUnit
       : (item.packageUnit ?? DEFAULT_PACKAGE_UNIT)
+
+  // A non-consumable item (cups, slippers) counts whole pieces: one square
+  // per piece (`ItemCountBar`), no opened packs, no expiry. Turning the
+  // switch off moves the item to packages, but an item that still tracks in a
+  // measurement unit (for example from an old backup) is converted to pieces
+  // here, the same way `ItemProgressBar` converts to segments.
+  const consumable = isConsumable(item)
+  const pieceScale =
+    item.targetUnit === 'measurement' &&
+    item.amountPerPackage &&
+    item.amountPerPackage > 0
+      ? item.amountPerPackage
+      : 1
+  const piecesInStock = Math.floor(currentQuantity / pieceScale)
+  const piecesWanted = Math.floor(item.targetQuantity / pieceScale)
 
   const isAmountControllable = [
     'shopping',
@@ -294,13 +310,23 @@ export function ItemCard({
               // composited to 4.44:1 on the card surface and failed WCAG AA
               // — see docs/global/bugs/2026-08-29-bug-unit-badge-contrast.md.
               <span className="text-xs font-normal text-foreground-muted whitespace-nowrap">
-                {item.unpackedQuantity > 0
-                  ? `${displayPacked} (+${item.unpackedQuantity}) / ${item.targetQuantity} ${unitLabel}`
-                  : `${currentQuantity} / ${item.targetQuantity} ${unitLabel}`}
+                {!consumable
+                  ? `${piecesInStock} / ${piecesWanted} ${item.packageUnit || DEFAULT_PACKAGE_UNIT}`
+                  : item.unpackedQuantity > 0
+                    ? `${displayPacked} (+${item.unpackedQuantity}) / ${item.targetQuantity} ${unitLabel}`
+                    : `${currentQuantity} / ${item.targetQuantity} ${unitLabel}`}
               </span>
             )}
           </CardTitle>
-          {showStock && (
+          {showStock && !consumable && (
+            <ItemCountBar
+              current={piecesInStock}
+              target={piecesWanted}
+              status={progressStatus}
+              refillThreshold={item.refillThreshold / pieceScale}
+            />
+          )}
+          {showStock && consumable && (
             <ItemProgressBar
               current={currentQuantity}
               target={item.targetQuantity}
@@ -344,7 +370,12 @@ export function ItemCard({
       <CardContent className={`mt-1 ${showsInactive ? 'opacity-80' : ''}`}>
         <div className="flex items-center gap-1">
           {[
-            showExpiration && currentQuantity > 0 && estimatedDueDate
+            // A non-consumable item shows no expiry (design, PR 2). Its
+            // expiration settings are kept, only hidden.
+            showExpiration &&
+            consumable &&
+            currentQuantity > 0 &&
+            estimatedDueDate
               ? {
                   key: 'expiration',
                   node: (() => {

@@ -195,6 +195,10 @@ export async function seedCloudFixture(
         // input, and `getPackedTotal` treats unset and null the same way, so
         // both modes seed the same item.
         amountPerPackage: item.amountPerPackage ?? null,
+        // The product default. `bulkCreateItems` writes `true` for an omitted
+        // value too; it is written out so both modes read the same.
+        consumable: item.consumable ?? true,
+        measurementUnit: item.measurementUnit ?? null,
         createdAt: now,
         updatedAt: now,
       })),

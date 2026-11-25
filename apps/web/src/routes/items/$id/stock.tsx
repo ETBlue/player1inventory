@@ -30,6 +30,7 @@ import { usePermissions } from '@/hooks/usePermissions'
 import { hasGraphQLErrorCode } from '@/lib/graphqlErrorCode'
 import { showSaveError } from '@/lib/saveError'
 import type { ItemStock, Location, PantryItem, StockFields } from '@/types'
+import { isConsumable } from '@/types'
 
 export const Route = createFileRoute('/items/$id/stock')({
   component: ItemStockTab,
@@ -66,6 +67,8 @@ function itemToFormValues(item: PantryItem): ItemFormValues {
           ? 'date'
           : 'disabled'),
     expirationThreshold: item.expirationThreshold ?? '',
+    // A missing value means consumable (`isConsumable`).
+    consumable: isConsumable(item),
   }
 }
 
@@ -122,7 +125,9 @@ function buildStockUpdates(values: ItemFormValues): ItemUpdatePayload {
     unpackedQuantity: values.unpackedQuantity,
     targetQuantity: values.targetQuantity,
     refillThreshold: values.refillThreshold,
-    ...(values.expirationMode === 'date'
+    // A non-consumable item hides the field too (`ItemForm`), so it sends no
+    // key and the stored date is kept.
+    ...(values.expirationMode === 'date' && values.consumable
       ? { dueDate: values.dueDate ? new Date(values.dueDate) : undefined }
       : {}),
   }

@@ -402,7 +402,11 @@
         "increase": "增加已開封數量"
       },
       "unpack": "開封",
-      "pack": "打包"
+      "pack": "打包",
+      "consumable": {
+        "label": "消耗品",
+        "hint": "會逐漸用完的物品，例如衛生紙。像杯子這種會留著用的物品請關閉：此時只計算完整的件數，並隱藏計量單位、已開封數量和到期設定。"
+      }
     },
     "detail": {
       "notFound": "查無此品項",
@@ -474,7 +478,13 @@
     }
   },
   "itemFilters": {
-    "editTags": "編輯標籤"
+    "editTags": "編輯標籤",
+    "consumable": {
+      "label": "消耗品",
+      "all": "全部",
+      "consumable": "消耗品",
+      "notConsumable": "非消耗品"
+    }
   },
   "filterStatus": {
     "showing": "顯示 {{filtered}} / {{total}} 項",
@@ -1160,5 +1170,8 @@
     "gone": "這個邀請已經失效。",
     "failed": "無法送出你的回覆，請再試一次。",
     "close": "關閉"
+  },
+  "itemCountBar": {
+    "more": "+{{count}}"
   }
 }

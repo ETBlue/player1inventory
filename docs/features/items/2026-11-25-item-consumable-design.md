@@ -83,6 +83,39 @@ before PR 2, so no item can lose a `false` by this.
   needed, or a forward-only upgrade that sets it; the implementer follows `db/CLAUDE.md`).
 - Import and export carry `consumable`. A file without it imports as consumable.
 
+### As built: PR 2
+
+Branch `feature/item-consumable-web`, from `develop` at `079f1756`. No server change.
+
+| Part | As built |
+|---|---|
+| Type | `Item.consumable?: boolean` in `@p1i/types`, OPTIONAL. Plus `isConsumable(item)`: `item.consumable !== false`, so a missing or `null` value means consumable. Every reader goes through it. Optional, not required, because rows and files from before this field have none |
+| Dexie | version 21, same stores as 20. Its upgrade sets `consumable: true` on every item with no boolean, and keeps a stored `false`. `createItem` writes `consumable ?? true`. `on('populate')` needs nothing (no items at that point). Tests: `db/upgradeV21.test.ts` |
+| Cloud | `consumable` is selected by `GetItem`, `GetItems`, `CreateItem`, `UpdateItem`, `PantryData` and `ApplyUnitSwitch`. `toCreateItemInput` lists it by name; `toUpdateItemInput` passes it through. The import documents (`BulkCreateItems`, `BulkUpsertItems`) do not select it: their answers are thrown away |
+| Import and export | `toItemInput` sends a boolean, or `undefined` for anything else, so a file with no value is written `true` by the server. The local import's own `deserializeItem` (`lib/importData.ts`) writes `isConsumable(raw)`. Export carries the stored value in both modes |
+| `ItemCountBar` | `components/item/ItemCountBar/`. Squares are `size-2` (8 px) with a `gap-1` (4 px), in an `h-2` row, the height of `ItemProgressBar`. `MAX_COUNT_SQUARES = 20`, then `+N` (`itemCountBar.more`). More pieces than the target are drawn filled. A whole threshold `k` puts the marker in the gap after square `k`; a fractional one inside a square (`getCountMarkerLeft`). A threshold past the 20th square draws no marker. Stories `InStock`, `LowStock`, `OutOfStock`, `MoreThanTwenty`, `AboveTarget` |
+| `ItemCard` | not consumable: `ItemCountBar`, the text `{pieces} / {target} {package unit}`, no expiry. An item still tracked in a measurement unit (from an old file) is converted to pieces by `amountPerPackage`, then floored |
+| Filter | `ConsumableFilterDropdown` (a radio menu with counts) in `ItemFilters`, before the vendor dropdown. URL param `f_consumable=yes` or `no`, no param = All, read by `useUrlSearchAndFilters` (`consumableFilter`, `setConsumableFilter`; `consumable` is a reserved `f_` key). `filterItemsByConsumable` in `lib/filterUtils.ts` runs after the tag, vendor and recipe filters in `PantryListView`, `ShelfDetailView`, `shopping/$vendorId.tsx`, the four settings item lists, and `ItemListToolbar`'s count. A chosen value counts as an active filter |
+| Switch | `ItemForm`'s `consumable` value, first row under "Stock settings". Off hides the "Advanced stock settings" block (track in measurement, measurement unit, amount per package, expiration), and on the Stock tab the Unpacked row, Unpack, Pack and "Expires on". `QuickUpdateDialog` hides the same three. Hidden values stay in the form and are saved unchanged. `buildInfoUpdates` sends `consumable` |
+| Measurement → packages | turning the switch off on a measurement item calls the form's own `handleTargetUnitChange(false)`, so the form converts like the "Track in measurement" switch, and Save opens the same converted amounts dialog and sends one `applyUnitSwitch` with `consumable: false` in its `updates`. Turning it on again does NOT move the item back to the measurement unit |
+| Due date | the Stock tab and `QuickUpdateDialog` send no `dueDate` key while the field is hidden (the issue #261 rule), so a location's stored date is kept |
+| E2E | `e2e/tests/consumable-items.spec.ts`, local and cloud (`CLOUD_SPECS`): turn the switch off and see squares; the gram item's converted amounts; the Not consumable filter on a cart, kept after a reload; axe light and dark. `FixtureItem` gained `consumable` and `measurementUnit` |
+
+Gate, measured 2026-11-25 on this branch: `pnpm test` web **4233 / 401 files**, server
+**2983 / 92**, `scripts/spec` **80**; `pnpm test:e2e:all` green on the first try: `local`
+205 passed / 11 skipped (4m20s), `cloud` 234 passed / 8 skipped (4m21s), `cloud-neon` 40
+passed (11m38s), `pwa` 77 passed (1m40s).
+
+Decisions taken during the build (the brief left them open):
+
+| Question | Choice | Why |
+|---|---|---|
+| Hide `consumeAmount` too? | **No**, it stays | the design lists measurement, opened packs and expiration only. It is the recipe step, and recipes and cooking do not change |
+| A non-consumable's Stock tab bar | `ItemProgressBar`, unchanged | the design says only `ItemCard` uses the new bar |
+| Where Quick update hides fields | it hides them too | it shows opened packs and the due date, which the design hides for a non-consumable |
+| Onboarding's template filter | no Consumable dropdown | the controlled `ItemFilters` has no URL state and the template items are not stored items |
+| More pieces than the target | all drawn filled | the design names only "missing up to the target" |
+
 ## Not changing
 
 Recipes, cooking, checkout.

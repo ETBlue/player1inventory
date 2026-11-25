@@ -54,7 +54,11 @@ import { isCartChangedError } from '@/hooks/useShoppingCart'
 import { useShowStock } from '@/hooks/useShowStock'
 import { useSortFilter } from '@/hooks/useSortFilter'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
-import { filterItems, filterItemsByRecipes } from '@/lib/filterUtils'
+import {
+  filterItems,
+  filterItemsByConsumable,
+  filterItemsByRecipes,
+} from '@/lib/filterUtils'
 import {
   isInactiveHere,
   isStockedHere,
@@ -158,7 +162,8 @@ function VendorCart() {
     'shopping',
     { defaultSortBy: 'stock' },
   )
-  const { search, filterState, selectedRecipeIds } = useUrlSearchAndFilters()
+  const { search, filterState, selectedRecipeIds, consumableFilter } =
+    useUrlSearchAndFilters()
 
   const allDataLoaded =
     !isLoading && !isTagsLoading && !isTagTypesLoading && !isRecipesLoading
@@ -219,10 +224,9 @@ function VendorCart() {
   )
 
   const tagFiltered = filterItems(vendorScopedItems, filterState, tags)
-  const filteredItems = filterItemsByRecipes(
-    tagFiltered,
-    selectedRecipeIds,
-    recipes,
+  const filteredItems = filterItemsByConsumable(
+    filterItemsByRecipes(tagFiltered, selectedRecipeIds, recipes),
+    consumableFilter,
   )
 
   const displayItems = search.trim() ? searchedItems : filteredItems

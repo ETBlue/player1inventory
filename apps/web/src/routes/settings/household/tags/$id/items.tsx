@@ -16,6 +16,7 @@ import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import { useVendors } from '@/hooks/useVendors'
 import {
   filterItems,
+  filterItemsByConsumable,
   filterItemsByRecipes,
   filterItemsByVendors,
 } from '@/lib/filterUtils'
@@ -54,6 +55,7 @@ function TagItemsTab() {
     setFilterState,
     selectedVendorIds,
     selectedRecipeIds,
+    consumableFilter,
     toggleVendorId,
     toggleRecipeId,
   } = useUrlSearchAndFilters()
@@ -175,10 +177,9 @@ function TagItemsTab() {
   // Pass tags to enable descendant expansion (selecting a parent tag matches its children too)
   const tagFiltered = filterItems(items, filterState, tags)
   const vendorFiltered = filterItemsByVendors(tagFiltered, selectedVendorIds)
-  const recipeFiltered = filterItemsByRecipes(
-    vendorFiltered,
-    selectedRecipeIds,
-    recipes,
+  const recipeFiltered = filterItemsByConsumable(
+    filterItemsByRecipes(vendorFiltered, selectedRecipeIds, recipes),
+    consumableFilter,
   )
 
   // Converge at sort
@@ -316,7 +317,8 @@ function TagItemsTab() {
       {filteredItems.length === 0 &&
         (Object.values(filterState).some((ids) => ids.length > 0) ||
           selectedVendorIds.length > 0 ||
-          selectedRecipeIds.length > 0) &&
+          selectedRecipeIds.length > 0 ||
+          consumableFilter !== 'all') &&
         !search.trim() && (
           <p className="text-sm text-foreground-muted py-4 px-1">
             {t('settings.tags.items.emptyFiltered')}

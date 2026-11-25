@@ -1,5 +1,6 @@
 import { getTagAndDescendantIds } from '@/lib/tagUtils'
 import type { Item, Recipe, Tag } from '@/types'
+import { isConsumable } from '@/types'
 
 export interface FilterState {
   [tagTypeId: string]: string[] // tagTypeId -> array of selected tag IDs
@@ -89,4 +90,22 @@ export function filterItemsByRecipes<T extends Item>(
       return recipe?.items.some((ri) => ri.itemId === item.id) ?? false
     }),
   )
+}
+
+// The Consumable filter: All, Consumable or Not consumable. Kept in the URL as
+// `f_consumable=yes` or `f_consumable=no` (`useUrlSearchAndFilters`); no
+// param means All.
+export type ConsumableFilter = 'all' | 'consumable' | 'notConsumable'
+
+/**
+ * Keeps the items that match the Consumable filter. `'all'` keeps every item.
+ * An item with no stored value counts as consumable (`isConsumable`).
+ */
+export function filterItemsByConsumable<T extends Item>(
+  items: T[],
+  filter: ConsumableFilter,
+): T[] {
+  if (filter === 'all') return items
+  const wanted = filter === 'consumable'
+  return items.filter((item) => isConsumable(item) === wanted)
 }

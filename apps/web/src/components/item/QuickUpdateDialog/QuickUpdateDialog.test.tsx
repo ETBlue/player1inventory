@@ -840,3 +840,46 @@ describe('QuickUpdateDialog — a failed save', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 })
+
+describe('QuickUpdateDialog — a non-consumable item', () => {
+  it('user sees no opened packs and no due date, and the stored date is kept', async () => {
+    // Given cups (not consumable) in date mode, with a stored due date
+    const user = userEvent.setup()
+    const onSubmit = submitSpy()
+    renderDialog(
+      makeItem({
+        consumable: false,
+        expirationMode: 'date',
+        dueDate: new Date('2026-09-01'),
+      }),
+      onSubmit,
+    )
+
+    // Then there is no Unpacked row, no Unpack or Pack, and no Expires on
+    expect(
+      screen.queryByRole('button', { name: /^unpack$/i }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /^pack$/i }),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/unpacked/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/expires on/i)).not.toBeInTheDocument()
+
+    // When the user changes the packed count and presses Update
+    await user.click(screen.getByRole('button', { name: /increase packed/i }))
+    await user.click(screen.getByRole('button', { name: 'Update' }))
+
+    // Then the payload has no dueDate key, so the stored date is kept
+    const payload = elementAt(onSubmit.mock.calls)[0]
+    expect(Object.keys(payload)).not.toContain('dueDate')
+    expect(payload.packedQuantity).toBe(2)
+  })
+
+  it('the same item, consumable, shows the opened packs (the control)', () => {
+    renderDialog(makeItem({ expirationMode: 'date' }))
+    expect(
+      screen.getByRole('button', { name: /^unpack$/i }),
+    ).toBeInTheDocument()
+    expect(screen.getByLabelText(/expires on/i)).toBeInTheDocument()
+  })
+})

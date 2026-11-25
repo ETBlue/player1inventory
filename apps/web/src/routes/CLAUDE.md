@@ -238,7 +238,10 @@ const searchedItems = items.filter((item) =>
 // Branch B: all URL-param filters, no search
 const tagFiltered = filterItems(items, filterState)
 const vendorFiltered = filterItemsByVendors(tagFiltered, selectedVendorIds)
-const filteredItems = filterItemsByRecipes(vendorFiltered, selectedRecipeIds, recipes)
+const filteredItems = filterItemsByConsumable(
+  filterItemsByRecipes(vendorFiltered, selectedRecipeIds, recipes),
+  consumableFilter, // since consumable items PR 2: 'all' keeps every item
+)
 
 // Converge at sort — `search.trim()` guards whitespace-only input
 const sortedItems = sortItems(search.trim() ? searchedItems : filteredItems, ...)
@@ -252,7 +255,8 @@ const sortedItems = sortItems(search.trim() ? searchedItems : filteredItems, ...
 - `activeTagIds` — badge renders bold `x` variant instead of tint `x-tint` variant; defaults to tint when not provided
 
 **`ItemFilters` dropdown behavior:**
-- Render order: vendor dropdown → recipe dropdown → tag type dropdowns → Edit link
+- Render order: Consumable dropdown → vendor dropdown → recipe dropdown → tag type dropdowns → Edit link
+- The Consumable dropdown (`ConsumableFilterDropdown`, All / Consumable / Not consumable) shows on every list that shows `ItemFilters`: pantry, shelf page, cart page, the four settings item lists. It is a URL filter like the others (`f_consumable`), and a choice other than All counts as an active filter. Each page applies `filterItemsByConsumable` LAST in Branch B; `ItemListToolbar`'s "Showing N of M" count does the same
 - Tag badges inside tag type dropdowns: unselected tags render with `${color}-tint` variant (light), selected tags render with `${color}` variant (solid)
 - Vendor and recipe dropdowns include a "Manage X" link at the bottom (always visible, with Pencil icon): "Manage vendors" (`settings.vendors.manage`) → `/settings/household/vendors` and "Manage recipes" (`settings.recipes.manage`) → `/settings/household/recipes`
 

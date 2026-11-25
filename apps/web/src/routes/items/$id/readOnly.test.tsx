@@ -122,13 +122,19 @@ describe.each(people)('$who on the item page', (person) => {
     const save = within(main).queryByRole('button', { name: /^save$/i })
     const del = within(main).queryByRole('button', { name: /^delete$/i })
     const note = within(main).queryByText(ITEM_NOTE)
-    const unitSwitch = within(main).getByRole('switch')
+    const unitSwitch = within(main).getByRole('switch', {
+      name: /track in measurement/i,
+    })
+    const consumableSwitch = within(main).getByRole('switch', {
+      name: /^consumable$/i,
+    })
     if (person.canEdit) {
       expect(name).not.toHaveAttribute('readonly')
       expect(save).toBeInTheDocument()
       expect(del).toBeInTheDocument()
       expect(note).toBeNull()
       expect(unitSwitch).not.toBeDisabled()
+      expect(consumableSwitch).not.toBeDisabled()
     } else {
       // readOnly, not disabled: the text can still be selected
       expect(name).toHaveAttribute('readonly')
@@ -137,6 +143,7 @@ describe.each(people)('$who on the item page', (person) => {
       expect(del).toBeNull()
       expect(note).toBeInTheDocument()
       expect(unitSwitch).toBeDisabled()
+      expect(consumableSwitch).toBeDisabled()
     }
   })
 

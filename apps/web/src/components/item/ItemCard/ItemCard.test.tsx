@@ -2300,3 +2300,116 @@ describe('ItemCard - amount button (onAmountEdit)', () => {
     )
   })
 })
+
+describe('ItemCard - non-consumable items', () => {
+  const cupsStock = {
+    packedQuantity: 3,
+    unpackedQuantity: 0,
+    targetQuantity: 5,
+    refillThreshold: 2,
+  }
+
+  it('user sees squares instead of the progress bar for a non-consumable item', async () => {
+    // Given cups, which are not consumable: 3 of 5 in stock
+    const item = makeItem({
+      ...cupsStock,
+      targetUnit: 'package',
+      packageUnit: 'cup',
+      consumable: false,
+    })
+
+    await renderWithRouter(
+      <ItemCard lastPurchaseDate={null} item={item} tags={[]} tagTypes={[]} />,
+    )
+
+    // Then 5 squares show, 3 filled, with the piece count
+    const squares = screen.getAllByTestId('count-square')
+    expect(squares).toHaveLength(5)
+    expect(squares.filter((s) => s.dataset.filled === 'true')).toHaveLength(3)
+    expect(screen.getByText('3 / 5 cup')).toBeInTheDocument()
+    // And the refill marker sits at 2
+    expect(screen.getByTestId('refill-marker').dataset.threshold).toBe('2')
+  })
+
+  it('user sees the progress bar for a consumable item, and for an item with no value', async () => {
+    // The item with NO value is what tells "missing means consumable" apart
+    // from "missing means not consumable".
+    for (const consumable of [true, undefined]) {
+      const item = makeItem({
+        ...cupsStock,
+        targetUnit: 'package',
+        ...(consumable !== undefined ? { consumable } : {}),
+      })
+      const { unmount } = await renderWithRouter(
+        <ItemCard
+          lastPurchaseDate={null}
+          item={item}
+          tags={[]}
+          tagTypes={[]}
+        />,
+      )
+      expect(screen.queryAllByTestId('count-square')).toHaveLength(0)
+      unmount()
+    }
+  })
+
+  it('a non-consumable item tracked in a measurement unit shows whole pieces', async () => {
+    // Given 750 ml in stock of a 1000 ml target, 250 ml per piece
+    const item = makeItem({
+      packedQuantity: 3,
+      unpackedQuantity: 0,
+      targetQuantity: 1000,
+      refillThreshold: 500,
+      targetUnit: 'measurement',
+      measurementUnit: 'ml',
+      amountPerPackage: 250,
+      packageUnit: 'bottle',
+      consumable: false,
+    })
+
+    await renderWithRouter(
+      <ItemCard lastPurchaseDate={null} item={item} tags={[]} tagTypes={[]} />,
+    )
+
+    // Then 4 squares, 3 filled, and the marker at 2 pieces
+    const squares = screen.getAllByTestId('count-square')
+    expect(squares).toHaveLength(4)
+    expect(squares.filter((s) => s.dataset.filled === 'true')).toHaveLength(3)
+    expect(screen.getByText('3 / 4 bottle')).toBeInTheDocument()
+    expect(screen.getByTestId('refill-marker').dataset.threshold).toBe('2')
+  })
+
+  it('user sees no expiry on a non-consumable item', async () => {
+    // Given the same expiry settings on two items
+    const expiry = {
+      expirationMode: 'days from purchase' as const,
+      estimatedDueDays: 30,
+    }
+    const consumableItem = makeItem({
+      ...cupsStock,
+      ...expiry,
+      targetUnit: 'package',
+    })
+    const { unmount } = await renderWithRouter(
+      <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
+        item={consumableItem}
+        tags={[]}
+        tagTypes={[]}
+      />,
+    )
+    // The consumable one shows it (so the fixture can show an expiry at all)
+    expect(screen.getByText(/Expires in 30 days/i)).toBeInTheDocument()
+    unmount()
+
+    await renderWithRouter(
+      <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
+        item={{ ...consumableItem, consumable: false }}
+        tags={[]}
+        tagTypes={[]}
+      />,
+    )
+    expect(screen.queryByText(/Expires/i)).not.toBeInTheDocument()
+  })
+})

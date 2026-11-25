@@ -34,9 +34,27 @@ export interface Item {
   expirationThreshold?: number // Days before expiration to show warning
   expirationMode?: ExpirationMode
 
+  // `false` for an item that is not used up (cups, slippers). It counts whole
+  // packages only, and the card shows one square per piece. Optional, because
+  // an item stored before this field existed has no value: a missing value
+  // means consumable. Read it through `isConsumable`, never as a bare truthy
+  // check, or a missing value reads as "not consumable".
+  consumable?: boolean
+
   // Metadata
   createdAt: Date
   updatedAt: Date
+}
+
+/**
+ * Is this item used up (tissue paper), or not (cups)? A missing or `null`
+ * value means consumable: Dexie rows and backup files from before the field
+ * existed carry none.
+ */
+export function isConsumable(item: {
+  consumable?: boolean | null | undefined
+}): boolean {
+  return item.consumable !== false
 }
 
 // Per-(item × location) stocking STATE. A (itemId, locationId) pair is unique.
