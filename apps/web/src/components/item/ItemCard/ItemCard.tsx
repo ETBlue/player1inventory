@@ -195,9 +195,10 @@ export function ItemCard({
         onCheckboxToggle ? 'ml-10' : '',
         // The right inset reserves room for the amount control, which sits
         // outside the card. The cart's one amount button (`onAmountEdit`) is
-        // 3rem wide, so it needs 3.5rem. The `− n +` group (cooking, recipe
-        // items) is 6rem wide and keeps its 7rem.
-        isAmountControllable ? (onAmountEdit ? 'mr-14' : 'mr-28') : '',
+        // 3rem wide at `-right-14`, so it needs 4rem: 0.5rem on each side of it.
+        // The `− n +` group (cooking, recipe items) is 6rem wide and keeps
+        // its 7rem.
+        isAmountControllable ? (onAmountEdit ? 'mr-16' : 'mr-28') : '',
       )}
     >
       {onCheckboxToggle &&
@@ -222,7 +223,7 @@ export function ItemCard({
         <Button
           variant="neutral-outline"
           size="sm"
-          className="absolute -right-12 top-1.5 w-12 justify-center px-1"
+          className="absolute -right-14 top-1.5 w-12 justify-center px-1"
           onClick={(e) => {
             e.preventDefault()
             onAmountEdit()

@@ -2311,13 +2311,14 @@ describe('ItemCard - amount button (onAmountEdit)', () => {
       </>,
     )
 
-    // Then the cart card reserves 3.5rem (mr-14) for a 3rem button
+    // Then the cart card reserves 4rem (mr-16) for a 3rem button, with 0.5rem
+    // between the card and the button
     const editButton = screen.getByRole('button', {
       name: /^Edit amount of Milk/,
     })
-    expect(editButton).toHaveClass('w-12', '-right-12')
+    expect(editButton).toHaveClass('w-12', '-right-14')
     const cartCard = defined(editButton.parentElement ?? undefined, 'cart card')
-    expect(cartCard).toHaveClass('mr-14')
+    expect(cartCard).toHaveClass('mr-16')
     expect(cartCard).not.toHaveClass('mr-28')
 
     // And the cooking card keeps 7rem (mr-28) for the − n + group
@@ -2331,7 +2332,7 @@ describe('ItemCard - amount button (onAmountEdit)', () => {
       'cooking card',
     )
     expect(cookingCard).toHaveClass('mr-28')
-    expect(cookingCard).not.toHaveClass('mr-14')
+    expect(cookingCard).not.toHaveClass('mr-16')
   })
 
   it('shows no amount button for an item not in the cart', async () => {
