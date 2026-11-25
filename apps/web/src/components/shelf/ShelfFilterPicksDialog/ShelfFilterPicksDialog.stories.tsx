@@ -14,7 +14,7 @@ type Story = StoryObj<typeof ShelfFilterPicksDialog>
 const vendorAxis: FilterAxis = {
   key: 'vendor',
   kind: 'vendor',
-  options: [{ id: 'v1', name: 'Costco' }],
+  options: [{ id: 'v1', name: 'Costco', depth: 0 }],
 }
 
 const categoryAxis: FilterAxis = {
@@ -22,8 +22,23 @@ const categoryAxis: FilterAxis = {
   kind: 'tag',
   typeName: 'Category',
   options: [
-    { id: 'dairy', name: 'Dairy' },
-    { id: 'frozen', name: 'Frozen' },
+    { id: 'dairy', name: 'Dairy', depth: 0 },
+    { id: 'frozen', name: 'Frozen', depth: 0 },
+  ],
+}
+
+// A rule naming Dairy only. Its child and grandchild tags are offered below it,
+// indented, and Dairy is picked by default.
+const dairyTreeAxis: FilterAxis = {
+  key: 'tt-cat',
+  kind: 'tag',
+  typeName: 'Category',
+  options: [
+    { id: 'dairy', name: 'Dairy', depth: 0 },
+    { id: 'cheese', name: 'Cheese', depth: 1 },
+    { id: 'milk', name: 'Milk', depth: 1 },
+    { id: 'cow-milk', name: 'Cow milk', depth: 2 },
+    { id: 'oat-milk', name: 'Oat milk', depth: 2 },
   ],
 }
 
@@ -31,7 +46,7 @@ const storageMetAxis: FilterAxis = {
   key: 'tt-sto',
   kind: 'tag',
   typeName: 'Storage',
-  options: [{ id: 'fridge', name: 'Fridge' }],
+  options: [{ id: 'fridge', name: 'Fridge', depth: 0 }],
   metBy: 'fridge',
 }
 
@@ -39,8 +54,8 @@ const multiVendorAxis: FilterAxis = {
   key: 'vendor',
   kind: 'vendor',
   options: [
-    { id: 'v1', name: 'Costco' },
-    { id: 'v2', name: '7-Eleven' },
+    { id: 'v1', name: 'Costco', depth: 0 },
+    { id: 'v2', name: '7-Eleven', depth: 0 },
   ],
 }
 
@@ -48,8 +63,8 @@ const recipeAxis: FilterAxis = {
   key: 'recipe',
   kind: 'recipe',
   options: [
-    { id: 'r1', name: 'Pancakes' },
-    { id: 'r2', name: 'Waffles' },
+    { id: 'r1', name: 'Pancakes', depth: 0 },
+    { id: 'r2', name: 'Waffles', depth: 0 },
   ],
 }
 
@@ -70,6 +85,17 @@ export const ThreeOpenAxes: Story = {
     itemName: 'Oat Milk',
     shelfName: 'Breakfast Supplies',
     axes: [categoryAxis, multiVendorAxis, recipeAxis],
+    onOpenChange: () => {},
+    onConfirm: async () => {},
+  },
+}
+
+export const ChildTags: Story = {
+  args: {
+    open: true,
+    itemName: 'Oat Milk',
+    shelfName: 'Dairy',
+    axes: [dairyTreeAxis],
     onOpenChange: () => {},
     onConfirm: async () => {},
   },
