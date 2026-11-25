@@ -344,9 +344,9 @@ describe('Use (Cooking) Page — cloud mode', () => {
     expect(elementAt(variables.input.items, 0)).toEqual({
       itemId: CLOUD_ITEM.id,
       delta: -2,
-      note: 'consumed via Pasta',
-      logKey: 'cooking.log.consumedVia',
-      logParams: { recipes: 'Pasta' },
+      // Data, not text (design 2026-11-25, inventory log layout): no note.
+      logKey: 'cooking',
+      logParams: { recipes: [{ id: CLOUD_RECIPE.id, name: 'Pasta' }] },
     })
   })
 
