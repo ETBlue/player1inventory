@@ -109,7 +109,7 @@ The dialog used to hang off the **Stock** tab, where saving *one location's* `co
 - **"Expires on"** — this location's own due date, shown only when the item's (global) expiration mode is `date`, directly under Unpacked and above the progress row. `QuickUpdateDialog` renders the identical field in the same position under the same gate — the pantry-page mirror of this row, added 2026-08-27, repositioned 2026-09-22
   - Two stories show it: `ItemForm.stories.tsx` → `StockSectionDateMode` at the component level, and `$id/stock.stories.tsx` → `DateModeItem` at the route level (so the row appears in its real position). Both need **two** fields set, on two different tables — `expirationMode: 'date'` on the `Item` and a `dueDate` on the `ItemStock`. Setting only one leaves the row hidden or empty
   - **The `dueDate` key is OMITTED from the save payload entirely whenever that gate is closed** — not sent as `undefined`. `buildStockUpdates` uses a conditional spread, the same convention `QuickUpdateDialog` follows (the rule is stated in full in `components/CLAUDE.md`): both persistence paths read a key's *absence* as "leave it alone" and its *presence* — even as `undefined` — as "clear it", so emitting it unconditionally silently wiped this location's stored date every time a quantity was saved on an item in `'days from purchase'` or `'disabled'` mode. A form must not clear a field it never showed the user. When the field IS rendered and the user empties it, the key is still emitted as `undefined` and the date is still cleared — that case is intended. Fixed 2026-08-29, issue #261 — see `docs/features/items/2026-08-29-bug-stock-tab-clears-duedate.md`
-- A **`StockProgressRow`** (Clear · `x / y` label · `ItemProgressBar`, or `ItemCountBar` for a non-consumable item since 2026-11-26 · Fill to Full), previewing live off the form's own in-progress state — not the saved values — via the shared `getStockPreview` (`lib/quantityUtils.ts`, also called by `QuickUpdateDialog`). Raising Refill above the current total flips the status before Save is pressed; Fill to Full targets whatever Target currently reads, not the last-saved one. Clear/Fill mark the form dirty like any other field edit. The bar also draws the **refill tick** from the live Refill When Below value (since 2026-09-23), so the tick moves as the user steps Refill, before Save. See `ItemProgressBar` in `components/CLAUDE.md`
+- A **`StockProgressRow`** (Clear · `x / y` label · `ItemProgressBar`, or `ItemCountBar` for a non-consumable item since 2026-11-26 · Fill to Full; its unit word is the package unit or `pack`, the same as the card, since 2026-11-26 — it said `unit` before), previewing live off the form's own in-progress state — not the saved values — via the shared `getStockPreview` (`lib/quantityUtils.ts`, also called by `QuickUpdateDialog`). Raising Refill above the current total flips the status before Save is pressed; Fill to Full targets whatever Target currently reads, not the last-saved one. Clear/Fill mark the form dirty like any other field edit. The bar also draws the **refill tick** from the live Refill When Below value (since 2026-09-23), so the tick moves as the user steps Refill, before Save. See `ItemProgressBar` in `components/CLAUDE.md`
 - **Target Quantity**, then **Refill When Below** — steppers too, with no action button and no grid. Every stepper clamps at 0 and disables `−` there; Packed always steps by 1, the other three step by `consumeAmount` (falling back to 1 when unset — a `+`/`−` increment must be non-zero to be usable), and Target steps by 1 instead whenever `targetUnit === 'package'`
 - **Structurally the Stock tab is NOT the dialog's grid.** It is a `<div className="space-y-2">` of sibling blocks, each a `<Label>` stacked above its stepper, so the progress row is a plain sibling and needs no `col-span-3` wrapper and no `my-2`. The dialog needs both because its rows share one `grid-cols-[auto_auto_auto]` grid whose columns must line up above and below the bar. Do not copy the dialog's grid here
 - The quantity labels still show the item's units (`(bottle)`, `(ml)`): they read the **global** configuration, which is why every location page labels them identically even for a row that carries nothing but numbers
@@ -292,7 +292,7 @@ sends it). On for a new item.
 | Switch | Info tab | Stock tab and `QuickUpdateDialog` |
 |---|---|---|
 | on | everything, as before | everything, as before |
-| off | no "Advanced stock settings" block: no Track in measurement, measurement unit, amount per package or expiration | no Unpacked row, no Unpack or Pack, no "Expires on" |
+| off | no "Advanced stock settings" block: no Track in measurement, measurement unit, amount per package or expiration | ONE stock field, **Amount** (since 2026-11-26), no Unpack or Pack, no "Expires on" |
 
 - **Hidden values are kept.** They stay in the form and are saved unchanged, so turning the
   switch on again shows them as they were.
@@ -304,6 +304,19 @@ sends it). On for a new item.
 - **A hidden "Expires on" sends no `dueDate` key** (`buildStockUpdates` in `stock.tsx`, and
   `QuickUpdateDialog`), the issue #261 rule: the location's stored date is kept.
 - `consumeAmount` is NOT hidden: it is the recipe step, and recipes do not change.
+
+**The Amount field of a non-consumable item (2026-11-26, owner decisions; design
+`docs/features/items/2026-11-26-non-consumable-amount-design.md`).** A non-consumable item
+counts whole pieces in the package unit, and the measurement unit does not count.
+
+| Part | What |
+|---|---|
+| Amount | `items.form.amount.*` / `pantry.quickUpdate.amount*` ("Amount", 「數量」), labelled with the package unit. It edits `packedQuantity`; there is no new column. A typed fraction is rounded down on blur |
+| saved `unpackedQuantity` | always `0` for a non-consumable item: `buildStockUpdates` (`stock.tsx`) and `QuickUpdateDialog`'s submit. So the first save clears opened stock an old row still held |
+| Target, Refill | in the package unit, step 1, a typed fraction rounded UP (`getPieceCounts`' rule) |
+| the stock row | `getStockPreview(…, { consumable: false })` gives pieces: `current` = whole packed packages, `target` and `refillThreshold` = `getPieceCounts`. Fill to Full = the target in pieces, no opened stock |
+| switching to non-consumable | `buildStockConversions` (`$id/index.tsx`) runs for EVERY location when `isConsumable(item) && !values.consumable`, with or without a unit change: `toNonConsumableQuantities` (`lib/quantityUtils.ts`) gives `unpackedQuantity: 0` and target and threshold in whole packs (divided by `amountPerPackage` for a measurement item, then rounded up). Packed stays. The converted amounts dialog says so (`unitSwitchDialog.nonConsumableDescription`), and ONE `applyUnitSwitch` writes it in both modes. No server change |
+| old rows | read-time only, no Dexie version and no migration: the card, the stock row and the cart dialog count packed packages only (`getPieceCounts`), and the next save writes `unpackedQuantity: 0` |
 
 ### Manual Quantity Input
 
