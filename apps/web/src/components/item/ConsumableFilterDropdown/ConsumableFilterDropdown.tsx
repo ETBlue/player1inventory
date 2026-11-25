@@ -1,4 +1,4 @@
-import { ChevronDown, Hourglass } from 'lucide-react'
+import { ChevronDown, Cookie } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import {
@@ -49,7 +49,7 @@ export function ConsumableFilterDropdown({
           size="xs"
           className="gap-1"
         >
-          <Hourglass />
+          <Cookie />
           {/* With a choice made, the button shows the choice ("Not
               consumable"), so the active filter can be read without opening
               the menu. */}
