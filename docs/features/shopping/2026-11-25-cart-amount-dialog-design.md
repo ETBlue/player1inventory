@@ -134,3 +134,11 @@ This replaces the first bullet of *The row* above.
   and the card reserves `mr-16` (4rem), so there is 0.5rem between the card and the button,
   and 0.5rem at the page edge. The owner chose this over `w-10`, which would keep the card
   width but cut a 4-digit amount. The card gives back 8px (294px → 286px at 390px).
+
+### As built: the stock line moves to the body (2026-11-25)
+
+The owner asked to move "In stock N · target M {unit}" out of the dialog header. It is now
+the first line of `DialogMain`, above the amount field, with `mb-3` below it. The header
+holds only the item name and the close button. It is still a `DialogDescription`, so screen
+readers still hear it as the dialog's description. `ConflictDialog` and
+`ImportLocationDialog` already put their description in the body the same way.

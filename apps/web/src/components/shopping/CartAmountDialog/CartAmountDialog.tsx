@@ -106,16 +106,18 @@ export function CartAmountDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="capitalize">{item.name}</DialogTitle>
-          <DialogDescription>
+        </DialogHeader>
+
+        <DialogMain>
+          {/* The stock line sits in the body, above the amount (owner request
+              2026-11-25). It is still the dialog's description. */}
+          <DialogDescription className="mb-3">
             {t('shopping.amountDialog.context', {
               stock: formatQuantity(getCurrentQuantity(item)),
               target: formatQuantity(item.targetQuantity),
               unit: trackingUnit,
             })}
           </DialogDescription>
-        </DialogHeader>
-
-        <DialogMain>
           <div>
             <div className="flex items-center gap-2">
               <span className="text-sm text-foreground-muted shrink-0">
