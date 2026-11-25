@@ -12,6 +12,7 @@ import { cleanupCloudData } from '../helpers/cloudTeardown'
 import type { Fixture } from '../helpers/fixture'
 import { seedLocalFixture } from '../helpers/localSeed'
 import { readStocksForItem } from '../helpers/stockReadback'
+import { CookingPage } from '../pages/CookingPage'
 import { ItemPage } from '../pages/ItemPage'
 import { PantryPage } from '../pages/PantryPage'
 
@@ -361,6 +362,70 @@ test('user can set the Amount of a non-consumable item on the Stock tab, and ope
       return rows.map((r) => [r.packedQuantity, r.unpackedQuantity])
     })
     .toEqual([[4, 0]])
+})
+
+// Cooking is only for consumable items (owner decision 2026-11-26). A recipe
+// that links Tissue (consumable) and Cups (not consumable), both stocked
+// here: cooking it must use Tissue and leave Cups alone. Cups is stocked at
+// the active location, so only the consumable rule can keep it out.
+const RECIPE_TEA = 'eeeeeeee-0000-0000-0000-000000000001'
+const FIXTURE_RECIPE_WITH_CUPS: Fixture = {
+  ...FIXTURE,
+  items: FIXTURE.items.map((item) =>
+    item.id === CUPS ? { ...item, consumable: false } : item,
+  ),
+  recipes: [
+    {
+      id: RECIPE_TEA,
+      name: 'Tea Time',
+      items: [
+        { itemId: TISSUE, defaultAmount: 1 },
+        { itemId: CUPS, defaultAmount: 1 },
+      ],
+    },
+  ],
+}
+
+test('user cooks a recipe with a non-consumable item and only the consumable item is used', async ({
+  page,
+  request,
+  baseURL,
+}) => {
+  // Given the recipe, with Tissue at 2 packs and Cups at 3
+  await seedFixture(page, request, baseURL, FIXTURE_RECIPE_WITH_CUPS)
+  const cooking = new CookingPage(page)
+  await cooking.navigateTo()
+
+  // When the user opens the recipe
+  await cooking.expandRecipe('Tea Time')
+
+  // Then only Tissue is listed, and the card counts one item
+  const main = page.getByRole('main')
+  await expect(
+    main.getByRole('heading', { name: 'Tissue', level: 3 }),
+  ).toBeVisible()
+  await expect(
+    main.getByRole('heading', { name: 'Cups', level: 3 }),
+  ).toHaveCount(0)
+  await expect(main.getByText('1 / 1 here')).toBeVisible()
+
+  // When the user cooks it
+  await cooking.checkRecipe('Tea Time')
+  await cooking.clickDone()
+  await cooking.confirmDone()
+
+  // Then Tissue went down by one pack
+  await expect
+    .poll(async () => {
+      const rows = await readStocksForItem(page, request, baseURL, TISSUE)
+      return rows.map((r) => r.packedQuantity + r.unpackedQuantity)
+    })
+    .toEqual([1])
+  // And Cups is untouched: 3 packs, nothing opened
+  const cups = await readStocksForItem(page, request, baseURL, CUPS)
+  expect(cups.map((r) => [r.packedQuantity, r.unpackedQuantity])).toEqual([
+    [3, 0],
+  ])
 })
 
 async function scanConsumableUi(

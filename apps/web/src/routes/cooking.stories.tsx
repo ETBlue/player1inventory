@@ -295,6 +295,48 @@ export const WithExpandedRecipe: Story = {
   render: () => <WithExpandedRecipeStory />,
 }
 
+// A recipe that still links a non-consumable item (old data). Cooking is only
+// for consumable items (owner decision 2026-11-26), so the card counts and
+// lists Tea Leaves only, and cooking never uses the Cup.
+function NonConsumableIgnoredStory() {
+  return (
+    <CookingStory
+      setup={async () => {
+        const tea = await createItem({
+          name: 'Tea Leaves',
+          tagIds: [],
+          targetQuantity: 3,
+          refillThreshold: 1,
+          packedQuantity: 4,
+          unpackedQuantity: 0,
+          consumeAmount: 1,
+        })
+        const cup = await createItem({
+          name: 'Cup',
+          tagIds: [],
+          targetQuantity: 4,
+          refillThreshold: 1,
+          packedQuantity: 4,
+          unpackedQuantity: 0,
+          consumeAmount: 1,
+          consumable: false,
+        })
+        await createRecipe({
+          name: 'Tea',
+          items: [
+            { itemId: tea.id, defaultAmount: 1 },
+            { itemId: cup.id, defaultAmount: 1 },
+          ],
+        })
+      }}
+    />
+  )
+}
+
+export const NonConsumableIgnored: Story = {
+  render: () => <NonConsumableIgnoredStory />,
+}
+
 // Story 5: Active toolbar — recipe checked, showing count text + Cancel + Done
 function WithActiveToolbarStory() {
   return (

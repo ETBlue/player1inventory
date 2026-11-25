@@ -32,6 +32,7 @@ const {
   Offline,
   WithCheckedRecipe,
   WithExpandedRecipe,
+  NonConsumableIgnored,
   WithActiveToolbar,
   WithSearch,
   SortByRecent,
@@ -123,6 +124,11 @@ describe('Cooking stories smoke tests', () => {
     expect(
       await screen.findByRole('button', { name: /done/i }),
     ).toBeInTheDocument()
+  })
+
+  it('NonConsumableIgnored counts only the consumable item', async () => {
+    render(<NonConsumableIgnored />)
+    expect(await screen.findByText('1 / 1 here')).toBeInTheDocument()
   })
 
   it('WithActiveToolbar renders without error', async () => {

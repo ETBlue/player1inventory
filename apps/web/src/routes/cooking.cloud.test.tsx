@@ -350,6 +350,50 @@ describe('Use (Cooking) Page — cloud mode', () => {
     })
   })
 
+  it('user cooks a recipe with a non-consumable item in cloud mode and only the consumable item is sent', async () => {
+    // Given a recipe with Flour and a non-consumable Cup, both stocked at the
+    // active location (owner decision 2026-11-26: cooking is only for
+    // consumable items)
+    const cup = {
+      ...CLOUD_ITEM,
+      id: 'item-cup',
+      name: 'Cup',
+      consumable: false,
+    }
+    mockUseGetItemsQuery.mockReturnValue({
+      ...emptyQuery,
+      data: { items: [CLOUD_ITEM, cup] },
+      networkStatus: 7,
+      refetch: vi.fn(),
+    })
+    mockUseGetRecipesQuery.mockReturnValue({
+      ...emptyQuery,
+      data: {
+        recipes: [
+          {
+            ...CLOUD_RECIPE,
+            items: [
+              { itemId: CLOUD_ITEM.id, defaultAmount: 2 },
+              { itemId: cup.id, defaultAmount: 1 },
+            ],
+          },
+        ],
+      },
+    })
+    renderPage()
+    const user = userEvent.setup()
+
+    // When the user checks the recipe and confirms Done
+    await user.click(await screen.findByLabelText('Pasta'))
+    await user.click(screen.getByRole('button', { name: /done/i }))
+    await user.click(await screen.findByRole('button', { name: /confirm/i }))
+
+    // Then the mutation carries the consumable item only
+    await waitFor(() => expect(mockConsumeRecipes).toHaveBeenCalled())
+    const { variables } = callArgs(mockConsumeRecipes.mock, 0)[0]
+    expect(variables.input.items.map((i) => i.itemId)).toEqual([CLOUD_ITEM.id])
+  })
+
   it('user sees one error message when cooking fails, and the dialog stays open', async () => {
     // Given the server refuses the cook (any cause: a lost connection, a
     // refused role, a rolled-back transaction)
