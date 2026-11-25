@@ -132,15 +132,24 @@ describe('Cart page - a failed cloud save', () => {
     cloudServer.failing.add('useAddToCartMutation')
     renderCart()
 
-    // When the user checks Milk
+    // When the user checks Milk and saves the suggested amount (target 4,
+    // 1 in stock: 3)
     await user.click(await screen.findByRole('checkbox', { name: /milk/i }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }))
 
-    // Then the write was sent, a message shows, and Milk is unchecked and
-    // can be pressed again
-    await expectSaveFailedAndNoRejection()
+    // Then ONE write was sent, the message shows in the dialog, which stays
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      SAVE_FAILED,
+    )
+    await rejections.settle()
+    expect(rejections.list).toEqual([])
     expect(cloudServer.calls.useAddToCartMutation).toEqual([
-      { cartId: CART_ID, itemId: 'item-milk', quantity: 1 },
+      { cartId: CART_ID, itemId: 'item-milk', quantity: 3 },
     ])
+
+    // And after Cancel, Milk is unchecked and can be pressed again
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
     await waitFor(() =>
       expect(screen.getByRole('checkbox', { name: /milk/i })).toBeEnabled(),
     )
@@ -176,15 +185,22 @@ describe('Cart page - a failed cloud save', () => {
     cloudServer.failing.add('useUpdateCartItemMutation')
     renderCart()
 
-    // When the user raises the amount of Eggs
+    // When the user raises the amount of Eggs to 2 in the dialog and saves
     await user.click(
-      await screen.findByRole('button', {
-        name: 'Increase quantity of Eggs',
-      }),
+      await screen.findByRole('button', { name: /^Edit amount of Eggs/ }),
     )
+    const dialog = await screen.findByRole('dialog')
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Increase amount' }),
+    )
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }))
 
-    // Then the write was sent, and a message shows
-    await expectSaveFailedAndNoRejection()
+    // Then the write was sent, and a message shows in the dialog
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      SAVE_FAILED,
+    )
+    await rejections.settle()
+    expect(rejections.list).toEqual([])
     expect(cloudServer.calls.useUpdateCartItemMutation).toEqual([
       { id: 'cart-item-eggs', quantity: 2 },
     ])

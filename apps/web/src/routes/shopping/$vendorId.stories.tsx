@@ -149,8 +149,12 @@ function WithCartItemsStory() {
         consumeAmount: 1,
       })
 
-      await addToCart(vendor.id, milk.id, 2)
-      await addToCart(vendor.id, eggs.id, 1)
+      // The cart id is `${locationId}:${vendorId}` since PR 3b. A bare
+      // vendor id wrote the rows to a cart no page reads, so until 2026-11-25
+      // this story showed an EMPTY cart.
+      const cartId = cartIdFor(DEFAULT_LOCATION_ID, vendor.id)
+      await addToCart(cartId, milk.id, 2)
+      await addToCart(cartId, eggs.id, 1)
 
       setVendorId(vendor.id)
     }

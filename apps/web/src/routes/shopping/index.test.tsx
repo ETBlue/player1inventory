@@ -459,7 +459,14 @@ describe('Shopping index page', () => {
     const checkbox = screen.getByRole('checkbox', { name: /pineapple cake/i })
     await waitFor(() => expect(checkbox).not.toBeDisabled())
     await userEvent.click(checkbox)
-    expect(await screen.findByText(/1 pack/i)).toBeInTheDocument()
+    // Ticking asks for the amount first (cart amount dialog); Save adds it
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+    await waitFor(() =>
+      expect(
+        screen.getByRole('checkbox', { name: /pineapple cake/i }),
+      ).toBeChecked(),
+    )
 
     // 5. Navigate back to shopping index
     history.push('/shopping')
