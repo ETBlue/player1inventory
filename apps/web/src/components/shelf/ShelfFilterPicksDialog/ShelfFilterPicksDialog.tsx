@@ -60,16 +60,18 @@ export function ShelfFilterPicksDialog({
   // how ShelfDetailView calls it), so keying the effect on `axes` itself would
   // reset the user's in-progress picks on any unrelated re-render while the
   // dialog is open. Each axis contributes its `key` (identity), `metBy` (whether
-  // it's read-only), and its options' ids in order — that's every field
-  // `defaultPicksFor` or the render below reads to decide what to seed or show,
-  // so two axis lists that produce the same signature are interchangeable for
-  // this dialog's purposes even when they're different array instances.
+  // it's read-only), and its options' ids and depths in order. `defaultPicksFor`
+  // reads `depth` (it picks the one depth-0 option), so a tag moved in the tree
+  // with the same ids in the same order must reset the picks too. That is every
+  // field `defaultPicksFor` reads to decide what to seed, so two axis lists that
+  // produce the same signature are interchangeable for this dialog's purposes
+  // even when they're different array instances.
   const axisSignature = useMemo(
     () =>
       axes
         .map(
           (axis) =>
-            `${axis.key}:${axis.metBy ?? ''}:${axis.options.map((o) => o.id).join(',')}`,
+            `${axis.key}:${axis.metBy ?? ''}:${axis.options.map((o) => `${o.id}@${o.depth}`).join(',')}`,
         )
         .join('|'),
     [axes],
@@ -206,7 +208,18 @@ export function ShelfFilterPicksDialog({
                   {axis.options.map((option) => {
                     const optionId = `${idPrefix}-${axis.key}-${option.id}`
                     return (
-                      <div key={option.id} className="flex items-center gap-2">
+                      // A child tag is indented under the tag the rule names,
+                      // 24px per level: the radio (16px) plus the gap (8px), so
+                      // a child's radio sits under its parent's name.
+                      <div
+                        key={option.id}
+                        className="flex items-center gap-2"
+                        style={
+                          option.depth > 0
+                            ? { marginLeft: option.depth * 24 }
+                            : undefined
+                        }
+                      >
                         <RadioGroupItem value={option.id} id={optionId} />
                         <Label
                           htmlFor={optionId}

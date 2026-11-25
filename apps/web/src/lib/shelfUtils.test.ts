@@ -231,7 +231,7 @@ describe('deriveFilterAxes', () => {
       vendors,
       recipes,
     )
-    expect(axes[0]?.options).toEqual([{ id: 'v1', name: 'Costco' }])
+    expect(axes[0]?.options).toEqual([{ id: 'v1', name: 'Costco', depth: 0 }])
   })
 
   it('marks the vendor axis met when the item already carries a configured vendor', () => {
@@ -275,6 +275,122 @@ describe('deriveFilterAxes', () => {
     expect(
       deriveFilterAxes(item(), {}, tags, tagTypes, vendors, recipes),
     ).toEqual([])
+  })
+
+  describe('tag axis lists the child tags of each named tag', () => {
+    // Dairy has two children; Milk has two children of its own. The names are
+    // NOT in alphabetical order in the array, so a test that passes proves the
+    // options are sorted the way the tag settings page sorts them.
+    const treeTags: Tag[] = [
+      { id: 'dairy', name: 'Dairy', typeId: 'tt-cat' },
+      { id: 'milk', name: 'Milk', typeId: 'tt-cat', parentId: 'dairy' },
+      { id: 'cheese', name: 'Cheese', typeId: 'tt-cat', parentId: 'dairy' },
+      { id: 'oat-milk', name: 'Oat milk', typeId: 'tt-cat', parentId: 'milk' },
+      { id: 'cow-milk', name: 'Cow milk', typeId: 'tt-cat', parentId: 'milk' },
+      { id: 'frozen', name: 'Frozen', typeId: 'tt-cat' },
+      { id: 'ice', name: 'Ice', typeId: 'tt-cat', parentId: 'frozen' },
+      { id: 'fridge', name: 'Fridge', typeId: 'tt-sto' },
+    ]
+    const optionsOf = (tagIds: string[]) =>
+      deriveFilterAxes(item(), { tagIds }, treeTags, tagTypes, vendors, recipes)
+        .find((a) => a.key === 'tt-cat')
+        ?.options.map((o) => `${o.id}@${o.depth}`)
+
+    it('lists children and grandchildren after the named tag, by name, with depths', () => {
+      expect(optionsOf(['dairy'])).toEqual([
+        'dairy@0',
+        'cheese@1',
+        'milk@1',
+        'cow-milk@2',
+        'oat-milk@2',
+      ])
+    })
+
+    it('keeps the named tags in rule order, each with its own subtree', () => {
+      expect(optionsOf(['frozen', 'dairy'])).toEqual([
+        'frozen@0',
+        'ice@1',
+        'dairy@0',
+        'cheese@1',
+        'milk@1',
+        'cow-milk@2',
+        'oat-milk@2',
+      ])
+    })
+
+    it('lists a child the rule also names once, under its parent', () => {
+      // Milk is named too, and named FIRST — it must not get its own top entry
+      expect(optionsOf(['milk', 'dairy'])).toEqual([
+        'dairy@0',
+        'cheese@1',
+        'milk@1',
+        'cow-milk@2',
+        'oat-milk@2',
+      ])
+    })
+
+    it('depths are relative to the named tag, not to the top of the tree', () => {
+      expect(optionsOf(['milk'])).toEqual([
+        'milk@0',
+        'cow-milk@1',
+        'oat-milk@1',
+      ])
+    })
+
+    it('keeps metBy on the named tag when the item carries a child tag', () => {
+      const axes = deriveFilterAxes(
+        item({ tagIds: ['oat-milk'] }),
+        { tagIds: ['dairy'] },
+        treeTags,
+        tagTypes,
+        vendors,
+        recipes,
+      )
+      expect(axes[0]?.metBy).toBe('dairy')
+    })
+
+    it('gives vendor and recipe options depth 0 and no extra rows', () => {
+      const axes = deriveFilterAxes(
+        item(),
+        { vendorIds: ['v1', 'v2'], recipeIds: ['r1'] },
+        treeTags,
+        tagTypes,
+        vendors,
+        recipes,
+      )
+      expect(axes.map((a) => a.options)).toEqual([
+        [
+          { id: 'v1', name: 'Costco', depth: 0 },
+          { id: 'v2', name: '7-Eleven', depth: 0 },
+        ],
+        [{ id: 'r1', name: 'Pancakes', depth: 0 }],
+      ])
+    })
+
+    it('every option, child tags included, makes the item match the shelf', () => {
+      // This is what makes a child tag a valid pick: matchesFilterConfig
+      // counts descendants, so adding ANY option satisfies the axis.
+      const config: FilterConfig = { tagIds: ['dairy'] }
+      const axis = deriveFilterAxes(
+        item(),
+        config,
+        treeTags,
+        tagTypes,
+        vendors,
+        recipes,
+      )[0]
+      expect(axis?.options.length).toBe(5)
+      for (const option of axis?.options ?? []) {
+        expect(
+          matchesFilterConfig(
+            item({ tagIds: [option.id] }),
+            config,
+            recipes,
+            treeTags,
+          ),
+        ).toBe(true)
+      }
+    })
   })
 
   describe('agrees with matchesFilterConfig: every axis met ⇔ the item matches', () => {
@@ -366,7 +482,7 @@ describe('defaultPicksFor', () => {
       key: 'tt-cat',
       kind: 'tag' as const,
       typeName: 'Category',
-      options: [{ id: 'dairy', name: 'Dairy' }],
+      options: [{ id: 'dairy', name: 'Dairy', depth: 0 }],
       ...over,
     }) as ReturnType<typeof deriveFilterAxes>[number]
 
@@ -380,7 +496,7 @@ describe('defaultPicksFor', () => {
       {
         key: 'vendor',
         kind: 'vendor',
-        options: [{ id: 'v1', name: 'Costco' }],
+        options: [{ id: 'v1', name: 'Costco', depth: 0 }],
       },
     ])
     expect(picks).toEqual({ tagIds: [], vendorId: 'v1' })
@@ -391,7 +507,7 @@ describe('defaultPicksFor', () => {
       {
         key: 'recipe',
         kind: 'recipe',
-        options: [{ id: 'r1', name: 'Pancakes' }],
+        options: [{ id: 'r1', name: 'Pancakes', depth: 0 }],
       },
     ])
     expect(picks).toEqual({ tagIds: [], recipeId: 'r1' })
@@ -408,8 +524,36 @@ describe('defaultPicksFor', () => {
     const picks = defaultPicksFor([
       tagAxis({
         options: [
-          { id: 'dairy', name: 'Dairy' },
-          { id: 'frozen', name: 'Frozen' },
+          { id: 'dairy', name: 'Dairy', depth: 0 },
+          { id: 'frozen', name: 'Frozen', depth: 0 },
+        ],
+      }),
+    ])
+    expect(picks).toEqual({ tagIds: [] })
+  })
+
+  it('pre-picks the ONE named tag even when its child tags are offered below it', () => {
+    // Given a rule naming only Dairy, which has two children in the options
+    const picks = defaultPicksFor([
+      tagAxis({
+        options: [
+          { id: 'dairy', name: 'Dairy', depth: 0 },
+          { id: 'milk', name: 'Milk', depth: 1 },
+          { id: 'oat-milk', name: 'Oat Milk', depth: 2 },
+        ],
+      }),
+    ])
+    // Then Dairy is picked, the same result as before children were offered
+    expect(picks).toEqual({ tagIds: ['dairy'] })
+  })
+
+  it('picks nothing when the rule names two tags, even if one has children', () => {
+    const picks = defaultPicksFor([
+      tagAxis({
+        options: [
+          { id: 'dairy', name: 'Dairy', depth: 0 },
+          { id: 'milk', name: 'Milk', depth: 1 },
+          { id: 'frozen', name: 'Frozen', depth: 0 },
         ],
       }),
     ])

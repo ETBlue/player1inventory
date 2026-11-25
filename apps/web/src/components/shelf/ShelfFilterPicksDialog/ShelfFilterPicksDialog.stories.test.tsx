@@ -3,8 +3,13 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './ShelfFilterPicksDialog.stories'
 
-const { SingleOpenAxis, ThreeOpenAxes, SomeAlreadyMet, WriteFailed } =
-  composeStories(stories)
+const {
+  SingleOpenAxis,
+  ThreeOpenAxes,
+  ChildTags,
+  SomeAlreadyMet,
+  WriteFailed,
+} = composeStories(stories)
 
 describe('ShelfFilterPicksDialog stories smoke tests', () => {
   it('SingleOpenAxis renders the dialog with the pre-selected radio', async () => {
@@ -19,6 +24,16 @@ describe('ShelfFilterPicksDialog stories smoke tests', () => {
     expect(screen.getByRole('radio', { name: 'Frozen' })).toBeInTheDocument()
     expect(screen.getByRole('radio', { name: 'Costco' })).toBeInTheDocument()
     expect(screen.getByRole('radio', { name: 'Pancakes' })).toBeInTheDocument()
+  })
+
+  it('ChildTags lists the child tags indented, with the named tag picked', () => {
+    render(<ChildTags />)
+    expect(screen.getByRole('radio', { name: 'Dairy' })).toBeChecked()
+    const grandchild = screen.getByRole('radio', { name: 'Oat milk' })
+    expect(grandchild).not.toBeChecked()
+    expect((grandchild.parentElement as HTMLElement).style.marginLeft).toBe(
+      '48px',
+    )
   })
 
   it('SomeAlreadyMet shows the met axis read-only', () => {
