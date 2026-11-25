@@ -18,6 +18,7 @@ import {
   isLowStock,
   isStockedHere,
   roundToStep,
+  suggestedCartAmount,
 } from './quantityUtils'
 
 // The shape every helper in this module actually takes: the per-location stock
@@ -1350,5 +1351,78 @@ describe('getStockPreview', () => {
       },
     )
     expect(notZero.isAtZero).toBe(false)
+  })
+})
+
+describe('suggestedCartAmount', () => {
+  const base = {
+    targetUnit: 'package' as const,
+    targetQuantity: 4,
+    refillThreshold: 1,
+    packedQuantity: 1,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+  }
+
+  it('suggests the packs missing to reach the target', () => {
+    // target 4, 1 in stock
+    expect(suggestedCartAmount(base)).toBe(3)
+  })
+
+  it('counts open packs as stock', () => {
+    // target 4, 1 packed + 2 open
+    expect(suggestedCartAmount({ ...base, unpackedQuantity: 2 })).toBe(1)
+  })
+
+  it('suggests at least 1, at or above the target and for an inactive item', () => {
+    expect(suggestedCartAmount({ ...base, packedQuantity: 4 })).toBe(1)
+    expect(suggestedCartAmount({ ...base, packedQuantity: 9 })).toBe(1)
+    expect(
+      suggestedCartAmount({ ...base, targetQuantity: 0, packedQuantity: 0 }),
+    ).toBe(1)
+  })
+
+  it('turns a measurement item into packs before rounding up', () => {
+    // 750 ml a bottle, target 2000 ml, 1 bottle + 100 ml = 850 ml in stock:
+    // 1150 ml missing = 1.53 bottles, so 2 (not 1150)
+    expect(
+      suggestedCartAmount({
+        ...base,
+        targetUnit: 'measurement',
+        measurementUnit: 'ml',
+        amountPerPackage: 750,
+        targetQuantity: 2000,
+        packedQuantity: 1,
+        unpackedQuantity: 100,
+      }),
+    ).toBe(2)
+  })
+
+  it('suggests 1 for a measurement item with no amount per package', () => {
+    expect(
+      suggestedCartAmount({
+        ...base,
+        targetUnit: 'measurement',
+        measurementUnit: 'ml',
+        targetQuantity: 2000,
+        packedQuantity: 0,
+      }),
+    ).toBe(1)
+  })
+
+  it('does not round a float error up to one more pack', () => {
+    // 2.1 / 0.3 is 7.000000000000001 in JavaScript. With nothing in stock
+    // that is 7 bottles missing, not 8.
+    expect(
+      suggestedCartAmount({
+        ...base,
+        targetUnit: 'measurement',
+        measurementUnit: 'L',
+        amountPerPackage: 0.3,
+        targetQuantity: 2.1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+      }),
+    ).toBe(7)
   })
 })

@@ -419,3 +419,24 @@ export function isLowStock(item: Stock): boolean {
     getCurrentQuantity(item) === item.refillThreshold
   )
 }
+
+/**
+ * The amount the cart amount dialog suggests when an item is ticked into a
+ * cart: the whole packs still missing to reach the target at this location,
+ * and at least 1.
+ *
+ * A cart amount counts PACKAGES, but the target and the stock are in the
+ * item's TRACKING unit. For a measurement item (for example 750 ml a bottle,
+ * target 2000 ml) both are turned into packs first, with `getItemPackUnits`,
+ * so "ceil(target − stock)" is not 1250 bottles. An item whose amounts cannot
+ * be turned into packs (a measurement item with no amount per package) has a
+ * pack target of 0, so it gets 1.
+ *
+ * The difference is rounded to 6 places before `Math.ceil`, so a float error
+ * such as 2.0000000000000004 does not become 3.
+ */
+export function suggestedCartAmount(item: Stock): number {
+  const { packed, target } = getItemPackUnits(item)
+  const missing = Math.round((target - packed) * 1e6) / 1e6
+  return Math.max(1, Math.ceil(missing))
+}

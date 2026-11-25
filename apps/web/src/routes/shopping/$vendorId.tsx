@@ -16,6 +16,7 @@ import { ListSectionDivider } from '@/components/shared/ListSectionDivider'
 import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { ReadOnlyNote } from '@/components/shared/ReadOnlyNote'
 import { Toolbar } from '@/components/shared/Toolbar'
+import { CartAmountDialog } from '@/components/shopping/CartAmountDialog'
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -54,10 +55,14 @@ import { useShowStock } from '@/hooks/useShowStock'
 import { useSortFilter } from '@/hooks/useSortFilter'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import { filterItems, filterItemsByRecipes } from '@/lib/filterUtils'
-import { isInactiveHere, isStockedHere } from '@/lib/quantityUtils'
+import {
+  isInactiveHere,
+  isStockedHere,
+  suggestedCartAmount,
+} from '@/lib/quantityUtils'
 import { showSaveError } from '@/lib/saveError'
 import { sortItems } from '@/lib/sortUtils'
-import { isBeingBought, type PantryItem } from '@/types'
+import { DEFAULT_PACKAGE_UNIT, isBeingBought, type PantryItem } from '@/types'
 
 export const Route = createFileRoute('/shopping/$vendorId')({
   component: VendorCartRoute,
@@ -129,6 +134,13 @@ function VendorCart() {
   const [showCheckoutDialog, setShowCheckoutDialog] = useState(false)
   const [pendingItemIds, setPendingItemIds] = useState<Set<string>>(new Set())
   const [isCheckoutRefetching, setIsCheckoutRefetching] = useState(false)
+  // The open `CartAmountDialog`, or null. `initialAmount` is read once, when
+  // it opens, so a live update to the row does not reset what the user typed.
+  const [amountDialog, setAmountDialog] = useState<{
+    itemId: string
+    mode: 'add' | 'edit'
+    initialAmount: number
+  } | null>(null)
 
   const { data: recipes = [], isLoading: isRecipesLoading } = useRecipes()
 
@@ -371,45 +383,45 @@ function VendorCart() {
       clearPending()
       showSaveError(err)
     }
-    setPendingItemIds((prev) => new Set(prev).add(item.id))
     if (ci) {
+      setPendingItemIds((prev) => new Set(prev).add(item.id))
       removeFromCart.mutate(ci.id, {
         onSuccess: clearPending,
         onError: failed,
       })
     } else if (cart) {
-      addToCart.mutate(
-        { cartId: cart.id, itemId: item.id, quantity: 1 },
-        { onSuccess: clearPending, onError: failed },
-      )
-    } else {
-      clearPending()
+      // Ticking does not add at once: it asks how many first. Cancel adds
+      // nothing, so the row stays unticked.
+      setAmountDialog({
+        itemId: item.id,
+        mode: 'add',
+        initialAmount: suggestedCartAmount(item),
+      })
     }
   }
 
-  function handleUpdateCartQuantity(item: PantryItem, qty: number) {
-    const ci = cartItemMap.get(item.id)
-    if (ci) {
-      const clearPending = () =>
-        setPendingItemIds((prev) => {
-          const s = new Set(prev)
-          s.delete(item.id)
-          return s
-        })
-      setPendingItemIds((prev) => new Set(prev).add(item.id))
-      updateCartItem.mutate(
-        { cartItemId: ci.id, quantity: qty },
-        {
-          onSuccess: clearPending,
-          // Before, a failed write only cleared the pending row
-          onError: (err) => {
-            clearPending()
-            showSaveError(err)
-          },
-        },
-      )
+  // ONE request per Save, whatever the amount. It rejects on a failure, so
+  // the dialog stays open and shows the error itself.
+  async function handleSaveAmount(amount: number) {
+    if (!amountDialog) return
+    const ci = cartItemMap.get(amountDialog.itemId)
+    if (amountDialog.mode === 'edit' && ci) {
+      await updateCartItem.mutateAsync({ cartItemId: ci.id, quantity: amount })
+    } else if (cart) {
+      // Also when the row was added elsewhere while the dialog was open:
+      // `addToCart` then adds this amount to it (an upsert with increment).
+      await addToCart.mutateAsync({
+        cartId: cart.id,
+        itemId: amountDialog.itemId,
+        quantity: amount,
+      })
     }
+    setAmountDialog(null)
   }
+
+  const amountDialogItem = amountDialog
+    ? vendorScopedItems.find((i) => i.id === amountDialog.itemId)
+    : undefined
 
   function renderItemCard(item: PantryItem) {
     const ci = cartItemMap.get(item.id)
@@ -433,9 +445,14 @@ function VendorCart() {
           isPending={pendingItemIds.has(item.id)}
           {...(ci ? { controlAmount: ci.quantity } : {})}
           onCheckboxToggle={() => handleToggleCart(item)}
-          onAmountChange={(delta) => {
-            const newQty = (ci?.quantity ?? 0) + delta
-            handleUpdateCartQuantity(item, newQty)
+          amountUnit={item.packageUnit || DEFAULT_PACKAGE_UNIT}
+          onAmountEdit={() => {
+            if (!ci) return
+            setAmountDialog({
+              itemId: item.id,
+              mode: 'edit',
+              initialAmount: ci.quantity,
+            })
           }}
         />
       </div>
@@ -600,6 +617,17 @@ function VendorCart() {
           </div>
         )}
       </div>
+
+      {amountDialogItem && amountDialog && (
+        <CartAmountDialog
+          key={`${amountDialog.itemId}:${amountDialog.mode}`}
+          item={amountDialogItem}
+          mode={amountDialog.mode}
+          initialAmount={amountDialog.initialAmount}
+          onClose={() => setAmountDialog(null)}
+          onSubmit={handleSaveAmount}
+        />
+      )}
 
       <AlertDialog open={showAbandonDialog} onOpenChange={setShowAbandonDialog}>
         <AlertDialogContent
