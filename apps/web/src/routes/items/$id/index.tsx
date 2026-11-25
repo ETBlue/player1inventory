@@ -32,7 +32,7 @@ import type { TrackedQuantities } from '@/lib/quantityUtils'
 import { convertTrackedQuantities } from '@/lib/quantityUtils'
 import { showSaveError } from '@/lib/saveError'
 import type { Item, PantryItem, StockConfigFields, StockFields } from '@/types'
-import { DEFAULT_PACKAGE_UNIT } from '@/types'
+import { DEFAULT_PACKAGE_UNIT, isConsumable } from '@/types'
 
 export const Route = createFileRoute('/items/$id/')({
   component: ItemInfoTab,
@@ -73,6 +73,8 @@ function itemToFormValues(item: PantryItem): ItemFormValues {
           ? 'date'
           : 'disabled'),
     expirationThreshold: item.expirationThreshold ?? '',
+    // A missing value means consumable (`isConsumable`).
+    consumable: isConsumable(item),
   }
 }
 
@@ -111,6 +113,10 @@ function buildInfoUpdates(values: ItemFormValues): ItemInfoUpdatePayload {
     targetUnit: values.targetUnit,
     consumeAmount: values.consumeAmount,
     expirationMode: values.expirationMode,
+    // The measurement and expiration fields below are sent as they are in
+    // the form, also when the item is not consumable: hidden values are
+    // KEPT, so turning Consumable on again restores them (design, PR 2).
+    consumable: values.consumable,
   }
 
   // Assign undefined (not delete) so toUpdateItemInput() sees the key as

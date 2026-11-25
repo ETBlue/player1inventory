@@ -1425,7 +1425,9 @@ describe('ItemForm — readOnly (households H5 task F.5)', () => {
       expect(field, id).not.toBeDisabled()
     }
     // And the switch and the select, which cannot be readOnly, are disabled
-    expect(screen.getByRole('switch')).toBeDisabled()
+    // Both switches: Consumable and Track in measurement
+    expect(screen.getAllByRole('switch')).toHaveLength(2)
+    for (const sw of screen.getAllByRole('switch')) expect(sw).toBeDisabled()
     expect(screen.getByRole('combobox')).toBeDisabled()
     // And there is no Save button
     expect(screen.queryByRole('button', { name: /save/i })).toBeNull()
@@ -1440,7 +1442,9 @@ describe('ItemForm — readOnly (households H5 task F.5)', () => {
       />,
     )
     expect(document.getElementById('name')).not.toHaveAttribute('readonly')
-    expect(screen.getByRole('switch')).not.toBeDisabled()
+    expect(screen.getAllByRole('switch')).toHaveLength(2)
+    for (const sw of screen.getAllByRole('switch'))
+      expect(sw).not.toBeDisabled()
     expect(screen.getByRole('button', { name: /save/i })).toBeInTheDocument()
   })
 })
@@ -1634,5 +1638,141 @@ describe('ItemForm — Save in a slot outside the form (submitSlot)', () => {
     )
     expect(screen.getByRole('textbox', { name: /^name/i })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^save$/i })).toBeNull()
+  })
+})
+
+describe('ItemForm — the Consumable switch', () => {
+  const flour = {
+    name: 'Flour',
+    packageUnit: 'pack',
+    measurementUnit: 'g',
+    amountPerPackage: 500,
+    targetUnit: 'measurement' as const,
+    targetQuantity: 2000,
+    refillThreshold: 500,
+    packedQuantity: 2,
+    unpackedQuantity: 250,
+    consumeAmount: 100,
+    expirationMode: 'days from purchase' as const,
+    estimatedDueDays: 30,
+    expirationThreshold: 3,
+  }
+
+  it('is on for a new item', () => {
+    render(<ItemForm onSubmit={vi.fn()} />)
+    expect(screen.getByRole('switch', { name: /^consumable$/i })).toBeChecked()
+  })
+
+  it('user turning it off hides measurement, opened packs and expiration, and turning it on shows them again with their values', async () => {
+    const user = userEvent.setup()
+    render(
+      <ItemForm
+        onSubmit={vi.fn()}
+        sections={['info', 'stock']}
+        initialValues={{ ...flour, targetUnit: 'package' }}
+      />,
+    )
+    const consumable = screen.getByRole('switch', { name: /^consumable$/i })
+
+    // Before: every field shows
+    expect(screen.getByLabelText(/measurement unit/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/^unpacked/i)).toBeInTheDocument()
+    expect(
+      screen.getByLabelText(/expiration/i, { selector: 'button' }),
+    ).toBeInTheDocument()
+
+    // When the user turns Consumable off
+    await user.click(consumable)
+
+    // Then the measurement settings, the opened packs (Unpacked, Unpack,
+    // Pack) and the expiration settings are hidden
+    expect(
+      screen.queryByRole('switch', { name: /track in measurement/i }),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/measurement unit/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/^unpacked/i)).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /^unpack$/i }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /^pack$/i }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByLabelText(/expiration/i, { selector: 'button' }),
+    ).not.toBeInTheDocument()
+    // And the packed count still shows
+    expect(screen.getByLabelText(/^packed/i)).toBeInTheDocument()
+
+    // When the user turns it on again
+    await user.click(consumable)
+
+    // Then the fields show again with their old values
+    expect(screen.getByLabelText(/measurement unit/i)).toHaveValue('g')
+    expect(screen.getByLabelText(/^expires in/i)).toHaveValue(30)
+  })
+
+  it('user turning it off keeps the hidden values in what is saved', async () => {
+    const user = userEvent.setup()
+    const onSubmit = submitSpy()
+    render(
+      <ItemForm
+        onSubmit={onSubmit}
+        onDirtyChange={vi.fn()}
+        initialValues={{ ...flour, targetUnit: 'package' }}
+      />,
+    )
+    await user.click(screen.getByRole('switch', { name: /^consumable$/i }))
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    const values = elementAt(onSubmit.mock.calls, 0)[0]
+    expect(values.consumable).toBe(false)
+    expect(values.measurementUnit).toBe('g')
+    expect(values.amountPerPackage).toBe(500)
+    expect(values.expirationMode).toBe('days from purchase')
+    expect(values.estimatedDueDays).toBe(30)
+  })
+
+  it('user turning it off on an item tracked in grams moves it to packages and converts the amounts', async () => {
+    const user = userEvent.setup()
+    const onSubmit = submitSpy()
+    render(
+      <ItemForm
+        onSubmit={onSubmit}
+        onDirtyChange={vi.fn()}
+        sections={['info', 'stock']}
+        initialValues={flour}
+      />,
+    )
+
+    // When the user turns Consumable off
+    await user.click(screen.getByRole('switch', { name: /^consumable$/i }))
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    // Then the item tracks in packages, and the amounts held in grams are
+    // converted: 2000 g -> 4 packs, 500 g -> 1, 250 g -> 0.5, 100 g -> 0.2
+    const values = elementAt(onSubmit.mock.calls, 0)[0]
+    expect(values.consumable).toBe(false)
+    expect(values.targetUnit).toBe('package')
+    expect(values.targetQuantity).toBe(4)
+    expect(values.refillThreshold).toBe(1)
+    expect(values.unpackedQuantity).toBe(0.5)
+    expect(values.consumeAmount).toBe(0.2)
+    // The measurement unit itself is kept
+    expect(values.measurementUnit).toBe('g')
+  })
+
+  it('a stored false starts the switch off, and the form is not dirty', () => {
+    const onDirtyChange = vi.fn()
+    render(
+      <ItemForm
+        onSubmit={vi.fn()}
+        onDirtyChange={onDirtyChange}
+        initialValues={{ ...flour, targetUnit: 'package', consumable: false }}
+      />,
+    )
+    expect(
+      screen.getByRole('switch', { name: /^consumable$/i }),
+    ).not.toBeChecked()
+    expect(onDirtyChange).not.toHaveBeenCalledWith(true)
   })
 })

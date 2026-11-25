@@ -1688,6 +1688,44 @@ describe('Item stock tab', () => {
       expect((await getItemStock(item.id))?.dueDate).toEqual(stored)
     })
 
+    it('user can save a quantity of a non-consumable item in "date" mode without losing this location’s due date', async () => {
+      const user = userEvent.setup()
+
+      // Given a non-consumable item in 'date' mode: the mode alone would
+      // render "Expires on", but a non-consumable hides it
+      const stored = new Date('2026-10-10T00:00:00.000Z')
+      const item = await createItem({
+        name: 'Cups',
+        tagIds: [],
+        packageUnit: 'cup',
+        targetUnit: 'package',
+        consumeAmount: 1,
+        consumable: false,
+        expirationMode: 'date',
+        targetQuantity: 6,
+        refillThreshold: 2,
+        packedQuantity: 4,
+        unpackedQuantity: 0,
+        dueDate: stored,
+      })
+
+      renderStockTab(item.id)
+
+      const packedInput = await screen.findByLabelText(/^packed/i)
+      expect(screen.queryByLabelText(/expires on/i)).not.toBeInTheDocument()
+
+      // When the user changes a quantity and saves
+      await user.clear(packedInput)
+      await user.type(packedInput, '5')
+      await user.click(screen.getByRole('button', { name: /save/i }))
+
+      // Then the stored due date survives
+      await waitFor(async () => {
+        expect((await getItemStock(item.id))?.packedQuantity).toBe(5)
+      })
+      expect((await getItemStock(item.id))?.dueDate).toEqual(stored)
+    })
+
     // The other half of the fix: in 'date' mode the field IS rendered, so the
     // key is still emitted and an emptied field still clears the stored date.
     // Without this the fix could over-correct into "never clear".

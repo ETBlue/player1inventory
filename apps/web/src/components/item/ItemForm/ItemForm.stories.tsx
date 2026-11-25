@@ -40,6 +40,7 @@ const editValues: ItemFormValues = {
   targetUnit: 'package',
   measurementUnit: '',
   amountPerPackage: '',
+  consumable: true,
 }
 
 const measurementValues: ItemFormValues = {
@@ -102,6 +103,17 @@ export const EditMode: Story = {
   name: 'Edit Mode (all sections)',
   args: {
     initialValues: editValues,
+    sections: ['stock', 'info'],
+    onDirtyChange,
+  },
+}
+
+// A non-consumable item (cups): the Consumable switch is off, so the
+// measurement settings, opened packs and expiration settings are hidden.
+export const NotConsumable: Story = {
+  name: 'Edit Mode (not consumable)',
+  args: {
+    initialValues: { ...editValues, consumable: false },
     sections: ['stock', 'info'],
     onDirtyChange,
   },
