@@ -104,13 +104,21 @@ export function QuickUpdateDialog({
 
   // Labels — matches item info tab format exactly
   const packedUnit = item.packageUnit || DEFAULT_PACKAGE_UNIT
+  // A non-consumable item counts whole pieces in the package unit, so its
+  // target and refill threshold are in the package unit too, whatever the
+  // measurement settings say (owner decision 2026-11-26).
   const unpackedUnit =
-    item.targetUnit === 'measurement'
+    consumable && item.targetUnit === 'measurement'
       ? item.measurementUnit
       : item.packageUnit || DEFAULT_PACKAGE_UNIT
-  const packedAriaLabel = t('pantry.quickUpdate.packedField', {
-    unit: packedUnit,
-  })
+  // A non-consumable item has ONE stock field, "Amount", in whole pieces. It
+  // edits `packedQuantity`; `unpackedQuantity` is saved as 0.
+  const packedAriaLabel = t(
+    consumable
+      ? 'pantry.quickUpdate.packedField'
+      : 'pantry.quickUpdate.amountField',
+    { unit: packedUnit },
+  )
   const unpackedAriaLabel = t('pantry.quickUpdate.unpackedField', {
     unit: unpackedUnit,
   })
@@ -128,10 +136,21 @@ export function QuickUpdateDialog({
   // (`targetUnit === 'package' ? 1 : quantityStep`), while the refill threshold
   // always moves by the consume amount. Only the fallback differs — see the
   // `step` comment above.
-  const targetStep = item.targetUnit === 'package' ? 1 : step
+  //
+  // A non-consumable item: both are whole pieces, so both step by 1 and a
+  // typed fraction is rounded up, the same rule as `getPieceCounts`.
+  const targetStep = !consumable || item.targetUnit === 'package' ? 1 : step
+  const refillStep = consumable ? step : 1
   const normalizeTarget = (value: number) =>
-    item.targetUnit === 'package' ? value : roundToStep(value, step)
-  const normalizeRefill = (value: number) => roundToStep(value, step)
+    !consumable
+      ? Math.ceil(value)
+      : item.targetUnit === 'package'
+        ? value
+        : roundToStep(value, step)
+  const normalizeRefill = (value: number) =>
+    consumable ? roundToStep(value, step) : Math.ceil(value)
+  const normalizePacked = (value: number) =>
+    consumable ? value : Math.floor(value)
 
   // Progress display values — every display below reads the LOCAL
   // target/refill, never the stored ones, so the preview follows what has
@@ -147,6 +166,7 @@ export function QuickUpdateDialog({
         ? { amountPerPackage: item.amountPerPackage }
         : {}),
       consumeAmount: item.consumeAmount,
+      consumable,
     },
     {
       packedQuantity: localPacked,
@@ -165,10 +185,15 @@ export function QuickUpdateDialog({
   // Fill to Full aims at the target currently in the input, not the stored
   // one — computed separately (not read off `preview`) because `onFill`
   // below needs the destination quantities, not just whether they're reached.
-  const fillToFullState = computeFillToFull({
-    ...item,
-    targetQuantity: localTarget,
-  })
+  //
+  // A non-consumable item fills to its target in whole pieces, with no opened
+  // stock (`preview.target` is already in pieces).
+  const fillToFullState = consumable
+    ? computeFillToFull({
+        ...item,
+        targetQuantity: localTarget,
+      })
+    : { packedQuantity: preview.target, unpackedQuantity: 0 }
   const isUntouched =
     localPacked === item.packedQuantity &&
     localUnpacked === item.unpackedQuantity &&
@@ -214,7 +239,9 @@ export function QuickUpdateDialog({
     try {
       await onSubmit({
         packedQuantity: localPacked,
-        unpackedQuantity: localUnpacked,
+        // A non-consumable item has no opened stock: always 0, which also
+        // clears what an old row still held (owner decision 2026-11-26).
+        unpackedQuantity: consumable ? localUnpacked : 0,
         targetQuantity: localTarget,
         refillThreshold: localRefill,
         // The `dueDate` key is included ONLY when the field is actually
@@ -268,17 +295,29 @@ export function QuickUpdateDialog({
                 order on purpose. Reasoning:
                 `docs/features/pantry/2026-08-27-brainstorming-quick-update-stock-settings.md`
                 (addendum 2026-09-22). */}
-            {/* Packed row — label format matches item info tab */}
+            {/* Packed row — label format matches item info tab. For a
+                non-consumable item it is the one "Amount" row, in whole
+                pieces of the package unit. */}
             <span className="text-sm text-foreground-muted shrink-0">
-              {t('pantry.quickUpdate.packedLabel')}{' '}
+              {consumable
+                ? t('pantry.quickUpdate.packedLabel')
+                : t('pantry.quickUpdate.amountLabel')}{' '}
               <span className="text-xs font-normal">({packedUnit})</span>
             </span>
             <QuantityStepper
               value={localPacked}
               onStep={setLocalPacked}
               step={1}
-              decreaseLabel={t('pantry.quickUpdate.decreasePacked')}
-              increaseLabel={t('pantry.quickUpdate.increasePacked')}
+              decreaseLabel={
+                consumable
+                  ? t('pantry.quickUpdate.decreasePacked')
+                  : t('pantry.quickUpdate.decreaseAmount')
+              }
+              increaseLabel={
+                consumable
+                  ? t('pantry.quickUpdate.increasePacked')
+                  : t('pantry.quickUpdate.increaseAmount')
+              }
               disabled={isPending}
               inputProps={{
                 'aria-label': packedAriaLabel,
@@ -289,7 +328,12 @@ export function QuickUpdateDialog({
                 },
                 onBlur: (e) => {
                   const parsed = Number.parseFloat(e.target.value)
-                  setLocalPacked(Math.max(0, Number.isNaN(parsed) ? 0 : parsed))
+                  setLocalPacked(
+                    Math.max(
+                      0,
+                      Number.isNaN(parsed) ? 0 : normalizePacked(parsed),
+                    ),
+                  )
                 },
               }}
             />
@@ -402,7 +446,8 @@ export function QuickUpdateDialog({
                 quantityLabel={quantityLabel}
                 unitLabel={unitLabel}
                 current={localTotal}
-                target={localTarget}
+                // In the bar's unit: whole pieces for a non-consumable item.
+                target={preview.target}
                 status={localProgressStatus}
                 // Squares for a non-consumable item, like its pantry card.
                 consumable={consumable}
@@ -415,9 +460,10 @@ export function QuickUpdateDialog({
                 {...(item.amountPerPackage
                   ? { amountPerPackage: item.amountPerPackage }
                   : {})}
-                // The live stepper value, not item.refillThreshold, so the
-                // tick moves before Update is pressed.
-                refillThreshold={localRefill}
+                // From the live stepper value, not item.refillThreshold, so
+                // the tick moves before Update is pressed (whole pieces for a
+                // non-consumable item).
+                refillThreshold={preview.refillThreshold}
                 onClear={() => {
                   setLocalPacked(0)
                   setLocalUnpacked(0)
@@ -482,13 +528,13 @@ export function QuickUpdateDialog({
             <QuantityStepper
               value={localRefill}
               onStep={setLocalRefill}
-              step={step}
+              step={refillStep}
               round={normalizeRefill}
               decreaseLabel={t('pantry.quickUpdate.decreaseRefill')}
               increaseLabel={t('pantry.quickUpdate.increaseRefill')}
               disabled={isPending}
               inputProps={{
-                step,
+                step: refillStep,
                 'aria-label': refillAriaLabel,
                 value: localRefill,
                 onChange: (e) => {

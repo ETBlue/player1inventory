@@ -218,6 +218,10 @@
       "packedField": "Packed ({{unit}})",
       "decreasePacked": "Decrease packed",
       "increasePacked": "Increase packed",
+      "amountLabel": "Amount",
+      "amountField": "Amount ({{unit}})",
+      "decreaseAmount": "Decrease amount",
+      "increaseAmount": "Increase amount",
       "unpack": "Unpack",
       "unpackedLabel": "Unpacked",
       "unpackedField": "Unpacked ({{unit}})",
@@ -397,6 +401,12 @@
         "decrease": "Decrease packed",
         "increase": "Increase packed"
       },
+      "amount": {
+        "label": "Amount",
+        "hint": "Number of whole pieces in stock",
+        "decrease": "Decrease amount",
+        "increase": "Increase amount"
+      },
       "unpackedQuantity": {
         "label": "Unpacked",
         "hint": "Loose amount from opened package(s)",
@@ -429,6 +439,7 @@
       "unitSwitchDialog": {
         "title": "Update stock numbers?",
         "description": "Now tracking in {{unit}}. Unpacked, Target Quantity and Refill When Below convert in every location; packed packages are unchanged.",
+        "nonConsumableDescription": "Now counting whole {{unit}}. In every location, opened packs are removed, and Target Quantity and Refill When Below are rounded up to whole {{unit}}. Packed packages are unchanged.",
         "locationHeader": "Location",
         "unpackedHeader": "Unpacked",
         "targetHeader": "Target Quantity",

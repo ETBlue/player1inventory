@@ -1763,13 +1763,15 @@ describe('Item stock tab', () => {
         targetQuantity: 6,
         refillThreshold: 2,
         packedQuantity: 4,
-        unpackedQuantity: 0,
+        // Opened stock left from before the Amount field: the save drops it
+        unpackedQuantity: 1.5,
         dueDate: stored,
       })
 
       renderStockTab(item.id)
 
-      const packedInput = await screen.findByLabelText(/^packed/i)
+      // The one stock field is "Amount", not "Packed"
+      const packedInput = await screen.findByLabelText(/^amount \(/i)
       expect(screen.queryByLabelText(/expires on/i)).not.toBeInTheDocument()
 
       // When the user changes a quantity and saves
@@ -1782,6 +1784,8 @@ describe('Item stock tab', () => {
         expect((await getItemStock(item.id))?.packedQuantity).toBe(5)
       })
       expect((await getItemStock(item.id))?.dueDate).toEqual(stored)
+      // And the opened stock is saved as 0 (owner decision 2026-11-26)
+      expect((await getItemStock(item.id))?.unpackedQuantity).toBe(0)
     })
 
     // The other half of the fix: in 'date' mode the field IS rendered, so the

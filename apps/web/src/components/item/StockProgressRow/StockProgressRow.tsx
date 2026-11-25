@@ -2,7 +2,6 @@ import { ArrowLeftToLine, ArrowRightToLine } from 'lucide-react'
 import { ItemCountBar } from '@/components/item/ItemCountBar'
 import { ItemProgressBar } from '@/components/item/ItemProgressBar'
 import { Button } from '@/components/ui/button'
-import { getPieceScale } from '@/lib/quantityUtils'
 
 export interface StockProgressRowProps {
   // Display values — computed by the caller (localTotal, status, the "x / y"
@@ -22,8 +21,11 @@ export interface StockProgressRowProps {
   unpacked: number
   measurementUnit?: string
   amountPerPackage?: number
-  // Refill threshold in the item's tracking unit (same unit as `target`).
-  // Forwarded to ItemProgressBar, which draws a tick at it.
+  // `current`, `target` and `refillThreshold` are in the bar's unit: the
+  // tracking unit for a consumable item, whole pieces for a non-consumable
+  // one. `getStockPreview` gives both (`current`, `target`,
+  // `refillThreshold`), so this row does no unit maths of its own.
+  // The refill threshold is forwarded to the bar, which draws a tick at it.
   refillThreshold?: number
   onClear: () => void
   onFill: () => void
@@ -68,14 +70,6 @@ export function StockProgressRow({
   // third size here without adding it there.
   const buttonSize = size === 'default' ? 'icon' : 'icon-sm'
 
-  // The count bar takes pieces. `current`, `target` and `refillThreshold`
-  // are in the tracking unit, so they are divided by the piece size. This is
-  // the same rule `ItemCard` uses (its `pieceScale`).
-  const pieceScale = getPieceScale({
-    targetUnit,
-    ...(amountPerPackage ? { amountPerPackage } : {}),
-  })
-
   // `type="button"` matters here for the same reason it does on QuantityStepper:
   // ItemForm renders this row inside its `<form>`, where an untyped `<button>`
   // defaults to "submit" and fires the form's native submit event on click.
@@ -112,12 +106,10 @@ export function StockProgressRow({
           />
         ) : (
           <ItemCountBar
-            current={Math.floor(current / pieceScale)}
-            target={Math.floor(target / pieceScale)}
+            current={current}
+            target={target}
             status={status}
-            {...(refillThreshold !== undefined
-              ? { refillThreshold: refillThreshold / pieceScale }
-              : {})}
+            {...(refillThreshold !== undefined ? { refillThreshold } : {})}
           />
         )}
       </div>

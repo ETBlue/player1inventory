@@ -18,6 +18,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { computeExpiryDate, inferExpirationMode } from '@/lib/expiration'
 import {
   getCurrentQuantity,
+  getPieceCounts,
   getStockStatus,
   isInactive,
 } from '@/lib/quantityUtils'
@@ -128,10 +129,14 @@ export function ItemCard({
     lastPurchaseDate ?? undefined,
   )
 
-  const currentQuantity = getCurrentQuantity(item)
-  const status = getStockStatus(currentQuantity, item.refillThreshold)
   // A non-consumable item shows no expiry (design, PR 2).
   const consumable = isConsumable(item)
+  // The card's colour follows the same numbers as its bar: whole pieces for a
+  // non-consumable item (`getPieceCounts`, shared with `ItemStockSummary`).
+  const pieces = consumable ? undefined : getPieceCounts(item, item)
+  const status = pieces
+    ? getStockStatus(pieces.inStock, pieces.refillThreshold)
+    : getStockStatus(getCurrentQuantity(item), item.refillThreshold)
 
   const isAmountControllable = [
     'shopping',
@@ -308,7 +313,7 @@ export function ItemCard({
             // expiration settings are kept, only hidden.
             showExpiration &&
             consumable &&
-            currentQuantity > 0 &&
+            getCurrentQuantity(item) > 0 &&
             estimatedDueDate
               ? {
                   key: 'expiration',

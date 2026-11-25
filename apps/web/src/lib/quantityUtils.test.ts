@@ -10,6 +10,7 @@ import {
   getCurrentQuantity,
   getItemPackUnits,
   getPackedTotal,
+  getPieceCounts,
   getPieceScale,
   getStockPreview,
   getStockStatus,
@@ -20,6 +21,7 @@ import {
   isStockedHere,
   roundToStep,
   suggestedCartAmount,
+  toNonConsumableQuantities,
 } from './quantityUtils'
 
 // The shape every helper in this module actually takes: the per-location stock
@@ -1449,6 +1451,63 @@ describe('getPieceScale', () => {
   })
 })
 
+describe('getPieceCounts', () => {
+  it('counts whole packed packages as pieces and drops opened stock', () => {
+    // An old non-consumable row that still holds opened stock: the Amount
+    // field shows packed only, so the bar and the label show packed only.
+    expect(
+      getPieceCounts(
+        { targetUnit: 'package' },
+        { packedQuantity: 3, targetQuantity: 5, refillThreshold: 2 },
+      ),
+    ).toEqual({ inStock: 3, wanted: 5, refillThreshold: 2 })
+  })
+
+  it('divides a measurement target and threshold by the rate, rounding up', () => {
+    // 1200 g at 500 g per pack is 2.4 packs: the person wanted at least that
+    // much, so 3 whole pieces. 200 g is 0.4 of a pack: 1 piece keeps the
+    // low-stock warning that rounding down would lose.
+    expect(
+      getPieceCounts(
+        { targetUnit: 'measurement', amountPerPackage: 500 },
+        { packedQuantity: 2, targetQuantity: 1200, refillThreshold: 200 },
+      ),
+    ).toEqual({ inStock: 2, wanted: 3, refillThreshold: 1 })
+  })
+
+  it('does not round a whole number up because of float dust', () => {
+    // 0.3 / 0.1 is 2.9999999999999996 and 0.7 / 0.1 is 6.999999999999999
+    expect(
+      getPieceCounts(
+        { targetUnit: 'measurement', amountPerPackage: 0.1 },
+        { packedQuantity: 0, targetQuantity: 0.7, refillThreshold: 0.3 },
+      ),
+    ).toEqual({ inStock: 0, wanted: 7, refillThreshold: 3 })
+  })
+})
+
+describe('toNonConsumableQuantities', () => {
+  it('drops opened stock of a package item and rounds target and refill up', () => {
+    expect(
+      toNonConsumableQuantities(
+        { unpackedQuantity: 1.5, targetQuantity: 4, refillThreshold: 0.5 },
+        { targetUnit: 'package' },
+      ),
+    ).toEqual({ unpackedQuantity: 0, targetQuantity: 4, refillThreshold: 1 })
+  })
+
+  it('converts a measurement target and refill into whole packs', () => {
+    // The same divide-by-amountPerPackage rule as a unit switch
+    // (convertTrackedQuantities), then rounded up to whole pieces.
+    expect(
+      toNonConsumableQuantities(
+        { unpackedQuantity: 250, targetQuantity: 1000, refillThreshold: 200 },
+        { targetUnit: 'measurement', amountPerPackage: 500 },
+      ),
+    ).toEqual({ unpackedQuantity: 0, targetQuantity: 2, refillThreshold: 1 })
+  })
+})
+
 describe('getStockPreview unit word', () => {
   it('uses the default package unit, not "unit", for an item with no package unit', () => {
     // The card shows `item.packageUnit || DEFAULT_PACKAGE_UNIT`; the stock row
@@ -1494,5 +1553,69 @@ describe('getStockPreview unit word', () => {
       },
     )
     expect(result.unitLabel).toBe('g')
+  })
+})
+
+describe('getStockPreview for a non-consumable item', () => {
+  it('shows whole pieces in the package unit, ignoring the measurement unit', () => {
+    const result = getStockPreview(
+      {
+        targetUnit: 'measurement',
+        measurementUnit: 'g',
+        packageUnit: 'cup',
+        amountPerPackage: 500,
+        consumeAmount: 1,
+        consumable: false,
+      },
+      {
+        packedQuantity: 2,
+        unpackedQuantity: 250,
+        targetQuantity: 1200,
+        refillThreshold: 200,
+      },
+    )
+    expect(result.unitLabel).toBe('cup')
+    expect(result.quantityLabel).toBe('2 / 3')
+    expect(result.current).toBe(2)
+    expect(result.target).toBe(3)
+    expect(result.refillThreshold).toBe(1)
+  })
+
+  it('reads the status from pieces, so opened stock does not count', () => {
+    // 1 pack + 0.5 opened: as a consumable that is 1.5, above the refill
+    // threshold of 1. As pieces it is 1, exactly at it.
+    const result = getStockPreview(
+      { targetUnit: 'package', consumeAmount: 1, consumable: false },
+      {
+        packedQuantity: 1,
+        unpackedQuantity: 0.5,
+        targetQuantity: 4,
+        refillThreshold: 1,
+      },
+    )
+    expect(result.status).toBe('warning')
+  })
+
+  it('is full at the target in whole pieces with no opened stock', () => {
+    const config = {
+      targetUnit: 'package' as const,
+      consumeAmount: 1,
+      consumable: false,
+    }
+    const values = { targetQuantity: 4, refillThreshold: 1 }
+    expect(
+      getStockPreview(config, {
+        ...values,
+        packedQuantity: 4,
+        unpackedQuantity: 0,
+      }).isAtFull,
+    ).toBe(true)
+    expect(
+      getStockPreview(config, {
+        ...values,
+        packedQuantity: 3,
+        unpackedQuantity: 1,
+      }).isAtFull,
+    ).toBe(false)
   })
 })

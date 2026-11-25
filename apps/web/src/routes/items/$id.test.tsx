@@ -1905,6 +1905,55 @@ describe('targetUnit change — per-location stock conversion', () => {
     expect((await getItem(item.id))?.targetUnit).toBe('package')
   })
 
+  it('user turning Consumable off drops opened stock and rounds target and refill up to whole packs in every location', async () => {
+    const user = userEvent.setup()
+
+    // Given flour tracked in grams (500 g per pack) in three locations, each
+    // with opened stock
+    const { item, cabin, office } = await seedThreeLocations()
+
+    await renderInfoTab(item.id)
+    await screen.findByLabelText(/amount per consume/i)
+
+    // When the user turns Consumable off, saves and confirms
+    await user.click(screen.getByRole('switch', { name: /^consumable$/i }))
+    await user.click(screen.getByRole('button', { name: /save/i }))
+    const dialog = await screen.findByRole('alertdialog')
+    const rowFor = (name: string) =>
+      within(dialog).getByText(name).closest('tr') as HTMLElement
+    // The dialog lists the opened stock going to 0 in every location
+    expect(within(rowFor('My Home')).getByText('250 → 0')).toBeInTheDocument()
+    expect(within(rowFor('Cabin')).getByText('100 → 0')).toBeInTheDocument()
+    expect(within(rowFor('Office')).getByText('50 → 0')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /update & save/i }))
+
+    // Then every location: no opened stock, and target and refill in whole
+    // packs, rounded up (200 g is 0.4 of a pack -> 1)
+    await waitFor(async () => {
+      expect((await getItem(item.id))?.consumable).toBe(false)
+    })
+    const rows = await stockByLocation(item.id)
+    expect(rows.get(DEFAULT_LOCATION_ID)).toMatchObject({
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      targetQuantity: 2,
+      refillThreshold: 1,
+    })
+    expect(rows.get(cabin.id)).toMatchObject({
+      packedQuantity: 1,
+      unpackedQuantity: 0,
+      targetQuantity: 4,
+      refillThreshold: 1,
+    })
+    expect(rows.get(office.id)).toMatchObject({
+      packedQuantity: 3,
+      unpackedQuantity: 0,
+      targetQuantity: 1,
+      refillThreshold: 1,
+    })
+    expect((await getItem(item.id))?.targetUnit).toBe('package')
+  })
+
   it('packed quantity is untouched by the switch in every location', async () => {
     const user = userEvent.setup()
 

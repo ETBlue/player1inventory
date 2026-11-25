@@ -1704,8 +1704,9 @@ describe('ItemForm — the Consumable switch', () => {
     expect(
       screen.queryByLabelText(/expiration/i, { selector: 'button' }),
     ).not.toBeInTheDocument()
-    // And the packed count still shows
-    expect(screen.getByLabelText(/^packed/i)).toBeInTheDocument()
+    // And the one stock field is now "Amount", not "Packed"
+    expect(screen.getByLabelText(/^amount \(/i)).toBeInTheDocument()
+    expect(screen.queryByLabelText(/^packed/i)).not.toBeInTheDocument()
 
     // When the user turns it on again
     await user.click(consumable)
@@ -1806,5 +1807,79 @@ describe('ItemForm — the Consumable switch', () => {
       screen.getByRole('switch', { name: /^consumable$/i }),
     ).not.toBeChecked()
     expect(onDirtyChange).not.toHaveBeenCalledWith(true)
+  })
+})
+
+describe('ItemForm — the Amount field of a non-consumable item', () => {
+  // Cups, already non-consumable, tracked in packages. Stocked 3 of 5,
+  // refill below 2.
+  const cups = {
+    name: 'Cups',
+    packageUnit: 'cup',
+    measurementUnit: 'ml',
+    amountPerPackage: 250,
+    targetUnit: 'package' as const,
+    targetQuantity: 5,
+    refillThreshold: 2,
+    packedQuantity: 3,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+    consumable: false,
+  }
+
+  it('user sees one "Amount" field in the package unit, not Packed and Unpacked', () => {
+    render(
+      <ItemForm onSubmit={vi.fn()} sections={['stock']} initialValues={cups} />,
+    )
+
+    // One field, "Amount (cup)", holding the whole pieces
+    expect(screen.getByLabelText(/^amount \(/i)).toHaveValue(3)
+    expect(screen.queryByLabelText(/^packed/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/^unpacked/i)).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /increase amount/i }),
+    ).toBeInTheDocument()
+    // And the stock row says the same as the card: "3 / 5 cup"
+    expect(screen.getByText('3 / 5 cup')).toBeInTheDocument()
+  })
+
+  it('user sees Target and Refill in whole pieces of the package unit, not the measurement unit', async () => {
+    const user = userEvent.setup()
+    // An item still tracked in ml (only a hand-edited file can give this):
+    // the labels must still say "cup", the unit the person counts in.
+    render(
+      <ItemForm
+        onSubmit={vi.fn()}
+        sections={['stock']}
+        initialValues={{ ...cups, targetUnit: 'measurement' }}
+      />,
+    )
+    expect(screen.getByLabelText(/^target quantity/i)).toBeInTheDocument()
+    expect(
+      screen.getByText((_, el) => el?.textContent === 'Target Quantity (cup)'),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        (_, el) => el?.textContent === 'Refill When Below (cup)',
+      ),
+    ).toBeInTheDocument()
+
+    // And the steppers move by one whole piece
+    const target = screen.getByLabelText(/^target quantity/i)
+    expect(target).toHaveAttribute('step', '1')
+    await user.click(screen.getByRole('button', { name: /increase refill/i }))
+    expect(screen.getByLabelText(/^refill when below/i)).toHaveValue(3)
+  })
+
+  it('user typing a fraction into Target gets whole pieces, rounded up', async () => {
+    const user = userEvent.setup()
+    render(
+      <ItemForm onSubmit={vi.fn()} sections={['stock']} initialValues={cups} />,
+    )
+    const target = screen.getByLabelText(/^target quantity/i)
+    await user.clear(target)
+    await user.type(target, '2.4')
+    await user.tab()
+    expect(target).toHaveValue(3)
   })
 })

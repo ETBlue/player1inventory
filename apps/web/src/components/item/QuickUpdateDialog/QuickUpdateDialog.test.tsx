@@ -865,14 +865,16 @@ describe('QuickUpdateDialog — a non-consumable item', () => {
     expect(screen.queryByLabelText(/unpacked/i)).not.toBeInTheDocument()
     expect(screen.queryByLabelText(/expires on/i)).not.toBeInTheDocument()
 
-    // When the user changes the packed count and presses Update
-    await user.click(screen.getByRole('button', { name: /increase packed/i }))
+    // When the user changes the amount and presses Update
+    await user.click(screen.getByRole('button', { name: /increase amount/i }))
     await user.click(screen.getByRole('button', { name: 'Update' }))
 
     // Then the payload has no dueDate key, so the stored date is kept
     const payload = elementAt(onSubmit.mock.calls)[0]
     expect(Object.keys(payload)).not.toContain('dueDate')
     expect(payload.packedQuantity).toBe(2)
+    // And the opened stock the old row held (1) is saved as 0
+    expect(payload.unpackedQuantity).toBe(0)
   })
 
   it('the same item, consumable, shows the opened packs (the control)', () => {
@@ -906,8 +908,51 @@ describe('QuickUpdateDialog — a non-consumable item', () => {
     expect(filled()).toHaveLength(3)
 
     // When the user adds one before saving, the squares follow
-    await user.click(screen.getByRole('button', { name: /increase packed/i }))
+    await user.click(screen.getByRole('button', { name: /increase amount/i }))
     expect(filled()).toHaveLength(4)
+  })
+
+  it('user sees one "Amount" field in the package unit, and Target and Refill in it too', () => {
+    // Given cups still tracked in ml (only a hand-edited file can give this)
+    renderDialog(
+      makeItem({
+        consumable: false,
+        packageUnit: 'cup',
+        targetUnit: 'measurement',
+        measurementUnit: 'ml',
+        amountPerPackage: 250,
+        packedQuantity: 3,
+        unpackedQuantity: 0,
+        targetQuantity: 5,
+        refillThreshold: 2,
+      }),
+    )
+
+    // Then the one stock field is "Amount (cup)", not "Packed"
+    expect(
+      screen.getByRole('spinbutton', { name: 'Amount (cup)' }),
+    ).toHaveValue(3)
+    expect(
+      screen.queryByRole('spinbutton', { name: /packed/i }),
+    ).not.toBeInTheDocument()
+    // And Target and Refill are in cups, stepping by whole pieces
+    expect(targetInput('cup')).toHaveAttribute('step', '1')
+    expect(refillInput('cup')).toHaveAttribute('step', '1')
+  })
+
+  it('user sees the stock row say the package unit, like the card', () => {
+    // Given cups with no package unit set (stored as ''): the card says
+    // "pack"
+    renderDialog(
+      makeItem({
+        consumable: false,
+        packageUnit: '',
+        packedQuantity: 3,
+        unpackedQuantity: 0,
+        targetQuantity: 5,
+      }),
+    )
+    expect(screen.getByText('3 / 5 pack')).toBeInTheDocument()
   })
 
   it('user sees the progress bar, not squares, for a consumable item', () => {

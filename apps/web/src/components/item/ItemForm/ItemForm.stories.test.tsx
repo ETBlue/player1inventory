@@ -113,7 +113,9 @@ describe('ItemForm stories smoke tests', () => {
     expect(
       screen.getByRole('switch', { name: /^consumable$/i }),
     ).not.toBeChecked()
-    expect(screen.getByLabelText(/^packed/i)).toBeInTheDocument()
+    // One "Amount" field in place of Packed and Unpacked
+    expect(screen.getByLabelText(/^amount \(/i)).toBeInTheDocument()
+    expect(screen.queryByLabelText(/^packed/i)).not.toBeInTheDocument()
     expect(screen.queryByLabelText(/^unpacked/i)).not.toBeInTheDocument()
   })
 })

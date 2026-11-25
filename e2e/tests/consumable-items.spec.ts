@@ -11,6 +11,7 @@ import { seedCloudFixture } from '../helpers/cloudSeed'
 import { cleanupCloudData } from '../helpers/cloudTeardown'
 import type { Fixture } from '../helpers/fixture'
 import { seedLocalFixture } from '../helpers/localSeed'
+import { readStocksForItem } from '../helpers/stockReadback'
 import { ItemPage } from '../pages/ItemPage'
 import { PantryPage } from '../pages/PantryPage'
 
@@ -83,11 +84,16 @@ const FIXTURE: Fixture = {
 }
 
 // The same fixture, with Cups already not consumable: for the filter and the
-// axe scans, which do not test the switch.
+// axe scans, which do not test the switch. Cups holds half a pack open: a row
+// from before the one "Amount" field (2026-11-26). The card and the Amount
+// field show whole packs only, and a save writes the opened stock as 0.
 const FIXTURE_CUPS_NOT_CONSUMABLE: Fixture = {
   ...FIXTURE,
   items: FIXTURE.items.map((item) =>
     item.id === CUPS ? { ...item, consumable: false } : item,
+  ),
+  stocks: FIXTURE.stocks.map((stock) =>
+    stock.itemId === CUPS ? { ...stock, unpackedQuantity: 0.5 } : stock,
   ),
 }
 
@@ -187,7 +193,7 @@ test('user can make an item not consumable and see one square per piece', async 
   ).not.toBeChecked()
 })
 
-test('user turning Consumable off on an item tracked in grams sees the converted amounts', async ({
+test('user turning Consumable off on an item tracked in grams drops the opened stock and counts whole packs', async ({
   page,
   request,
   baseURL,
@@ -203,17 +209,32 @@ test('user turning Consumable off on an item tracked in grams sees the converted
   await page.getByRole('button', { name: 'Save', exact: true }).click()
 
   // Then the converted amounts dialog shows the location's new numbers:
-  // 250 g -> 0.5 pack, 2000 g -> 4 packs, 500 g -> 1 pack
+  // the 250 g opened are removed (owner decision 2026-11-26), 2000 g -> 4
+  // packs, 500 g -> 1 pack
   const dialog = page.getByRole('alertdialog')
   await expect(dialog).toBeVisible()
-  await expect(dialog.getByText(/250\D+0\.5/)).toBeVisible()
+  await expect(dialog.getByText(/opened packs are removed/i)).toBeVisible()
+  await expect(dialog.getByText('250 → 0', { exact: true })).toBeVisible()
   await expect(dialog.getByText(/2000\D+4/)).toBeVisible()
 
   // When the user confirms
   await dialog.getByRole('button', { name: /update & save/i }).click()
   await expect(page.getByText('Saved', { exact: true }).first()).toBeVisible()
 
-  // Then the pantry card counts whole packs: 2.5 packs is 2 pieces of 4
+  // Then the stored row holds no opened stock, and whole packs
+  await expect
+    .poll(async () => {
+      const rows = await readStocksForItem(page, request, baseURL, FLOUR)
+      return rows.map((r) => [
+        r.packedQuantity,
+        r.unpackedQuantity,
+        r.targetQuantity,
+        r.refillThreshold,
+      ])
+    })
+    .toEqual([[2, 0, 4, 1]])
+
+  // And the pantry card counts whole packs: 2 pieces of 4
   const pantry = new PantryPage(page)
   await pantry.navigateTo()
   await expect(squaresOf(page, 'Flour')).toHaveCount(4)
@@ -280,8 +301,15 @@ test('user sees one square per piece in the quick edit dialog and on the Stock t
   await expect(
     dialogSquares.and(page.locator('[data-filled="true"]')),
   ).toHaveCount(3)
+  // And the one stock field is "Amount", not Packed and Unpacked
+  await expect(
+    dialog.getByRole('spinbutton', { name: 'Amount (pack)' }),
+  ).toHaveValue('3')
+  await expect(dialog.getByRole('spinbutton', { name: /packed/i })).toHaveCount(
+    0,
+  )
   // And the squares follow the stepper before Update is pressed
-  await dialog.getByRole('button', { name: /increase packed/i }).click()
+  await dialog.getByRole('button', { name: /increase amount/i }).click()
   await expect(
     dialogSquares.and(page.locator('[data-filled="true"]')),
   ).toHaveCount(4)
@@ -297,10 +325,42 @@ test('user sees one square per piece in the quick edit dialog and on the Stock t
     main.getByTestId('count-square').and(page.locator('[data-filled="true"]')),
   ).toHaveCount(3)
 
+  // And it has one "Amount" field, not Packed and Unpacked
+  await expect(main.getByLabel(/^amount \(/i)).toHaveValue('3')
+  await expect(main.getByLabel(/^unpacked/i)).toHaveCount(0)
+
   // The control: Tissue, which is consumable, has no squares on its Stock tab
   await page.goto(`/items/${TISSUE}/stock`)
   await expect(main.getByLabel(/^packed/i)).toBeVisible()
   await expect(main.getByTestId('count-square')).toHaveCount(0)
+})
+
+test('user can set the Amount of a non-consumable item on the Stock tab, and opened stock is cleared', async ({
+  page,
+  request,
+  baseURL,
+}) => {
+  // Given Cups, not consumable: 3 packs and half a pack open (an old row)
+  await seedFixture(page, request, baseURL, FIXTURE_CUPS_NOT_CONSUMABLE)
+  const before = await readStocksForItem(page, request, baseURL, CUPS)
+  expect(before.map((r) => r.unpackedQuantity)).toEqual([0.5])
+
+  // When the user sets Amount to 4 on the Stock tab and saves
+  await page.goto(`/items/${CUPS}/stock`)
+  const main = page.getByRole('main')
+  const amount = main.getByLabel(/^amount \(/i)
+  // The field shows whole packs only, not 3.5
+  await expect(amount).toHaveValue('3')
+  await amount.fill('4')
+  await new ItemPage(page).saveExisting()
+
+  // Then the row holds 4 packs and no opened stock
+  await expect
+    .poll(async () => {
+      const rows = await readStocksForItem(page, request, baseURL, CUPS)
+      return rows.map((r) => [r.packedQuantity, r.unpackedQuantity])
+    })
+    .toEqual([[4, 0]])
 })
 
 async function scanConsumableUi(
