@@ -41,7 +41,7 @@ Branch `feature/item-consumable-server`, from `main` at `56d7de3a`. Migration fo
 | Read | no new code. `toGraphQL` (`item.resolver.ts`) and `itemToGraphQL` (`import.resolver.ts`) spread the Prisma row, and every field that returns `Item` goes through one of them |
 | `oldBundleCompat.test.ts` | **this table's row above was wrong.** graphql-js reports every new optional input field as a "dangerous" change, so the test went red. The three `consumable` lines were added to its expected list (owner decision 2026-11-25), after checking that no old document or variable sends `consumable` |
 | Tests | `apps/server/src/resolvers/item-consumable.resolver.test.ts`, 15 tests against `ownedRowFake` |
-| `verify-migration.ts` | `assertItemConsumable`, plus a `select` on two `Item` calls that run before the last deploy. Not run yet |
+| `verify-migration.ts` | `assertItemConsumable`, plus a `select` on two `Item` calls that run before the last deploy. Run on the Neon test branch on 2026-11-25 with the owner's consent: every check ok, including the 9 `add_item_consumable` checks |
 | Web | no change. `pnpm codegen` adds the field to the web types; no web document selects it yet |
 
 Until PR 2 the web's import and export do not carry `consumable`. So a cloud backup made
