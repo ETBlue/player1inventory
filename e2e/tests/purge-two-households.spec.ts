@@ -253,7 +253,9 @@ test.describe('clearAllData clears one household only', () => {
     expect(beforeB.recipes).toHaveLength(1)
     expect(beforeB.recipes[0]?.items).toHaveLength(1)
     expect(beforeB.shelves).toHaveLength(1)
-    expect(beforeB.inventoryLogs).toHaveLength(1)
+    // Two: the seeded log, and the `stockCount` row the stock seed's
+    // `upsertItemStock` wrote (inventory log layout, 2026-11-25)
+    expect(beforeB.inventoryLogs).toHaveLength(2)
     expect(beforeB.allCartItems).toHaveLength(1)
     expect(beforeB.itemStocksForItem).toHaveLength(1)
     // Two carts: the vendor's, made by `createVendor`, and the no-vendor cart
@@ -409,13 +411,17 @@ function rowsAt(snap: LocationSnapshot, locationId: string) {
   }
 }
 
-/** Each location of a fresh seed has exactly one row of each kind. */
+/**
+ * Each location of a fresh seed has exactly one row of each kind, and two log
+ * rows: the seeded log, and the `stockCount` row the stock seed's
+ * `upsertItemStock` wrote (inventory log layout, 2026-11-25).
+ */
 function expectFullLocation(snap: LocationSnapshot, locationId: string) {
   const rows = rowsAt(snap, locationId)
   expect(rows.stock).toHaveLength(1)
   expect(rows.cartItems).toHaveLength(1)
   expect(rows.carts).toHaveLength(1)
-  expect(rows.logs).toHaveLength(1)
+  expect(rows.logs).toHaveLength(2)
 }
 
 test.describe('the location purges touch one household only', () => {

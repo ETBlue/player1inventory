@@ -56,7 +56,7 @@ const SNAPSHOT = `query ($locationId: ID!) {
   locations { id name }
   tagTypes { id name }
   items { id name }
-  inventoryLogs { id delta }
+  inventoryLogs { id delta logKey }
   itemStocks(locationId: $locationId) { id itemId packedQuantity }
 }`
 
@@ -64,7 +64,7 @@ type Snapshot = {
   locations: { id: string; name: string }[]
   tagTypes: { id: string; name: string }[]
   items: { id: string; name: string }[]
-  inventoryLogs: { id: string; delta: number }[]
+  inventoryLogs: { id: string; delta: number; logKey: string | null }[]
   itemStocks: { id: string; itemId: string; packedQuantity: number }[]
 }
 
@@ -116,6 +116,10 @@ async function seedShared(
   return { home }
 }
 
+// The log rows `seedShared` leaves: the member's `addInventoryLog`, plus one
+// `stockCount` row per `upsertItemStock` that changed the amount (two).
+const LOGS_IN_SEED = 3
+
 async function snapshot(gql: Gql, home: string): Promise<Snapshot> {
   const data = await gql<Snapshot>(SNAPSHOT, { locationId: home })
   const byId = <T extends { id: string }>(rows: T[]) =>
@@ -149,7 +153,13 @@ test.describe('/e2e/cleanup with two people in one household', () => {
     // The data is really there, so "it survives" below means something
     expect(before.items).toHaveLength(1)
     expect(before.tagTypes).toHaveLength(1)
-    expect(before.inventoryLogs).toHaveLength(1)
+    // Three log rows: the member's own log, and two stock count rows, because
+    // each `upsertItemStock` that changed the amount wrote one (0 → 3 by the
+    // owner, 3 → 5 by the member; inventory log layout, 2026-11-25)
+    expect(before.inventoryLogs).toHaveLength(LOGS_IN_SEED)
+    expect(
+      before.inventoryLogs.filter((l) => l.logKey === 'stockCount'),
+    ).toHaveLength(2)
     expect(before.itemStocks).toEqual([
       expect.objectContaining({ packedQuantity: 5 }),
     ])
@@ -180,7 +190,7 @@ test.describe('/e2e/cleanup with two people in one household', () => {
       households: 1,
       householdMembers: 1,
       locationMembers: 1,
-      inventoryLogs: 1,
+      inventoryLogs: LOGS_IN_SEED,
       users: 1,
     })
   })
@@ -198,13 +208,13 @@ test.describe('/e2e/cleanup with two people in one household', () => {
     const ownerCleanup = await cleanupCloudData(request, OWNER)
 
     // Then the household goes, with BOTH member rows and BOTH location roles,
-    // and the log the member wrote
+    // and every log row in it (the member's log and the two stock counts)
     expect(ownerCleanup.deleted).toMatchObject({
       households: 1,
       locations: 1,
       householdMembers: 2,
       locationMembers: 2,
-      inventoryLogs: 1,
+      inventoryLogs: LOGS_IN_SEED,
       users: 1,
     })
 

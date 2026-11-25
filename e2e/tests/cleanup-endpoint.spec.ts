@@ -399,7 +399,9 @@ test.describe('the /e2e/cleanup endpoint really deletes', () => {
     expect(before.vendors).toHaveLength(1)
     expect(before.recipes).toHaveLength(1)
     expect(before.shelves).toHaveLength(1)
-    expect(before.inventoryLogs).toHaveLength(1)
+    // Two: the seeded log, and the `stockCount` row the stock seed's
+    // `upsertItemStock` wrote (inventory log layout, 2026-11-25)
+    expect(before.inventoryLogs).toHaveLength(2)
     expect(before.allCartItems).toHaveLength(1)
     expect(before.itemStocksForItem).toHaveLength(1)
     // Two carts: the one `createVendor` pre-created, and the no-vendor cart.

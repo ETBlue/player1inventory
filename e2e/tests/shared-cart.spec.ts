@@ -94,7 +94,7 @@ const ITEM_STOCKS = `query ($locationId: ID!) {
   itemStocks(locationId: $locationId) { itemId packedQuantity }
 }`
 const ITEM_LOGS = `query ($itemId: ID!, $locationId: ID!) {
-  itemLogs(itemId: $itemId, locationId: $locationId) { id delta }
+  itemLogs(itemId: $itemId, locationId: $locationId) { id delta logKey }
 }`
 const VENDOR_CART = `query ($locationId: ID!) {
   vendorCart(vendorId: null, locationId: $locationId) { id }
@@ -206,12 +206,17 @@ async function packedAt(gql: Gql, seed: Seed, itemId: string) {
   return itemStocks.find((s) => s.itemId === itemId)?.packedQuantity
 }
 
+// The purchase logs only. The seed sets stock with `upsertItemStock`, which
+// since the inventory log layout (2026-11-25) also writes a `stockCount` row
+// when the amount changes; those are not what these tests count.
 async function logCount(gql: Gql, seed: Seed, itemId: string) {
-  const { itemLogs } = await gql<{ itemLogs: Row[] }>(ITEM_LOGS, {
+  const { itemLogs } = await gql<{
+    itemLogs: { id: string; logKey: string | null }[]
+  }>(ITEM_LOGS, {
     itemId,
     locationId: seed.home,
   })
-  return itemLogs.length
+  return itemLogs.filter((l) => l.logKey !== 'stockCount').length
 }
 
 async function cleanupAll(request: Parameters<typeof makeGql>[0]) {
