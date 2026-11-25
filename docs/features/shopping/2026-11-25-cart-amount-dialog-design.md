@@ -112,3 +112,21 @@ change. Not merged, not deployed.
 bare vendor id, not to `${locationId}:${vendorId}`, so it showed an EMPTY cart, and its smoke
 test only checked that "Milk" was on the page. The story now uses `cartIdFor`, and the smoke
 test checks both amount buttons.
+
+### As built: a smaller amount button (2026-11-25)
+
+Built on `feature/cart-amount-compact`, after an owner request. Not merged, not deployed.
+This replaces the first bullet of *The row* above.
+
+- The amount button shows **only the number** (`10`, `0`). The unit and the pencil icon are
+  gone from the button. The unit stays in the accessible name ("Edit amount of Milk: 10
+  pack"), and the number shown is inside that name (WCAG 2.5.3). The dialog still shows the
+  unit ("Amount (pack)").
+- The button is 3rem wide (`w-12`, `px-1`, centred) at `-right-12`, and the card reserves
+  `mr-14` (3.5rem). It was 6.5rem at `-right-26`, with `mr-28` (7rem). A 4-digit amount fits
+  at `text-sm`; a longer one truncates on screen only. Both layouts leave 0.5rem at the right
+  edge.
+- The width goes back to the card. Measured in Storybook at 390px: the cart page card went
+  from 238px to 294px wide; at 1280px from 904px to 960px.
+- The Cooking page and the recipe items tab keep their `− n +` group and their `mr-28`
+  unchanged. The card picks the margin from which control it shows (`onAmountEdit`).
