@@ -265,6 +265,38 @@ describe('useItem (cloud mode)', () => {
 // ─── useCreateItem ────────────────────────────────────────────────────────────
 
 describe('useCreateItem (cloud mode)', () => {
+  it('user creating a non-consumable item in cloud mode sends consumable: false', async () => {
+    localStorage.setItem('data-mode', 'cloud')
+    mockCloudCreate.mockResolvedValue({
+      data: {
+        createItem: {
+          id: 'item-cups',
+          name: 'Cups',
+          tagIds: [],
+          targetUnit: 'package',
+          consumeAmount: 1,
+          consumable: false,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      },
+    })
+    const { result } = renderHook(() => useCreateItem(), {
+      wrapper: createWrapper(),
+    })
+    await result.current.mutateAsync({
+      name: 'Cups',
+      tagIds: [],
+      targetUnit: 'package',
+      consumable: false,
+    })
+    const sent = mockCloudCreate.mock.calls[0]?.[0]?.variables?.input as Record<
+      string,
+      unknown
+    >
+    expect(sent.consumable).toBe(false)
+  })
+
   it('user can create an item via Apollo in cloud mode', async () => {
     // Given cloud mode and Apollo mutation resolves
     localStorage.setItem('data-mode', 'cloud')

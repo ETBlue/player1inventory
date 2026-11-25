@@ -722,6 +722,43 @@ db.version(20).stores({
   locations: 'id, order, name',
 })
 
+// Version 21: `Item.consumable` (consumable items, PR 2, 2026-11-25)
+//
+// Every item without the key gets `consumable: true`. A row that already has
+// a value keeps it, so running the upgrade twice changes nothing. No index
+// change (`consumable` is not indexed), so the stores are version 20's.
+//
+// The readers do not depend on this backfill: `isConsumable` (`@p1i/types`)
+// reads a missing value as `true` too, because a restored backup from before
+// this version can still write an item with no key. The backfill makes the
+// stored rows say what the readers already assume.
+//
+// A fresh database never runs this upgrade, and needs nothing from it: it
+// has no items at populate time, and `createItem` writes `consumable` on
+// every new item. So `on('populate')` needs no change.
+db.version(21)
+  .stores({
+    items: 'id, name, createdAt, updatedAt',
+    itemStocks: 'id, itemId, locationId, [itemId+locationId], updatedAt',
+    tags: 'id, typeId, parentId, createdAt',
+    tagTypes: 'id, name',
+    inventoryLogs: 'id, itemId, locationId, occurredAt, createdAt',
+    shoppingCarts: 'id',
+    cartItems: 'id, cartId, itemId, &[cartId+itemId]',
+    vendors: 'id, name',
+    recipes: 'id, name, lastCookedAt',
+    shelves: 'id, name, type, order',
+    locations: 'id, order, name',
+  })
+  .upgrade((tx) =>
+    tx
+      .table('items')
+      .toCollection()
+      .modify((item: Record<string, unknown>) => {
+        if (typeof item.consumable !== 'boolean') item.consumable = true
+      }),
+  )
+
 // Fresh-DB seed: `on('populate')` fires exactly once, when the database is
 // first created at the latest version (brand-new users). The version upgrade
 // fns above do NOT run in that case, so the default location is seeded here.

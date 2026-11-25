@@ -223,6 +223,7 @@ export async function createItem(
     estimatedDueDays,
     expirationThreshold,
     expirationMode,
+    consumable,
     // Per-location stock state (written to the ItemStock below)
     targetQuantity: _tq,
     refillThreshold: _rt,
@@ -255,6 +256,9 @@ export async function createItem(
     ...(estimatedDueDays !== undefined ? { estimatedDueDays } : {}),
     ...(expirationThreshold !== undefined ? { expirationThreshold } : {}),
     ...(expirationMode !== undefined ? { expirationMode } : {}),
+    // Written out, not left missing: a new item is consumable unless the
+    // caller says otherwise. Mirrors the cloud `createItem` resolver.
+    consumable: consumable ?? true,
     createdAt: now,
     updatedAt: now,
   }

@@ -152,6 +152,10 @@ function toCreateItemInput(input: ItemMutationInput): CreateItemInput {
     estimatedDueDays: input.estimatedDueDays,
     expirationThreshold: input.expirationThreshold,
     expirationMode: input.expirationMode,
+    // Absent from every create form today, so `undefined`, and the server
+    // writes its default, `true`. Listed so a form that grows the switch
+    // cannot have its value dropped.
+    consumable: input.consumable,
   }
   // Safe to widen: the `undefined`s this shape may carry never reach the wire
   // (Apollo serialises variables as JSON, which drops undefined-valued keys).

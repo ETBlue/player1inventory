@@ -103,6 +103,9 @@ export const cloudItem = (
   amountPerPackage: null,
   targetUnit: 'package',
   consumeAmount: 1,
+  // Selected by `GetItem`, `GetItems`, `PantryData` and the item mutations
+  // since consumable items PR 2.
+  consumable: true,
   expirationMode: null,
   estimatedDueDays: null,
   expirationThreshold: null,

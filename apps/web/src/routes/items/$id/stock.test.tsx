@@ -1428,6 +1428,7 @@ describe('Item stock tab', () => {
       tagIds: [],
       targetUnit: 'package',
       consumeAmount: 1,
+      consumable: true,
       createdAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
       updatedAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
     }
@@ -1489,6 +1490,7 @@ describe('Item stock tab', () => {
       tagIds: [],
       targetUnit: 'package',
       consumeAmount: 1,
+      consumable: true,
       createdAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
       updatedAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
     }
@@ -1542,6 +1544,7 @@ describe('Item stock tab', () => {
       packageUnit: 'bottle',
       targetUnit: 'package',
       consumeAmount: 1,
+      consumable: true,
       createdAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
       updatedAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
     }
@@ -1737,6 +1740,7 @@ describe('Item stock tab', () => {
         packageUnit: 'bottle',
         targetUnit: 'package',
         consumeAmount: 1,
+        consumable: true,
         expirationMode: 'days from purchase',
         estimatedDueDays: 7,
         createdAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
