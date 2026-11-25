@@ -283,6 +283,28 @@ Uses `useAppNavigation()` hook from `src/hooks/useAppNavigation.ts`.
 - `src/routes/items/$id.test.tsx` - Integration tests
 - `src/hooks/useItemLayout.tsx` - Dirty state context for tab coordination, the top bar's Save slot (`saveSlot`, `setSaveSlot`), and the form's `SaveControl` for the unsaved-changes dialog (`saveControl`, `registerSaveControl`)
 
+### The Consumable switch (consumable items PR 2, 2026-11-25)
+
+The first row under "Stock settings" on the Info tab is **Consumable** (`ItemForm`'s
+`consumable` value; `itemToFormValues` reads `isConsumable(item)`, `buildInfoUpdates`
+sends it). On for a new item.
+
+| Switch | Info tab | Stock tab and `QuickUpdateDialog` |
+|---|---|---|
+| on | everything, as before | everything, as before |
+| off | no "Advanced stock settings" block: no Track in measurement, measurement unit, amount per package or expiration | no Unpacked row, no Unpack or Pack, no "Expires on" |
+
+- **Hidden values are kept.** They stay in the form and are saved unchanged, so turning the
+  switch on again shows them as they were.
+- **Turning it off on a measurement item moves it to packages.** `handleConsumableChange`
+  calls `handleTargetUnitChange(false)`, so the form converts like the Track in measurement
+  switch. On Save, `targetUnit` has changed, so the converted amounts dialog above opens and
+  one `applyUnitSwitch` writes the item (with `consumable: false`), every location and the
+  recipe amounts. Turning it on again does not move the item back to the measurement unit.
+- **A hidden "Expires on" sends no `dueDate` key** (`buildStockUpdates` in `stock.tsx`, and
+  `QuickUpdateDialog`), the issue #261 rule: the location's stored date is kept.
+- `consumeAmount` is NOT hidden: it is the recipe step, and recipes do not change.
+
 ### Manual Quantity Input
 
 Users can manually set current inventory quantities in the item detail form:

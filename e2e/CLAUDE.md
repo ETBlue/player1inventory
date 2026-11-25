@@ -1644,6 +1644,20 @@ Without that assertion the cloud run failed much later, as
 `locator.click: Test timeout of 30000ms exceeded` — a missing element, which says far less
 than a missing id.
 
+### `consumable` and `measurementUnit` — two more optional item fields (2026-11-25)
+
+Added for `consumable-items.spec.ts` (consumable items PR 2), in both seeders.
+`consumable` omitted gives `true` in both modes (the product default); `measurementUnit`
+omitted leaves the field unset. A `targetUnit: 'measurement'` item needs a
+`measurementUnit`, or its Info tab opens with the "measurement unit" error.
+
+`consumable-items.spec.ts` runs in `local` and `cloud`: turning the switch off shows one
+square per piece on the pantry after a new page load (the item is seeded CONSUMABLE, so the
+squares prove the save); a gram item shows the converted amounts dialog and ends as whole
+packs; the Not consumable filter on a cart keeps only the non-consumable item and survives a
+reload; and axe scans, light and dark, of the pantry with a count bar, the open Consumable
+menu, the Info tab with the switch off and the converted amounts dialog.
+
 ### Location order is assigned differently in the two modes — keep the default first
 
 | Helper | How it assigns `order` |

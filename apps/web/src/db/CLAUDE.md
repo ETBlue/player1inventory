@@ -2,11 +2,11 @@
 
 The local-mode data source. `index.ts` declares the Dexie schema, `operations.ts` holds every read/write. Components never touch Dexie directly — they go through the Query hooks in `src/hooks/` (see `src/hooks/CLAUDE.md`).
 
-**Files:** `index.ts` (schema + migrations), `operations.ts` (+ `operations.test.ts`), `migrations.test.ts`, `upgradeV15.test.ts`, `upgradeV16.test.ts`, `upgradeV17.test.ts`, `upgradeV18.test.ts`, `upgradeV19V20.test.ts`.
+**Files:** `index.ts` (schema + migrations), `operations.ts` (+ `operations.test.ts`), `migrations.test.ts`, `upgradeV15.test.ts`, `upgradeV16.test.ts`, `upgradeV17.test.ts`, `upgradeV18.test.ts`, `upgradeV19V20.test.ts`, `upgradeV21.test.ts`.
 
 ## Schema versioning
 
-One `db.version(n).stores({...})` per migration in `index.ts`. Migrations are **forward-only** and **idempotent within a bump**. Current version: **20**.
+One `db.version(n).stores({...})` per migration in `index.ts`. Migrations are **forward-only** and **idempotent within a bump**. Current version: **21**.
 
 Rules:
 - **Add a new version; never edit a shipped one.** An upgrade function must be valid on a database built only from committed history.
@@ -121,6 +121,23 @@ row for a pair:
   and `clear` ADD to a stored pair and skip a whole pair when any of its ids is stored;
   `replace` SETS the pair's amount; no write moves a row. Before task B.8 it used `bulkAdd` and
   `bulkPut`, so `replace` moved a row whose id the backup named under another pair.
+
+### v21 — `Item.consumable`
+
+Consumable items PR 2 (`docs/features/items/2026-11-25-item-consumable-design.md`). Same
+stores as 20 (`consumable` is not indexed). The upgrade sets `consumable: true` on every
+item whose value is not a boolean; a stored `false` or `true` stays. `createItem` writes
+`consumable ?? true`.
+
+**Readers do not rely on the backfill.** `Item.consumable` is optional, and every reader
+uses `isConsumable(item)` (`@p1i/types`), which reads a missing or `null` value as `true`.
+A backup file from before the field can still bring an item with no value; the local
+import writes `isConsumable(raw)` for it (`deserializeItem` in `lib/importData.ts`).
+
+**`on('populate')` needed no change.** A fresh database has no items at populate time.
+`upgradeV21.test.ts` checks a version-20 database with three items (no value, `false`,
+`true`, so "set where missing" differs from "set everywhere") and a fresh database.
+`upgradeV19V20.test.ts` now checks `verno` is at least 20, not exactly 20.
 
 ## The Item/ItemStock join
 
