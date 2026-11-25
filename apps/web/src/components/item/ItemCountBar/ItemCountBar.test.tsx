@@ -100,6 +100,14 @@ describe('ItemCountBar', () => {
       expect(screen.getByText('Refill when below 2')).toBeInTheDocument()
     })
 
+    it('user sees a 1px marker that does not cover a square', () => {
+      render(<ItemCountBar current={3} target={5} refillThreshold={2} />)
+      const marker = screen.getByTestId('refill-marker')
+      expect(marker).toHaveClass('w-px')
+      expect(marker).not.toHaveClass('w-2')
+      expect(marker.className).not.toMatch(/\bborder\b/)
+    })
+
     it('sits at the left end for a threshold of 0', () => {
       render(<ItemCountBar current={1} target={5} refillThreshold={0} />)
       expect(screen.getByTestId('refill-marker').style.left).toBe('0px')

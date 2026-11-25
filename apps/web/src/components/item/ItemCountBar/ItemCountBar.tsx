@@ -97,12 +97,14 @@ export function ItemCountBar({
       )}
       {showMarker && (
         <>
+          {/* 1px wide (owner request 2026-11-26). An 8px marker covered a
+              whole square, so that piece could not be seen. */}
           <div
             data-testid="refill-marker"
             data-threshold={refillThreshold}
             aria-hidden="true"
             className={cn(
-              'pointer-events-none absolute -top-0.5 h-3 w-2 rounded-full bg-foreground-muted border border-accessory-default',
+              'pointer-events-none absolute -top-0.5 h-3 w-px bg-foreground-muted',
               refillThreshold <= 0 ? 'translate-x-0' : '-translate-x-1/2',
             )}
             style={{ left: `${getCountMarkerLeft(refillThreshold)}px` }}
