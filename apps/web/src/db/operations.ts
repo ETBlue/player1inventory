@@ -658,12 +658,16 @@ export async function getLastPurchaseDate(
   itemId: string,
   locationId: string = DEFAULT_LOCATION_ID,
 ): Promise<Date | null> {
-  // Option A (design 2026-11-25, inventory log layout): a row that added
-  // stock and is not a stock count. A row with no `logKey` (written before
-  // logKey existed) still counts. The server's `lastPurchaseDates` applies the
-  // same rule.
+  // The newest row at this location that ADDED stock, of any kind: a
+  // checkout, a stock count that raised the amount, or an old row with no
+  // `logKey`. A row that lowered or kept the amount never counts. So "last
+  // purchased" really means "last restocked": it drives the "days from
+  // purchase" expiry and the Purchased sort. Owner decision 2026-11-26
+  // (`docs/features/items/2026-11-26-expiry-from-last-restock-design.md`),
+  // which reverses option A of the 2026-11-25 design (stock counts skipped).
+  // The server's `lastPurchaseDates` applies the same rule.
   const logs = (await getItemLogs(itemId, locationId)).filter(
-    (log) => log.delta > 0 && log.logKey !== STOCK_COUNT_LOG_KEY,
+    (log) => log.delta > 0,
   )
 
   if (logs.length === 0) return null
