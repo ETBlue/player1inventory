@@ -41,6 +41,7 @@ import {
   isStockedHere,
   roundToStep,
 } from '@/lib/quantityUtils'
+import { COOKING_LOG_KEY, type CookingLogParams } from '@/types'
 
 function highlight(text: string, query: string): React.ReactNode {
   if (!query.trim()) return text
@@ -405,15 +406,17 @@ function CookingPage() {
   const handleConfirmDone = async () => {
     const now = new Date()
 
-    // Build item → contributing recipe names for log notes
-    const recipeNamesByItemId = new Map<string, string[]>()
+    // Build item → the recipes that used it, for the log. Ids plus a name
+    // snapshot (design 2026-11-25, inventory log layout): the Log tab shows a
+    // recipe's CURRENT name while it still exists.
+    const recipesByItemId = new Map<string, CookingLogParams['recipes']>()
     for (const [recipeId, itemSet] of checkedItemIds) {
       const recipe = recipes.find((r) => r.id === recipeId)
       if (!recipe) continue
       for (const itemId of itemSet) {
-        const names = recipeNamesByItemId.get(itemId) ?? []
-        names.push(recipe.name)
-        recipeNamesByItemId.set(itemId, names)
+        const list = recipesByItemId.get(itemId) ?? []
+        list.push({ id: recipe.id, name: recipe.name })
+        recipesByItemId.set(itemId, list)
       }
     }
 
@@ -430,23 +433,17 @@ function CookingPage() {
       ([itemId, totalAmount]) => {
         const item = items.find((i) => i.id === itemId)
         if (!item) return []
-        const recipeNames = recipeNamesByItemId.get(itemId) ?? []
-        const logKey =
-          recipeNames.length > 0
-            ? 'cooking.log.consumedVia'
-            : 'cooking.log.consumedViaRecipe'
-        const logParams =
-          recipeNames.length > 0
-            ? { recipes: recipeNames.join(', ') }
-            : undefined
-        const note = logParams ? t(logKey, logParams) : t(logKey)
+        // Data only, no `note`. `recipes` may be empty; the Log tab then
+        // says "Used in cooking".
+        const logParams: CookingLogParams = {
+          recipes: recipesByItemId.get(itemId) ?? [],
+        }
         return [
           {
             itemId,
             delta: -totalAmount,
-            note,
-            logKey,
-            ...(logParams ? { logParams } : {}),
+            logKey: COOKING_LOG_KEY,
+            logParams,
           },
         ]
       },

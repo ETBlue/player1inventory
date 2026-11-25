@@ -129,6 +129,24 @@ describe('Vendor cart page checkout', () => {
     })
   })
 
+  // Data, not text (design 2026-11-25, inventory log layout): the purchase
+  // log carries the vendor's id and a name snapshot, and no `note`.
+  it('user checking out logs the purchase as data: the vendor id and name, and no note', async () => {
+    const { vendor } = await seedCart()
+    mockCheckoutAsync.mockResolvedValue(undefined)
+    renderVendorCart(vendor.id)
+
+    await confirmCheckout()
+
+    await waitFor(() => expect(mockCheckoutAsync).toHaveBeenCalledTimes(1))
+    const args = mockCheckoutAsync.mock.calls[0]?.[0]
+    expect(args).toMatchObject({
+      logKey: 'purchase',
+      logParams: { vendorId: vendor.id, vendorName: 'Costco' },
+    })
+    expect(Object.keys(args)).not.toContain('note')
+  })
+
   it('user whose cart changed sees a message, and the dialog closes so they can check the cart', async () => {
     // Given the server refuses: the cart changed after this screen loaded
     const { vendor } = await seedCart()
