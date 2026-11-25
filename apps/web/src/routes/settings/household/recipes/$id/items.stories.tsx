@@ -89,7 +89,11 @@ function DefaultStory() {
   )
 }
 
-function WithItemsStory() {
+function WithItemsStory({
+  nonConsumable = false,
+}: {
+  nonConsumable?: boolean
+}) {
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -131,10 +135,43 @@ function WithItemsStory() {
         consumeAmount: 1,
       })
 
+      // The non-consumable variant: the recipe also links a Wok (old data,
+      // "Not used in cooking"), and a Plate is listed but cannot be added
+      // (owner decision 2026-11-26: only consumable items can be in a recipe)
+      const extra = nonConsumable
+        ? await createItem({
+            name: 'Wok',
+            tagIds: [],
+            vendorIds: [],
+            targetUnit: 'package',
+            targetQuantity: 1,
+            refillThreshold: 0,
+            packedQuantity: 1,
+            unpackedQuantity: 0,
+            consumeAmount: 1,
+            consumable: false,
+          })
+        : undefined
+      if (nonConsumable) {
+        await createItem({
+          name: 'Plate',
+          tagIds: [],
+          vendorIds: [],
+          targetUnit: 'package',
+          targetQuantity: 4,
+          refillThreshold: 0,
+          packedQuantity: 4,
+          unpackedQuantity: 0,
+          consumeAmount: 1,
+          consumable: false,
+        })
+      }
+
       await updateRecipe(storedRecipeId, {
         items: [
           { itemId: chicken.id, defaultAmount: 1 },
           { itemId: broccoli.id, defaultAmount: 1 },
+          ...(extra ? [{ itemId: extra.id, defaultAmount: 1 }] : []),
         ],
       })
 
@@ -142,7 +179,7 @@ function WithItemsStory() {
       setReady(true)
     }
     setup()
-  }, [])
+  }, [nonConsumable])
 
   if (!ready || !recipeId) return <div>Loading...</div>
 
@@ -169,4 +206,8 @@ export const Default: Story = {
 
 export const WithItems: Story = {
   render: () => <WithItemsStory />,
+}
+
+export const NonConsumableItems: Story = {
+  render: () => <WithItemsStory nonConsumable />,
 }

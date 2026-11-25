@@ -22,6 +22,8 @@ export interface ItemSearchTailGroupAction {
   // Use `mutateAsync`, not `mutate`.
   onAction: (item: PantryItem) => Promise<void>
   icon?: ReactNode
+  /** See `ItemSearchTailAction.blockedNote`: a note in place of one row's button. */
+  blockedNote?: (item: PantryItem) => ReactNode | null | undefined
 }
 
 export interface UseItemSearchTailWiringOptions {
@@ -103,6 +105,7 @@ export function useItemSearchTailWiring({
   ): ItemSearchTailAction => ({
     label: action.label,
     icon: action.icon,
+    ...(action.blockedNote ? { blockedNote: action.blockedNote } : {}),
     pendingItemId,
     onAction: async (item: PantryItem) => {
       setPendingItemId(item.id)

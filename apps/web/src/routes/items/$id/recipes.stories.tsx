@@ -77,7 +77,11 @@ function DefaultStory() {
   )
 }
 
-function WithRecipesStory() {
+function WithRecipesStory({
+  nonConsumable = false,
+}: {
+  nonConsumable?: boolean
+}) {
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -92,8 +96,11 @@ function WithRecipesStory() {
       await db.delete()
       await db.open()
 
+      // The non-consumable variant is a Teapot: it stays in the recipe it
+      // was in (removable), but cannot join another one (owner decision
+      // 2026-11-26: only consumable items can be in a recipe)
       const item = await createItem({
-        name: 'Flour',
+        name: nonConsumable ? 'Teapot' : 'Flour',
         tagIds: [],
         targetUnit: 'package',
         targetQuantity: 3,
@@ -101,6 +108,7 @@ function WithRecipesStory() {
         packedQuantity: 2,
         unpackedQuantity: 0,
         consumeAmount: 1,
+        ...(nonConsumable ? { consumable: false } : {}),
       })
 
       // Recipe with this item assigned
@@ -115,7 +123,7 @@ function WithRecipesStory() {
       setReady(true)
     }
     setup()
-  }, [])
+  }, [nonConsumable])
 
   if (!ready || !itemId) return <div>Loading...</div>
 
@@ -198,4 +206,8 @@ export const WithRecipes: Story = {
 
 export const EmptyRecipes: Story = {
   render: () => <EmptyRecipesStory />,
+}
+
+export const NonConsumableItem: Story = {
+  render: () => <WithRecipesStory nonConsumable />,
 }

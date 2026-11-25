@@ -494,4 +494,71 @@ describe('Recipes Tab', () => {
       vi.restoreAllMocks()
     }
   })
+
+  // Owner decision 2026-11-26: cooking is only for consumable items, so a
+  // non-consumable item cannot join a recipe. An old link can be removed.
+  describe('non-consumable item', () => {
+    const makeCup = () =>
+      createItem({
+        name: 'Cup',
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        consumable: false,
+        tagIds: [],
+      })
+
+    it('user cannot add a non-consumable item to a recipe from its recipes tab', async () => {
+      // Given a non-consumable item and a recipe without it
+      const cup = await makeCup()
+      const recipe = await createRecipe({ name: 'Tea' })
+
+      renderRecipesTab(cup.id)
+      const user = userEvent.setup()
+
+      // Then the tab says why, the recipe badge is disabled, and there is
+      // no New Recipe button
+      expect(
+        await screen.findByText(/not consumable, so it cannot be added/i),
+      ).toBeInTheDocument()
+      const badge = await screen.findByRole('button', { name: 'Tea' })
+      expect(badge).toHaveAttribute('aria-disabled', 'true')
+      expect(
+        screen.queryByRole('button', { name: /new recipe/i }),
+      ).not.toBeInTheDocument()
+
+      // When the user presses the badge anyway
+      await user.click(badge)
+
+      // Then the recipe stays without the item
+      const stored = await db.recipes.get(recipe.id)
+      expect(stored?.items).toHaveLength(0)
+    })
+
+    it('user can remove a non-consumable item from a recipe it is already in', async () => {
+      // Given a recipe that already links the non-consumable item
+      const cup = await makeCup()
+      const recipe = await createRecipe({
+        name: 'Tea',
+        items: [{ itemId: cup.id, defaultAmount: 1 }],
+      })
+
+      renderRecipesTab(cup.id)
+      const user = userEvent.setup()
+
+      // When the user presses the assigned badge
+      const badge = await screen.findByRole('button', { name: 'Tea' })
+      expect(badge).not.toHaveAttribute('aria-disabled')
+      await user.click(badge)
+
+      // Then the link is gone
+      await waitFor(async () => {
+        const stored = await db.recipes.get(recipe.id)
+        expect(stored?.items).toHaveLength(0)
+      })
+    })
+  })
 })

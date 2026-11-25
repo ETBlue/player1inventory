@@ -41,6 +41,7 @@ import {
   isStockedHere,
   roundToStep,
 } from '@/lib/quantityUtils'
+import { cookingRecipe, nonConsumableItemIds } from '@/lib/recipeConsumables'
 import { COOKING_LOG_KEY, type CookingLogParams } from '@/types'
 
 function highlight(text: string, query: string): React.ReactNode {
@@ -93,8 +94,18 @@ function CookingPage() {
   const viewOnlyNoteId = useId()
   const navigate = useNavigate()
   const { sort, dir, q, expanded } = Route.useSearch()
-  const { data: recipes = [] } = useRecipes()
+  const { data: allRecipes = [] } = useRecipes()
   const { data: items = [] } = useItems()
+  // Cooking is only for consumable items (owner decision 2026-11-26). Every
+  // recipe on this page is the recipe WITHOUT its non-consumable items, so
+  // the list, the counts, the sort by item count, the search and the consume
+  // write all read one filtered list. A recipe still keeps its stored link;
+  // only this page leaves it out. This is the only place that applies the
+  // rule here: do not add a second filter further down.
+  const recipes = useMemo(() => {
+    const nonConsumableIds = nonConsumableItemIds(items)
+    return allRecipes.map((recipe) => cookingRecipe(recipe, nonConsumableIds))
+  }, [allRecipes, items])
   const consumeRecipes = useConsumeRecipes()
   // tags and tagTypes are passed to ItemCard for API consistency;
   // tag badges are suppressed in cooking mode by ItemCard itself
@@ -372,11 +383,19 @@ function CookingPage() {
     for (const [recipeId, recipeAmounts] of sessionAmounts) {
       const servings = sessionServings.get(recipeId) ?? 1
       const included = checkedItemIds.get(recipeId) ?? new Set()
+      // Only items the recipe still lists on THIS page. The session maps were
+      // filled from an earlier render, so an item that turned non-consumable
+      // since then (a live update) would otherwise still be consumed. This
+      // reads the same filtered `recipes` list; it is not a second rule.
+      const listed = new Set(
+        recipes.find((r) => r.id === recipeId)?.items.map((ri) => ri.itemId),
+      )
       for (const [itemId, amount] of recipeAmounts) {
         // Skip items not stocked in the active location — they can't be consumed.
         if (
           amount > 0 &&
           included.has(itemId) &&
+          listed.has(itemId) &&
           availableItemIds.has(itemId)
         ) {
           totals.set(itemId, (totals.get(itemId) ?? 0) + servings * amount)
@@ -384,7 +403,13 @@ function CookingPage() {
       }
     }
     return totals
-  }, [sessionAmounts, sessionServings, checkedItemIds, availableItemIds])
+  }, [
+    sessionAmounts,
+    sessionServings,
+    checkedItemIds,
+    availableItemIds,
+    recipes,
+  ])
 
   // Items that would go below 0 after consumption
   const insufficientItems = useMemo(() => {

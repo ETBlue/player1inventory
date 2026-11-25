@@ -281,7 +281,8 @@
         "error": "Couldn't add to this shelf. Try again.",
         "confirm": "Add",
         "cancel": "Cancel"
-      }
+      },
+      "notConsumable": "Not consumable, so it cannot be added to a recipe."
     },
     "tags": {
       "empty": {
@@ -325,7 +326,8 @@
         "dialogTitle": "New Recipe",
         "submitLabel": "Add Recipe",
         "placeholder": "e.g., Pasta, Milk Tea"
-      }
+      },
+      "notConsumable": "This item is not consumable, so it cannot be added to a recipe. Cooking does not use it in the recipes it is already in."
     },
     "info": {
       "wikidataUrl": {
@@ -821,7 +823,9 @@
         "empty": {
           "title": "No items yet",
           "description": "Use search to add items linked to this recipe"
-        }
+        },
+        "notConsumable": "Not consumable. Only consumable items can be in a recipe.",
+        "notUsedInCooking": "Not used in cooking: this item is not consumable."
       }
     },
     "language": {

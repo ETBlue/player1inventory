@@ -90,6 +90,24 @@ export const GroupNote: Story = {
   },
 }
 
+// One row the action cannot apply to: a non-consumable item on a recipe page
+// (owner decision 2026-11-26: only consumable items can be in a recipe). That
+// row shows a note instead of the button; the other row keeps its button.
+export const BlockedRow: Story = {
+  args: {
+    inLocationItems: [bread, makePantryItem({ id: 'cup', name: 'Cup' })],
+    notStockedHereItems: [],
+    groupAction: {
+      label: 'Add to recipe',
+      onAction: () => {},
+      blockedNote: (item) =>
+        item.id === 'cup'
+          ? 'Not consumable, so it cannot be added to a recipe.'
+          : null,
+    },
+  },
+}
+
 // Neither a group action nor a note: section 2 is suppressed entirely.
 export const NotStockedHereOnly: Story = {
   args: {

@@ -45,7 +45,7 @@ import {
   matchesFilterConfig,
 } from '@/lib/shelfUtils'
 import { type SortDirection, type SortField, sortItems } from '@/lib/sortUtils'
-import type { PantryItem, StockFields } from '@/types'
+import { isConsumable, type PantryItem, type StockFields } from '@/types'
 
 interface ShelfDetailViewProps {
   shelfId: string
@@ -355,6 +355,16 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
           groupAction: {
             label: t('items.searchTail.addToShelf'),
             icon: <ArrowUpFromLine />,
+            // Joining a shelf with an unmet recipe axis adds the item to a
+            // recipe. A non-consumable item cannot be in a recipe (owner
+            // decision 2026-11-26), so that row shows why instead of a button.
+            blockedNote: (item: PantryItem) =>
+              !isConsumable(item) &&
+              axesFor(item).some(
+                (axis) => axis.kind === 'recipe' && axis.metBy === undefined,
+              )
+                ? t('items.searchTail.notConsumable')
+                : null,
             onAction: async (item: PantryItem) => {
               // Always open the dialog — never apply directly, regardless
               // of how many options each axis offers (designer ruling,

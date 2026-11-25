@@ -281,7 +281,8 @@
         "error": "無法加入此層架，請再試一次。",
         "confirm": "加入",
         "cancel": "取消"
-      }
+      },
+      "notConsumable": "非消耗品，不能加入食譜。"
     },
     "tags": {
       "empty": {
@@ -325,7 +326,8 @@
         "dialogTitle": "新增食譜",
         "submitLabel": "新增食譜",
         "placeholder": "例如：義大利麵、奶茶"
-      }
+      },
+      "notConsumable": "這不是消耗品，所以不能加入食譜。已加入的食譜在烹飪時不會用到它。"
     },
     "info": {
       "wikidataUrl": {
@@ -821,7 +823,9 @@
         "empty": {
           "title": "尚未建立物資清單",
           "description": "可以透過搜尋功能新增可套用此食譜的品項喔"
-        }
+        },
+        "notConsumable": "非消耗品，不能加入食譜。",
+        "notUsedInCooking": "不用於烹飪：這不是消耗品。"
       }
     },
     "language": {
