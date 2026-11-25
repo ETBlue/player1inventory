@@ -342,9 +342,26 @@ Row 2 (ItemListToolbar):
 
 **Pinned items:** Same behavior as before — quantity 0, stay in cart after checkout, move to the same vendor's new cart.
 
+**The amount of a row is set in a dialog** (since 2026-11-25, `docs/features/shopping/2026-11-25-cart-amount-dialog-design.md`). Before, each `−` or `+` press sent one request, so 1 to 10 cost 9 round trips.
+
+| Action | What happens |
+|---|---|
+| press the amount button of a row in the cart (`10 pack ✎`) | `CartAmountDialog` opens in `edit` mode with the row's amount. Save sends ONE `updateCartItem(id, amount)` |
+| tick a row not in the cart | the same dialog opens in `add` mode, with `suggestedCartAmount(item)` (`lib/quantityUtils.ts`). Nothing is written yet. Save sends ONE `addToCart(cartId, itemId, amount)`; Cancel or Escape adds nothing and the row stays unticked |
+| untick a row in the cart | `removeFromCart` at once, as before (no dialog) |
+
+- **The checkbox and the amount are separate** (owner decision Q4). The checkbox means "in the cart"; the amount means "how many to buy now". Amount 0 is allowed in both modes: the row stays in the cart and is not bought (`isBeingBought` is `quantity > 0`). The dialog shows a note at 0 (`shopping.amountDialog.zeroNote`). `addToCart` with 0 is allowed too: it writes a pinned row. Neither the local operation nor the cloud resolver checks the amount, so 0 always worked; the field refuses a negative or fractional number.
+- **The suggested amount is in PACKS.** The card shows stock and target in the item's tracking unit (`getCurrentQuantity`, `targetQuantity`, the measurement unit for a measurement item), and the dialog's context line shows the same numbers. A cart amount counts packages, so `suggestedCartAmount` first turns both into packs with `getItemPackUnits`, then takes `max(1, ceil(target − stock))`. A measurement item with no `amountPerPackage` has a pack target of 0, so it gets 1. The difference is rounded to 6 places before `ceil`, because `2.1 / 0.3` is `7.000000000000001`.
+- **A failed save shows in the dialog** (`common.saveFailed`, `role="alert"`), and the dialog stays open with the number. No toast. The page closes the dialog only when the write resolves.
+- **A location viewer** sees the amount button disabled, with the view-only note as its `aria-describedby`, the same as the checkbox. The checkbox is disabled too, so the `add` dialog cannot open.
+- **A row added by someone else while the add dialog is open:** Save still calls `addToCart`, which ADDS the amount to theirs (an upsert with `increment`). Known, not changed.
+- The row stays the same object while the dialog is open: `amountDialog` state holds the item id, the mode and the amount it opened with, and the dialog is mounted only while open, so a live refetch does not reset what the person typed.
+- The cooking page and the recipe items tab keep their `− n +` control. See `ItemCard`'s `onAmountEdit` in `components/CLAUDE.md`.
+- Tests: `shopping/$vendorId.test.tsx` (*cart amount dialog*, local), `shopping/amountDialog.cloud.test.tsx` (cloud, one mutation per Save), `shopping/saveFailed.cloud.test.tsx`, `locationViewer.test.tsx`; E2E in `e2e/tests/shopping.spec.ts` (*cart amount dialog*, local and cloud, with axe scans of the dialog in light and dark).
+
 **Checkout:** `logKey` is always `'shopping.log.purchasedAt'`; `logParams` is `{ vendor: vendor?.name ?? t('shopping.noVendor') }`. After checkout → navigate to `/shopping`.
 
-**Cloud checkout sends what the screen showed (households H3b task B.5).** The page sends every row of the cart being bought (`isBeingBought`), as `{ cartItemId, quantity }`, and no stock total. A cart is shared at its location, so a co-member may change it after this screen loaded; the server then refuses with `CART_CHANGED` and writes nothing. `useCheckout` reloads the cart's rows, and the page closes the dialog and shows the toast `shopping.cartChanged` ("This cart changed. Please check and try again."). Any other failure keeps the dialog open and shows `common.saveFailed` (since 2026-11-19; before, it showed nothing). Abandon, create-from-search, and checking, unchecking or changing the amount of a row show the same toast when the write fails (`docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md`). See `hooks/CLAUDE.md`, `useCheckout()`.
+**Cloud checkout sends what the screen showed (households H3b task B.5).** The page sends every row of the cart being bought (`isBeingBought`), as `{ cartItemId, quantity }`, and no stock total. A cart is shared at its location, so a co-member may change it after this screen loaded; the server then refuses with `CART_CHANGED` and writes nothing. `useCheckout` reloads the cart's rows, and the page closes the dialog and shows the toast `shopping.cartChanged` ("This cart changed. Please check and try again."). Any other failure keeps the dialog open and shows `common.saveFailed` (since 2026-11-19; before, it showed nothing). Abandon, create-from-search, and unchecking a row show the same toast when the write fails (a failed amount save, from ticking or from the amount button, shows in the amount dialog instead, since 2026-11-25) (`docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md`). See `hooks/CLAUDE.md`, `useCheckout()`.
 
 **Abandon:** After abandoning → navigate to `/shopping`.
 
