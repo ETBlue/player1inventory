@@ -27,6 +27,27 @@ Date: 2026-11-25. Brainstorming: `2026-11-25-brainstorming-item-consumable.md`.
 | Old bundles | the field is new output and new OPTIONAL input only, so today's web keeps working. `oldBundleCompat.test.ts` must stay green unchanged |
 | `verify-migration.ts` | asserts the column exists, is NOT NULL, defaults to true, and that a row written before the migration reads `true` |
 
+### As built: PR 1
+
+Branch `feature/item-consumable-server`, from `main` at `56d7de3a`. Migration folder
+`20261125000000_add_item_consumable`.
+
+| Part | As built |
+|---|---|
+| Migration | the one statement above, nothing else. No backfill and no guard: Postgres fills every existing row with `true` |
+| `createItem` | writes `consumable: input.consumable ?? true`. It does not leave the value to the column default, so the tests can see it |
+| `updateItem` (`buildItemUpdateData`, also used by `applyUnitSwitch`) | writes `consumable` only when it is not `undefined` and not `null`. `null` means "leave it", because the column is `NOT NULL` |
+| `bulkCreateItems`, `bulkUpsertItems` | `consumable ?? true`, in `create` AND in `update`. A replace takes the file's value, and a file with no value means "consumable", so a replace with no value writes `true` (owner decision 2026-11-25: keep this) |
+| Read | no new code. `toGraphQL` (`item.resolver.ts`) and `itemToGraphQL` (`import.resolver.ts`) spread the Prisma row, and every field that returns `Item` goes through one of them |
+| `oldBundleCompat.test.ts` | **this table's row above was wrong.** graphql-js reports every new optional input field as a "dangerous" change, so the test went red. The three `consumable` lines were added to its expected list (owner decision 2026-11-25), after checking that no old document or variable sends `consumable` |
+| Tests | `apps/server/src/resolvers/item-consumable.resolver.test.ts`, 15 tests against `ownedRowFake` |
+| `verify-migration.ts` | `assertItemConsumable`, plus a `select` on two `Item` calls that run before the last deploy. Not run yet |
+| Web | no change. `pnpm codegen` adds the field to the web types; no web document selects it yet |
+
+Until PR 2 the web's import and export do not carry `consumable`. So a cloud backup made
+now has no value, and a "replace" import of it writes `true`. No client can write `false`
+before PR 2, so no item can lose a `false` by this.
+
 ## PR 2: web
 
 ### The switch
