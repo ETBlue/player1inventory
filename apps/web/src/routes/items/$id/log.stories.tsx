@@ -8,7 +8,13 @@ import {
 } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { db } from '@/db'
-import { addInventoryLog, createItem } from '@/db/operations'
+import {
+  addInventoryLog,
+  createItem,
+  createRecipe,
+  createVendor,
+  updateItem,
+} from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
 
@@ -372,6 +378,104 @@ function WithI18nKeyLogsStory() {
   )
 }
 
+// The three new row shapes (design 2026-11-25, inventory log layout), for an
+// item that tracks in grams (500 g per pack), so every number is converted
+// from packs to grams:
+//
+// | Row | Stored | Shown |
+// |---|---|---|
+// | purchase at a vendor renamed since | +2 packs, 2 after, `{ vendorId, vendorName: 'Costco' }` | `+1000 g · Bought at Costco Wholesale`, `1000 g` |
+// | purchase at a deleted vendor | +1 pack, 3 after, snapshot `Old Market` | `+500 g · Bought at Old Market`, `1500 g` |
+// | cook, one recipe kept and one deleted | −200 g (tracking unit), 2.6 after | `−200 g · Used in Bread, Pizza`, `1300 g` |
+// | stock count, written by a real `updateItem` save | −0.06 packs, 2.54 after | `−30 g · Stock count`, `1270 g` |
+function NewLogShapesStory() {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      }),
+  )
+  const [ready, setReady] = useState(false)
+  const [itemId, setItemId] = useState<string | null>(null)
+
+  useEffect(() => {
+    async function setup() {
+      await db.delete()
+      await db.open()
+
+      const item = await createItem({
+        name: 'Flour',
+        tagIds: [],
+        packageUnit: 'bag',
+        measurementUnit: 'g',
+        amountPerPackage: 500,
+        targetUnit: 'measurement',
+        targetQuantity: 2000,
+        refillThreshold: 500,
+        packedQuantity: 2,
+        unpackedQuantity: 300,
+        consumeAmount: 100,
+      })
+      // Bought at "Costco", which has been renamed since.
+      const costco = await createVendor('Costco Wholesale')
+      const bread = await createRecipe({ name: 'Bread', items: [] })
+
+      await addInventoryLog({
+        itemId: item.id,
+        delta: 2,
+        quantity: 2,
+        occurredAt: new Date('2026-11-20T09:15:00'),
+        logKey: 'purchase',
+        logParams: { vendorId: costco.id, vendorName: 'Costco' },
+      })
+      await addInventoryLog({
+        itemId: item.id,
+        delta: 1,
+        quantity: 3,
+        occurredAt: new Date('2026-11-21T10:00:00'),
+        logKey: 'purchase',
+        logParams: { vendorId: 'vendor-deleted', vendorName: 'Old Market' },
+      })
+      await addInventoryLog({
+        itemId: item.id,
+        delta: -200,
+        quantity: 2.6,
+        occurredAt: new Date('2026-11-23T18:45:00'),
+        logKey: 'cooking',
+        logParams: {
+          recipes: [
+            { id: bread.id, name: 'Bread' },
+            { id: 'recipe-deleted', name: 'Pizza' },
+          ],
+        },
+      })
+      // A real stock count: 2 bags + 300 g is 2.6 bags; 2 bags + 270 g is
+      // 2.54. `updateItem` writes the row itself.
+      await updateItem(item.id, { unpackedQuantity: 270 })
+
+      setItemId(item.id)
+      setReady(true)
+    }
+    setup()
+  }, [])
+
+  if (!ready || !itemId) return <div>Loading...</div>
+
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({ initialEntries: [`/items/${itemId}/log`] }),
+    context: { queryClient },
+  })
+
+  return (
+    <ApolloProvider client={noopApolloClient}>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ApolloProvider>
+  )
+}
+
 export const Empty: Story = {
   render: () => <EmptyStory />,
 }
@@ -390,4 +494,8 @@ export const MixedLogs: Story = {
 
 export const WithI18nKeyLogs: Story = {
   render: () => <WithI18nKeyLogsStory />,
+}
+
+export const NewLogShapes: Story = {
+  render: () => <NewLogShapesStory />,
 }
