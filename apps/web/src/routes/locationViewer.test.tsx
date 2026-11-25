@@ -261,7 +261,7 @@ describe.each(people)('$who on a cart', (person) => {
     const amount = screen.getByRole('button', {
       name: /^Edit amount of Milk: 3 /,
     })
-    expect(amount).toHaveTextContent(/^3 /)
+    expect(amount.textContent).toBe('3')
     expect(
       screen.queryByRole('button', { name: 'Increase quantity of Milk' }),
     ).toBeNull()

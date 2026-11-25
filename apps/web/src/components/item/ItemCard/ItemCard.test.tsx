@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { deserializeItem } from '@/lib/deserialization'
 import { joinItemStock } from '@/lib/itemStock'
+import { defined } from '@/test/narrow'
 import { renderWithRouter } from '@/test/utils'
 import type {
   Item,
@@ -2242,11 +2243,10 @@ describe('ItemCard - amount button (onAmountEdit)', () => {
       />,
     )
 
-    // One button with the amount and unit; no − n + even with onAmountChange
+    // One button; no − n + even with onAmountChange
     const button = screen.getByRole('button', {
       name: 'Edit amount of Milk: 10 bottle',
     })
-    expect(button).toHaveTextContent('10 bottle')
     expect(
       screen.queryByRole('button', { name: /Increase quantity of Milk/ }),
     ).toBeNull()
@@ -2254,6 +2254,84 @@ describe('ItemCard - amount button (onAmountEdit)', () => {
     await user.click(button)
     expect(onAmountEdit).toHaveBeenCalledTimes(1)
     expect(onAmountChange).not.toHaveBeenCalled()
+  })
+
+  it('user sees only the number on the amount button, with the unit in its name', async () => {
+    // Given a cart row with 10 bottles
+    await renderWithRouter(
+      <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
+        item={milk}
+        tags={[]}
+        tagTypes={[]}
+        mode="shopping"
+        isChecked
+        onCheckboxToggle={vi.fn()}
+        controlAmount={10}
+        amountUnit="bottle"
+        onAmountEdit={vi.fn()}
+      />,
+    )
+
+    // Then the button shows "10" only: no unit word and no pencil icon
+    const button = screen.getByRole('button', {
+      name: 'Edit amount of Milk: 10 bottle',
+    })
+    expect(button.textContent).toBe('10')
+    expect(button.querySelector('svg')).toBeNull()
+  })
+
+  it('the amount button takes a narrow lane, and the − n + group keeps its wide one', async () => {
+    // Given a cart row (one amount button) and a cooking row (− n +)
+    await renderWithRouter(
+      <>
+        <ItemCard
+          lastPurchaseDate={lastPurchaseToday()}
+          item={milk}
+          tags={[]}
+          tagTypes={[]}
+          mode="shopping"
+          isChecked
+          onCheckboxToggle={vi.fn()}
+          controlAmount={10}
+          amountUnit="bottle"
+          onAmountEdit={vi.fn()}
+        />
+        <ItemCard
+          lastPurchaseDate={lastPurchaseToday()}
+          item={{ ...milk, id: 'item-flour', name: 'Flour' }}
+          tags={[]}
+          tagTypes={[]}
+          mode="cooking"
+          isChecked
+          onCheckboxToggle={vi.fn()}
+          controlAmount={2}
+          onAmountChange={vi.fn()}
+        />
+      </>,
+    )
+
+    // Then the cart card reserves 3.5rem (mr-14) for a 3rem button
+    const editButton = screen.getByRole('button', {
+      name: /^Edit amount of Milk/,
+    })
+    expect(editButton).toHaveClass('w-12', '-right-12')
+    const cartCard = defined(editButton.parentElement ?? undefined, 'cart card')
+    expect(cartCard).toHaveClass('mr-14')
+    expect(cartCard).not.toHaveClass('mr-28')
+
+    // And the cooking card keeps 7rem (mr-28) for the − n + group
+    const plus = screen.getByRole('button', {
+      name: 'Increase quantity of Flour',
+    })
+    const group = defined(plus.parentElement ?? undefined, 'stepper group')
+    expect(group).toHaveClass('-right-26')
+    const cookingCard = defined(
+      group.parentElement ?? undefined,
+      'cooking card',
+    )
+    expect(cookingCard).toHaveClass('mr-28')
+    expect(cookingCard).not.toHaveClass('mr-14')
   })
 
   it('shows no amount button for an item not in the cart', async () => {

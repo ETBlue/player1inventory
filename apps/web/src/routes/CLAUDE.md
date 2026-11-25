@@ -350,7 +350,7 @@ Row 2 (ItemListToolbar):
 
 | Action | What happens |
 |---|---|
-| press the amount button of a row in the cart (`10 pack ✎`) | `CartAmountDialog` opens in `edit` mode with the row's amount. Save sends ONE `updateCartItem(id, amount)` |
+| press the amount button of a row in the cart (it shows only the number, `10`; the unit is in its accessible name) | `CartAmountDialog` opens in `edit` mode with the row's amount. Save sends ONE `updateCartItem(id, amount)` |
 | tick a row not in the cart | the same dialog opens in `add` mode, with `suggestedCartAmount(item)` (`lib/quantityUtils.ts`). Nothing is written yet. Save sends ONE `addToCart(cartId, itemId, amount)`; Cancel or Escape adds nothing and the row stays unticked |
 | untick a row in the cart | `removeFromCart` at once, as before (no dialog) |
 

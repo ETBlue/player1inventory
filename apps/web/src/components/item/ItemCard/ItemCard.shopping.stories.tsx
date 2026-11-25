@@ -64,12 +64,22 @@ export const InCartAmountZero: Story = {
   },
 }
 
+// The unit is not on the button; it is only in the accessible name.
 export const InCartLongUnit: Story = {
-  name: 'In cart, long unit (truncates)',
+  name: 'In cart, long unit (in the name only)',
   args: {
     ...InCart.args,
     controlAmount: 12,
     amountUnit: 'family-size bottle',
+  },
+}
+
+// A 4-digit amount still fits the 3rem button at `text-sm`.
+export const InCartLargeAmount: Story = {
+  name: 'In cart, 4-digit amount',
+  args: {
+    ...InCart.args,
+    controlAmount: 1000,
   },
 }
 

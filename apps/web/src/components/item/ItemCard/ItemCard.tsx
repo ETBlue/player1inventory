@@ -4,7 +4,6 @@ import {
   ChefHat,
   Loader2,
   Minus,
-  Pencil,
   Plus,
   Store,
   TriangleAlert,
@@ -58,14 +57,15 @@ interface ItemCardProps {
   controlAmount?: number // shown in right-side controls (cart qty, recipe amount)
   minControlAmount?: number // minimum before minus disables (default: 1)
   onAmountChange?: (delta: number) => void
-  // Shows ONE amount button instead of the `− n +` group: the amount, the
-  // `amountUnit` and a pencil. Pressing it calls this, and the caller opens a
+  // Shows ONE amount button instead of the `− n +` group: only the amount
+  // (the unit is in its accessible name only). Pressing it calls this, and the caller opens a
   // dialog to set the amount in one request (the cart page, since
   // 2026-11-25; `CartAmountDialog`). A separate callback, not another
   // `mode`, so the cooking page and the recipe items tab keep `− n +` with
   // no change. When both are passed, this one wins.
   onAmountEdit?: () => void
-  // The unit word on the amount button, for example "pack" or "bottle".
+  // The unit word in the amount button's accessible name, for example
+  // "pack" or "bottle". It is not shown on the button.
   amountUnit?: string
   onQuickUpdate?: () => void
   disabled?: boolean // disables checkbox and amount buttons (e.g. while saving)
@@ -193,7 +193,11 @@ export function ItemCard({
       }
       className={cn(
         onCheckboxToggle ? 'ml-10' : '',
-        isAmountControllable ? 'mr-28' : '',
+        // The right inset reserves room for the amount control, which sits
+        // outside the card. The cart's one amount button (`onAmountEdit`) is
+        // 3rem wide, so it needs 3.5rem. The `− n +` group (cooking, recipe
+        // items) is 6rem wide and keeps its 7rem.
+        isAmountControllable ? (onAmountEdit ? 'mr-14' : 'mr-28') : '',
       )}
     >
       {onCheckboxToggle &&
@@ -218,20 +222,18 @@ export function ItemCard({
         <Button
           variant="neutral-outline"
           size="sm"
-          className="absolute -right-26 top-1.5 w-[6.5rem] justify-between gap-1 px-2"
+          className="absolute -right-12 top-1.5 w-12 justify-center px-1"
           onClick={(e) => {
             e.preventDefault()
             onAmountEdit()
           }}
-          // The visible text ("10 pack") is inside the name (WCAG 2.5.3).
+          // The button shows only the number. The name keeps the unit, and the
+          // visible number is inside the name (WCAG 2.5.3).
           aria-label={`Edit amount of ${item.name}: ${controlAmount ?? 0} ${amountUnit ?? ''}`.trimEnd()}
           aria-describedby={controlsDescribedBy}
           disabled={disabled || isPending}
         >
-          <span className="truncate">
-            {controlAmount ?? 0} {amountUnit}
-          </span>
-          <Pencil className="h-4 w-4 shrink-0" />
+          <span className="truncate">{controlAmount ?? 0}</span>
         </Button>
       )}
       {isChecked && isAmountControllable && !onAmountEdit && (

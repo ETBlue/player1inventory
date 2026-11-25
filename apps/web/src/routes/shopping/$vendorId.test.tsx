@@ -62,8 +62,8 @@ describe('Vendor cart page', () => {
     )
   }
 
-  // The toolbar's "N packs" count. The amount button on a cart row also
-  // reads "1 pack", so a bare `findByText(/1 pack/)` would find two.
+  // The toolbar's "N packs" count. The progress text of a card can also
+  // hold "1 pack", so a bare `findByText(/1 pack/)` can find more than one.
   const findCartCount = (text: string | RegExp) =>
     screen.findByText(text, { selector: 'span[aria-live]' })
 

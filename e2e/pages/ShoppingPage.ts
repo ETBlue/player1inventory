@@ -66,8 +66,8 @@ export class ShoppingPage {
   }
 
   getAmountButton(name: string): Locator {
-    // The one amount button on a cart row, "{amount} {unit}" with a pencil.
-    // aria-label="Edit amount of {name}: {amount} {unit}"
+    // The one amount button on a cart row. It shows only the amount; the
+    // unit is in its name: aria-label="Edit amount of {name}: {amount} {unit}"
     // (src/components/item/ItemCard/ItemCard.tsx, onAmountEdit)
     return this.page.getByRole('button', {
       name: new RegExp(`^Edit amount of ${name}: `),
