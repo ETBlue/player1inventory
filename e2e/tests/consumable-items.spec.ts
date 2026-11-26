@@ -500,7 +500,7 @@ test('user turning Consumable off for an item in a recipe is warned, and the rec
   // Then a dialog warns that Cups leaves 1 recipe, before anything is saved
   const dialog = page.getByRole('alertdialog')
   await expect(
-    dialog.getByRole('heading', { name: 'Turn off Consumable?' }),
+    dialog.getByRole('heading', { name: 'Mark as not consumable?' }),
   ).toBeVisible()
   await expect(dialog.getByText(/removed from 1 recipe,/)).toBeVisible()
 

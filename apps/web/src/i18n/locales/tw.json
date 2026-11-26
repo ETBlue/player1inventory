@@ -449,7 +449,7 @@
         "refillHeader": "低於此數補貨",
         "removedFromRecipes_one": "它會從 {{count}} 個食譜中移除，因為只有消耗品可以放進食譜。",
         "removedFromRecipes_other": "它會從 {{count}} 個食譜中移除，因為只有消耗品可以放進食譜。",
-        "nonConsumableTitle": "取消「消耗品」？"
+        "nonConsumableTitle": "標記為非消耗品？"
       },
       "recipeAdjustDialog": {
         "title": "更新食譜用量？",

@@ -181,7 +181,7 @@ No mutation was added, so the live-publish guard is unchanged.
 "It will be removed from N recipes, because only consumable items can be in a recipe."
 (`items.detail.unitSwitchDialog.removedFromRecipes`, en and tw), only when N > 0. When the
 item has no stock to convert (whole packs only), that dialog did not open before. Now it
-also opens when N > 0, with the title "Turn off Consumable?" (`nonConsumableTitle`). So the
+also opens when N > 0, with the title "Mark as not consumable?" (`nonConsumableTitle`; it was "Turn off Consumable?" until the owner renamed it on 2026-11-26). So the
 person always sees the warning before anything is written, and Cancel writes nothing. No
 recipe amount is adjusted for an item that leaves its recipes. N is counted from the recipe
 list the page has loaded.
