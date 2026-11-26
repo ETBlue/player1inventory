@@ -40,7 +40,8 @@
     "notInThisList_other": "{{count}} not in this list",
     "expiresOn": "Expires on",
     "expiresOnHint": "When the stock in this location expires",
-    "refillWhenBelow": "Refill when below {{value}}"
+    "refillWhenBelow": "Refill when below {{value}}",
+    "notConsumable": "An item here is no longer consumable, so it cannot be in a recipe or be cooked. Nothing was saved."
   },
   "shopping": {
     "title": "Shopping",
@@ -445,7 +446,10 @@
         "locationHeader": "Location",
         "unpackedHeader": "Unpacked",
         "targetHeader": "Target Quantity",
-        "refillHeader": "Refill When Below"
+        "refillHeader": "Refill When Below",
+        "removedFromRecipes_one": "It will be removed from {{count}} recipe, because only consumable items can be in a recipe.",
+        "removedFromRecipes_other": "It will be removed from {{count}} recipes, because only consumable items can be in a recipe.",
+        "nonConsumableTitle": "Turn off Consumable?"
       },
       "recipeAdjustDialog": {
         "title": "Update recipe amounts?",

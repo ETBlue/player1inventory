@@ -1,7 +1,7 @@
 import type { ApolloClient } from '@apollo/client'
 import { CombinedGraphQLErrors } from '@apollo/client/errors'
 import { db, ensureDefaultLocationRow } from '@/db'
-import { bootstrapCarts } from '@/db/operations'
+import { bootstrapCarts, removeNonConsumableRecipeLinks } from '@/db/operations'
 import {
   AllCartItemsDocument,
   type AllCartItemsQuery,
@@ -2363,6 +2363,9 @@ export async function importLocalData(
       })),
     )
 
+    // Only consumable items can be in a recipe: a link the file holds to a
+    // non-consumable item is dropped, not refused (the server skips it too).
+    await removeNonConsumableRecipeLinks()
     await bootstrapCartsForAllLocations()
     return
   }
@@ -2477,6 +2480,9 @@ export async function importLocalData(
       await db.recipes.update(conflictEntry.id, { items: mergedItems })
     }
 
+    // Only consumable items can be in a recipe: a link the file holds to a
+    // non-consumable item is dropped, not refused (the server skips it too).
+    await removeNonConsumableRecipeLinks()
     await bootstrapCartsForAllLocations()
     return
   }
@@ -2574,6 +2580,9 @@ export async function importLocalData(
     })),
   )
 
+  // Only consumable items can be in a recipe: a link the file holds to a
+  // non-consumable item is dropped, not refused (the server skips it too).
+  await removeNonConsumableRecipeLinks()
   await bootstrapCartsForAllLocations()
 }
 

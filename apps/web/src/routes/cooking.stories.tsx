@@ -14,6 +14,7 @@ import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
 import { CloudRolePage, cloudRoleStorySetup } from '@/test/cloudRoleStory'
 import { setupOfflineStory } from '@/test/offlineStoryHelpers'
+import { addRecipeWithOldLinks } from '@/test/oldRecipeLinks'
 import type { Item } from '@/types'
 
 const meta = {
@@ -321,7 +322,8 @@ function NonConsumableIgnoredStory() {
           consumeAmount: 1,
           consumable: false,
         })
-        await createRecipe({
+        // An old link: no write can make one any more.
+        await addRecipeWithOldLinks({
           name: 'Tea',
           items: [
             { itemId: tea.id, defaultAmount: 1 },

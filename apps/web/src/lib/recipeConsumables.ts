@@ -1,9 +1,11 @@
+import { hasGraphQLErrorReason } from '@/lib/graphqlErrorCode'
 import { isConsumable, type RecipeItem } from '@/types'
 
-// Cooking is only for consumable items (owner decision 2026-11-26). A recipe
-// may still link a non-consumable item: links made before this rule, or an
-// item switched to non-consumable later. The link is kept, and cooking
-// ignores it.
+// Cooking is only for consumable items (owner decision 2026-11-26), and only
+// consumable items can be in a recipe. Since the follow-up the same day, no
+// write adds one and turning an item non-consumable deletes its links, in
+// both modes. A link can still exist from before that change; the read-side
+// filters below hide it, as a safety net.
 
 /** The ids of the items that are not consumable (`isConsumable` is false). */
 export function nonConsumableItemIds(
@@ -32,4 +34,31 @@ export function cookingRecipe<R extends { items: RecipeItem[] }>(
     ...recipe,
     items: recipe.items.filter((ri) => !nonConsumableIds.has(ri.itemId)),
   }
+}
+
+/** `extensions.reason` the server sends with a refusal (`apps/server/src/lib/consumable.ts`). */
+export const NOT_CONSUMABLE = 'NOT_CONSUMABLE'
+
+/**
+ * Local mode's refusal: a write tried to put a non-consumable item in a
+ * recipe, or to cook one. The same rule as the server's `NOT_CONSUMABLE`
+ * (`db/operations.ts`).
+ */
+export class NotConsumableError extends Error {
+  readonly itemIds: readonly string[]
+  constructor(itemIds: readonly string[]) {
+    super(
+      `Only consumable items can be in a recipe or be cooked. Not consumable: ${itemIds.join(', ')}`,
+    )
+    this.name = 'NotConsumableError'
+    this.itemIds = itemIds
+  }
+}
+
+/** Whether a failed write was refused because an item is not consumable, in either mode. */
+export function isNotConsumableError(err: unknown): boolean {
+  return (
+    err instanceof NotConsumableError ||
+    hasGraphQLErrorReason(err, NOT_CONSUMABLE)
+  )
 }

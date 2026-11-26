@@ -8,7 +8,7 @@ import {
 } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { db } from '@/db'
-import { createItem, createRecipe, updateRecipe } from '@/db/operations'
+import { createItem, createRecipe } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
 
@@ -167,7 +167,9 @@ function WithItemsStory({
         })
       }
 
-      await updateRecipe(storedRecipeId, {
+      // Straight to Dexie, not `updateRecipe`: the Wok is an old link, made
+      // before the rule, and `updateRecipe` refuses a new one.
+      await db.recipes.update(storedRecipeId, {
         items: [
           { itemId: chicken.id, defaultAmount: 1 },
           { itemId: broccoli.id, defaultAmount: 1 },

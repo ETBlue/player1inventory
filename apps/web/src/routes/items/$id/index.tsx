@@ -176,6 +176,11 @@ type PendingSave = {
   // The save turns Consumable off: the dialog says opened stock is removed,
   // not "now tracking in {unit}".
   toNonConsumable: boolean
+  // How many recipes the item leaves. Only consumable items can be in a
+  // recipe (owner decision 2026-11-26), so turning Consumable off removes
+  // the item from every recipe that holds it, in both modes. The dialog says
+  // so before the save; 0 says nothing.
+  removedFromRecipes: number
 }
 
 function calcNewDefault(oldDefault: number, newConsumeAmount: number): number {
@@ -307,8 +312,17 @@ function ItemInfoTab() {
     // whole packs. Turning it on again changes no stock.
     const toNonConsumable = isConsumable(item) && !values.consumable
 
+    // Recipes the item leaves. The write deletes the links itself (local
+    // `applyUnitSwitchBatch` / `updateItem`, the server's `applyUnitSwitch` /
+    // `updateItem`); this count is only for the warning.
+    const removedFromRecipes = toNonConsumable
+      ? (allRecipes ?? []).filter((r) => r.items.some((ri) => ri.itemId === id))
+          .length
+      : 0
+
     const buildAdjustments = (): Adjustment[] => {
-      if (!allRecipes) return []
+      // The item leaves every recipe, so no recipe amount is adjusted.
+      if (!allRecipes || toNonConsumable) return []
       const affectedRecipes = allRecipes.filter((r) =>
         r.items.some((ri) => ri.itemId === id),
       )
@@ -410,11 +424,24 @@ function ItemInfoTab() {
 
     const adjustments = buildAdjustments()
     const conversions = buildStockConversions()
-    if (adjustments.length > 0 || conversions.length > 0) {
+    // The dialog also opens when only the recipe warning has something to
+    // say: an item with no stock to convert must still warn before it leaves
+    // its recipes.
+    if (
+      adjustments.length > 0 ||
+      conversions.length > 0 ||
+      removedFromRecipes > 0
+    ) {
       // A save already waiting (not reachable today: the dialog is modal)
       // is answered "not saved" before a new one starts.
       answerPending(false)
-      setPending({ values, adjustments, conversions, toNonConsumable })
+      setPending({
+        values,
+        adjustments,
+        conversions,
+        toNonConsumable,
+        removedFromRecipes,
+      })
       return new Promise<boolean>((resolve) => {
         pendingAnswerRef.current = resolve
       })
@@ -497,6 +524,7 @@ function ItemInfoTab() {
 
   const hasConversions = (pending?.conversions.length ?? 0) > 0
   const hasAdjustments = (pending?.adjustments.length ?? 0) > 0
+  const removedFromRecipes = pending?.removedFromRecipes ?? 0
   const switchedToUnit =
     pending?.values.targetUnit === 'measurement'
       ? pending.values.measurementUnit
@@ -533,7 +561,9 @@ function ItemInfoTab() {
             <AlertDialogTitle>
               {hasConversions
                 ? t('items.detail.unitSwitchDialog.title')
-                : t('items.detail.recipeAdjustDialog.title')}
+                : pending?.toNonConsumable
+                  ? t('items.detail.unitSwitchDialog.nonConsumableTitle')
+                  : t('items.detail.recipeAdjustDialog.title')}
             </AlertDialogTitle>
           </AlertDialogHeader>
           {/* Exactly one description element: Radix points the dialog's
@@ -551,6 +581,13 @@ function ItemInfoTab() {
                   : t('items.detail.unitSwitchDialog.description', {
                       unit: switchedToUnit,
                     })}
+              </span>
+            )}
+            {removedFromRecipes > 0 && (
+              <span className={hasConversions ? 'mt-2 block' : 'block'}>
+                {t('items.detail.unitSwitchDialog.removedFromRecipes', {
+                  count: removedFromRecipes,
+                })}
               </span>
             )}
             {hasAdjustments && pending && (

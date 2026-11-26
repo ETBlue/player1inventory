@@ -18,6 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import { createItem, createRecipe } from '@/db/operations'
 import { activeLocationStorageKey } from '@/hooks/useActiveLocation'
+import { addRecipeWithOldLinks } from '@/test/oldRecipeLinks'
 import { renderWithRouter } from '@/test/utils'
 import { DEFAULT_LOCATION_ID } from '@/types'
 import { RecipeDetailView } from './RecipeDetailView'
@@ -119,6 +120,50 @@ async function quickUpdateMilk(user: ReturnType<typeof userEvent.setup>) {
   await press('Increase refill threshold', 2) // 2 -> 4
   await user.click(within(dialog).getByRole('button', { name: 'Update' }))
 }
+
+describe('RecipeDetailView and non-consumable items', () => {
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.itemStocks.clear()
+    await db.recipes.clear()
+    sessionStorage.clear()
+    localStorage.clear()
+  })
+
+  it('user does not see a non-consumable item in the recipe list', async () => {
+    // Given a recipe that holds Milk and an old link to Cup (not consumable;
+    // made before the rule), both stocked here
+    const milk = await stockMilk()
+    const cup = await createItem(
+      {
+        name: 'Cup',
+        tagIds: [],
+        targetUnit: 'package',
+        consumeAmount: 1,
+        consumable: false,
+        ...STORED,
+      },
+      DEFAULT_LOCATION_ID,
+    )
+    const recipe = await addRecipeWithOldLinks({
+      name: 'Breakfast',
+      items: [
+        { itemId: milk.id, defaultAmount: 1 },
+        { itemId: cup.id, defaultAmount: 1 },
+      ],
+    })
+
+    await renderWithRouter(<RecipeDetailView recipeId={recipe.id} />)
+
+    // Then Milk is listed and Cup is not
+    expect(
+      await screen.findByRole('button', { name: 'Update quantity of Milk' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Update quantity of Cup' }),
+    ).not.toBeInTheDocument()
+  })
+})
 
 describe('RecipeDetailView quick update', () => {
   beforeEach(async () => {

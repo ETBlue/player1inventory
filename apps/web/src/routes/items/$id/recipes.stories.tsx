@@ -11,6 +11,7 @@ import { db } from '@/db'
 import { createItem, createRecipe } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
+import { addRecipeWithOldLinks } from '@/test/oldRecipeLinks'
 
 const meta = {
   title: 'Pages/Item/Detail/Recipe',
@@ -111,8 +112,9 @@ function WithRecipesStory({
         ...(nonConsumable ? { consumable: false } : {}),
       })
 
-      // Recipe with this item assigned
-      await createRecipe({
+      // Recipe with this item assigned. For the non-consumable item it is
+      // an old link, made before the rule: no write can make one any more.
+      await (nonConsumable ? addRecipeWithOldLinks : createRecipe)({
         name: 'Pancakes',
         items: [{ itemId: item.id, defaultAmount: 1 }],
       })

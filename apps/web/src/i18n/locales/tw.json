@@ -40,7 +40,8 @@
     "notInThisList_other": "不在此清單的 {{count}} 項",
     "expiresOn": "到期日",
     "expiresOnHint": "這個據點的庫存到期時間",
-    "refillWhenBelow": "低於 {{value}} 時補貨"
+    "refillWhenBelow": "低於 {{value}} 時補貨",
+    "notConsumable": "這裡有品項已不是消耗品，不能放進食譜或用於烹飪。沒有儲存任何變更。"
   },
   "shopping": {
     "title": "購物",
@@ -445,7 +446,10 @@
         "locationHeader": "據點",
         "unpackedHeader": "已開封",
         "targetHeader": "目標數量",
-        "refillHeader": "低於此數補貨"
+        "refillHeader": "低於此數補貨",
+        "removedFromRecipes_one": "它會從 {{count}} 個食譜中移除，因為只有消耗品可以放進食譜。",
+        "removedFromRecipes_other": "它會從 {{count}} 個食譜中移除，因為只有消耗品可以放進食譜。",
+        "nonConsumableTitle": "取消「消耗品」？"
       },
       "recipeAdjustDialog": {
         "title": "更新食譜用量？",

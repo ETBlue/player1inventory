@@ -11,6 +11,7 @@ import { db } from '@/db'
 import { createItem, createRecipe } from '@/db/operations'
 import * as useRecipesModule from '@/hooks/useRecipes'
 import { routeTree } from '@/routeTree.gen'
+import { addRecipeWithOldLinks } from '@/test/oldRecipeLinks'
 import { watchUnhandledRejections } from '@/test/unhandledRejections'
 import type { Recipe, RecipeItem } from '@/types'
 
@@ -539,9 +540,10 @@ describe('Recipes Tab', () => {
     })
 
     it('user can remove a non-consumable item from a recipe it is already in', async () => {
-      // Given a recipe that already links the non-consumable item
+      // Given a recipe that already links the non-consumable item (an old
+      // link, from before the rule: no write can make one any more)
       const cup = await makeCup()
-      const recipe = await createRecipe({
+      const recipe = await addRecipeWithOldLinks({
         name: 'Tea',
         items: [{ itemId: cup.id, defaultAmount: 1 }],
       })
