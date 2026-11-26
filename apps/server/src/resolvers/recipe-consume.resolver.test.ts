@@ -197,6 +197,7 @@ type ItemRow = {
   measurementUnit: string | null
   amountPerPackage: number | null
   consumeAmount: number
+  consumable?: boolean
 }
 type RecipeRow = { id: string; householdId: string; lastCookedAt: Date | null }
 
@@ -279,6 +280,8 @@ function seed() {
     itemRow('item_eggs'),
     itemRow('item_oil', { targetUnit: 'measurement', measurementUnit: 'ml', amountPerPackage: 6 }),
     itemRow('item_theirs', { householdId: 'hh_other' }),
+    // Not consumable (owner decision 2026-11-26): cooking refuses it.
+    itemRow('item_cups', { consumable: false }),
   ])
   recipes.reset([
     { id: 'recipe_home', householdId: 'hh_home', lastCookedAt: null },
@@ -641,6 +644,27 @@ describe('consumeRecipes needs location role participant', () => {
     const res = await cook([{ itemId: 'item_ghost', delta: -1 }], ALICE)
 
     expect(code(res)).toBe('BAD_USER_INPUT')
+    expect(writable()).toEqual(before)
+  })
+})
+
+describe('consumeRecipes is only for consumable items', () => {
+  it('user cannot cook a non-consumable item, and nothing is written', async () => {
+    // Given milk (consumable) and cups (not consumable)
+    const before = writable()
+
+    // When a cook names both
+    const res = await cook(
+      [
+        { itemId: 'item_milk', delta: -1 },
+        { itemId: 'item_cups', delta: -1 },
+      ],
+      ALICE,
+      { recipeIds: ['recipe_home'] },
+    )
+
+    // Then it is refused with NOT_CONSUMABLE, and no stock, log or recipe mark is written
+    expect(res.errors?.[0]?.extensions).toMatchObject({ code: 'BAD_USER_INPUT', reason: 'NOT_CONSUMABLE' })
     expect(writable()).toEqual(before)
   })
 })

@@ -41,7 +41,11 @@ import {
   isStockedHere,
   roundToStep,
 } from '@/lib/quantityUtils'
-import { cookingRecipe, nonConsumableItemIds } from '@/lib/recipeConsumables'
+import {
+  cookingRecipe,
+  isNotConsumableError,
+  nonConsumableItemIds,
+} from '@/lib/recipeConsumables'
 import { COOKING_LOG_KEY, type CookingLogParams } from '@/types'
 
 function highlight(text: string, query: string): React.ReactNode {
@@ -911,12 +915,18 @@ function CookingPage() {
                 try {
                   await handleConfirmDone()
                   setShowDoneDialog(false)
-                } catch {
+                } catch (err) {
                   // The cook failed. In cloud mode nothing was written: the
                   // server runs the whole cook in one transaction (households
-                  // H3b task B.6). One message for every cause; the dialog
-                  // stays open so the user can retry.
-                  toast.error(t('cooking.consumeFailed'))
+                  // H3b task B.6). The dialog stays open so the user can
+                  // retry. One message for every cause, except an item that
+                  // is no longer consumable (another tab turned it off): that
+                  // one says why.
+                  toast.error(
+                    isNotConsumableError(err)
+                      ? t('common.notConsumable')
+                      : t('cooking.consumeFailed'),
+                  )
                 } finally {
                   setIsConfirmingDone(false)
                 }

@@ -17,19 +17,29 @@ import {
   isInactive,
   isLowStock,
 } from '@/lib/quantityUtils'
+import { cookingRecipe, nonConsumableItemIds } from '@/lib/recipeConsumables'
 import { setPantryView, setStoredGroupBy } from '@/lib/viewPreference'
 import type { PantryItem, Recipe } from '@/types'
 
 export function RecipeGroupView() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { data: recipes = [], isLoading: recipesLoading } = useRecipes()
+  const { data: storedRecipes = [], isLoading: recipesLoading } = useRecipes()
   const { data: items = [], isLoading: itemsLoading } = useStockedItems()
   // Only used to tell "every item anywhere belongs to a recipe" from "unfiled
   // items exist but none are stocked here" — `items` above cannot see the latter.
   const { data: allItems = [], isLoading: allItemsLoading } = useItems()
 
   const isLoading = recipesLoading || itemsLoading || allItemsLoading
+
+  // Only consumable items can be in a recipe (owner decision 2026-11-26), so
+  // every recipe is read without its non-consumable items, the same way the
+  // cooking page reads it (`cookingRecipe`). No write makes such a link any
+  // more; this hides one made before that change. A non-consumable item then
+  // counts as "Not added to recipe". `allItems`, not `items`: the ids must
+  // cover items not stocked here too.
+  const nonConsumable = nonConsumableItemIds(allItems)
+  const recipes = storedRecipes.map((r) => cookingRecipe(r, nonConsumable))
 
   const getAllRecipeItemIds = () =>
     new Set(recipes.flatMap((r) => r.items.map((ri) => ri.itemId)))

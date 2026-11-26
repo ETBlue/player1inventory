@@ -19,6 +19,7 @@ import {
 } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { elementAt } from '@/test/narrow'
+import { addRecipeWithOldLinks } from '@/test/oldRecipeLinks'
 import { TagColor } from '@/types'
 
 const divider = () => screen.getByText(/not stocked here/i)
@@ -2251,6 +2252,10 @@ describe('Use (Cooking) Page', () => {
   // that link. Both items are stocked here, so the location gate cannot be
   // what hides the cup: only the consumable rule can.
   describe('non-consumable items', () => {
+    // No write can link a non-consumable item to a recipe any more, and
+    // turning an item off deletes its links. These recipes are "old links"
+    // from before that rule, written straight to Dexie: the cooking page
+    // still hides them, as a safety net.
     const makeCup = () =>
       createItem({
         name: 'Cup',
@@ -2269,7 +2274,7 @@ describe('Use (Cooking) Page', () => {
       // both stocked here
       const tea = await makeItem('Tea Leaves')
       const cup = await makeCup()
-      await createRecipe({
+      await addRecipeWithOldLinks({
         name: 'Tea',
         items: [
           { itemId: tea.id, defaultAmount: 1 },
@@ -2297,7 +2302,7 @@ describe('Use (Cooking) Page', () => {
       // both stocked here with 5 and 4 packs
       const tea = await makeItem('Tea Leaves', 1, 5)
       const cup = await makeCup()
-      await createRecipe({
+      await addRecipeWithOldLinks({
         name: 'Tea',
         items: [
           { itemId: tea.id, defaultAmount: 1 },
@@ -2333,7 +2338,7 @@ describe('Use (Cooking) Page', () => {
       // Given a recipe with Tea Leaves and a Cup that is still consumable
       const tea = await makeItem('Tea Leaves', 1, 5)
       const cup = await makeItem('Cup', 1, 4)
-      await createRecipe({
+      await addRecipeWithOldLinks({
         name: 'Tea',
         items: [
           { itemId: tea.id, defaultAmount: 1 },
@@ -2376,7 +2381,7 @@ describe('Use (Cooking) Page', () => {
     it('user sees a recipe whose only item is non-consumable as having nothing to cook', async () => {
       // Given a recipe that links only a non-consumable item
       const cup = await makeCup()
-      await createRecipe({
+      await addRecipeWithOldLinks({
         name: 'Table Setting',
         items: [{ itemId: cup.id, defaultAmount: 1 }],
       })

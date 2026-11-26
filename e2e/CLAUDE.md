@@ -1664,6 +1664,17 @@ back with `readStocksForItem`); the quick edit dialog and the Stock tab show one
 field; and an Amount saved on the Stock tab writes `unpackedQuantity: 0`.
 `FIXTURE_CUPS_NOT_CONSUMABLE` seeds Cups with half a pack open on purpose, as an old row.
 
+Since 2026-11-26 (only consumable items in a recipe) it also checks: turning Consumable off
+for Cups, which is in a recipe and has no stock to convert, opens "Turn off Consumable?"
+with "It will be removed from 1 recipe", and afterwards the recipe holds Tissue only (read
+back from IndexedDB or the `recipe` query; `readRecipeItemIds` in the spec). A cloud-only
+test, with no browser, checks that `updateRecipe` with a non-consumable item is refused
+with `NOT_CONSUMABLE` and changes nothing. **The cooking test's fixture differs by mode
+now:** `seedLocalFixture` writes the recipe's old link to Cups straight to IndexedDB, but
+`seedCloudFixture` imports through `bulkCreateRecipes`, which skips a non-consumable item.
+So in cloud the recipe arrives with Tissue only. A fixture can no longer give a cloud
+recipe a non-consumable item at all.
+
 ### A cloud stock seed is a restock — since 2026-11-26
 
 `seedCloudFixture` (and every spec that calls `upsertItemStock`) writes stock through the

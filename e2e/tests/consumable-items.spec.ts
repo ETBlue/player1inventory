@@ -11,10 +11,12 @@ import { seedCloudFixture } from '../helpers/cloudSeed'
 import { cleanupCloudData } from '../helpers/cloudTeardown'
 import type { Fixture } from '../helpers/fixture'
 import { seedLocalFixture } from '../helpers/localSeed'
+import { readRows } from '../helpers/locationSeed'
 import { readStocksForItem } from '../helpers/stockReadback'
 import { CookingPage } from '../pages/CookingPage'
 import { ItemPage } from '../pages/ItemPage'
 import { PantryPage } from '../pages/PantryPage'
+import { makeGql } from '../utils/cloud'
 
 // Consumable items, PR 2 (docs/features/items/2026-11-25-item-consumable-design.md).
 //
@@ -368,6 +370,12 @@ test('user can set the Amount of a non-consumable item on the Stock tab, and ope
 // that links Tissue (consumable) and Cups (not consumable), both stocked
 // here: cooking it must use Tissue and leave Cups alone. Cups is stocked at
 // the active location, so only the consumable rule can keep it out.
+//
+// Since the follow-up the same day a recipe cannot hold a non-consumable
+// item at all. LOCAL: the seed writes IndexedDB directly, so the recipe still
+// holds an "old link" to Cups, and the cooking page's filter is what hides
+// it. CLOUD: the seed imports through `bulkCreateRecipes`, which SKIPS Cups,
+// so the recipe arrives with Tissue only. Both runs end the same way.
 const RECIPE_TEA = 'eeeeeeee-0000-0000-0000-000000000001'
 const FIXTURE_RECIPE_WITH_CUPS: Fixture = {
   ...FIXTURE,
@@ -426,6 +434,135 @@ test('user cooks a recipe with a non-consumable item and only the consumable ite
   expect(cups.map((r) => [r.packedQuantity, r.unpackedQuantity])).toEqual([
     [3, 0],
   ])
+})
+
+// Only consumable items can be in a recipe (owner answers 2026-11-26).
+// Cups is seeded CONSUMABLE in a recipe with Tissue, with whole numbers, so
+// turning Consumable off has no stock to convert: the dialog opens only
+// because of the recipe, and says so.
+const RECIPE_SNACK = 'eeeeeeee-0000-0000-0000-000000000002'
+const FIXTURE_CUPS_IN_RECIPE: Fixture = {
+  ...FIXTURE,
+  recipes: [
+    {
+      id: RECIPE_SNACK,
+      name: 'Snack Time',
+      items: [
+        { itemId: TISSUE, defaultAmount: 1 },
+        { itemId: CUPS, defaultAmount: 1 },
+      ],
+    },
+  ],
+}
+
+/** The item ids a recipe holds, from whichever backend this project uses. */
+async function readRecipeItemIds(
+  page: Page,
+  request: APIRequestContext,
+  baseURL: string | undefined,
+  recipeId: string,
+): Promise<string[]> {
+  if (baseURL === CLOUD_WEB_URL) {
+    const { recipe } = await makeGql(request)<{
+      recipe: { items: { itemId: string }[] } | null
+    }>('query ($id: ID!) { recipe(id: $id) { items { itemId } } }', {
+      id: recipeId,
+    })
+    return (recipe?.items ?? []).map((ri) => ri.itemId).sort()
+  }
+  const rows = (await readRows(page, 'recipes')) as unknown as {
+    id: string
+    items: { itemId: string }[]
+  }[]
+  return (rows.find((r) => r.id === recipeId)?.items ?? [])
+    .map((ri) => ri.itemId)
+    .sort()
+}
+
+test('user turning Consumable off for an item in a recipe is warned, and the recipe no longer has it', async ({
+  page,
+  request,
+  baseURL,
+}) => {
+  // Given Cups (consumable) and Tissue in the recipe Snack Time
+  await seedFixture(page, request, baseURL, FIXTURE_CUPS_IN_RECIPE)
+  await page.goto('/')
+  // The control: the recipe holds both before the switch
+  expect(await readRecipeItemIds(page, request, baseURL, RECIPE_SNACK)).toEqual(
+    [CUPS, TISSUE].sort(),
+  )
+
+  // When the user turns Consumable off for Cups and saves
+  await page.goto(`/items/${CUPS}`)
+  await page.getByRole('switch', { name: /^consumable$/i }).click()
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+
+  // Then a dialog warns that Cups leaves 1 recipe, before anything is saved
+  const dialog = page.getByRole('alertdialog')
+  await expect(
+    dialog.getByRole('heading', { name: 'Turn off Consumable?' }),
+  ).toBeVisible()
+  await expect(dialog.getByText(/removed from 1 recipe,/)).toBeVisible()
+
+  // When the user confirms
+  await dialog.getByRole('button', { name: /update & save/i }).click()
+  await expect(page.getByText('Saved', { exact: true }).first()).toBeVisible()
+
+  // Then the recipe holds Tissue only
+  await expect
+    .poll(() => readRecipeItemIds(page, request, baseURL, RECIPE_SNACK))
+    .toEqual([TISSUE])
+})
+
+test('a recipe update that adds a non-consumable item is refused by the server', async ({
+  request,
+  baseURL,
+}) => {
+  test.skip(baseURL !== CLOUD_WEB_URL, 'the server rule; cloud only')
+  // Given Cups, not consumable, and a recipe with Tissue only
+  await seedCloudFixture(request, {
+    ...FIXTURE_CUPS_NOT_CONSUMABLE,
+    recipes: [
+      {
+        id: RECIPE_SNACK,
+        name: 'Snack Time',
+        items: [{ itemId: TISSUE, defaultAmount: 1 }],
+      },
+    ],
+  })
+  const gql = makeGql(request)
+  const UPDATE = `mutation ($id: ID!, $items: [RecipeItemInput!]) {
+    updateRecipe(id: $id, items: $items) { id }
+  }`
+
+  // When a client adds Cups to the recipe
+  let refusal = ''
+  try {
+    await gql(UPDATE, {
+      id: RECIPE_SNACK,
+      items: [
+        { itemId: TISSUE, defaultAmount: 1 },
+        { itemId: CUPS, defaultAmount: 1 },
+      ],
+    })
+  } catch (err) {
+    refusal = String(err)
+  }
+
+  // Then it is refused with NOT_CONSUMABLE, and the recipe is unchanged
+  expect(refusal).toContain('NOT_CONSUMABLE')
+  expect(refusal).toContain('BAD_USER_INPUT')
+  const { recipe } = await gql<{ recipe: { items: { itemId: string }[] } }>(
+    'query ($id: ID!) { recipe(id: $id) { items { itemId } } }',
+    { id: RECIPE_SNACK },
+  )
+  expect(recipe.items.map((ri) => ri.itemId)).toEqual([TISSUE])
+
+  // The control: the same call with a consumable item is accepted
+  await gql(UPDATE, {
+    id: RECIPE_SNACK,
+    items: [{ itemId: TISSUE, defaultAmount: 2 }],
+  })
 })
 
 async function scanConsumableUi(

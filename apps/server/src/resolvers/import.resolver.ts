@@ -1185,9 +1185,12 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
           if (items?.length) {
             const ownItems = await prisma.item.findMany({
               where: { id: { in: items.map((i) => i.itemId) }, householdId },
-              select: { id: true },
+              select: { id: true, consumable: true },
             })
-            const ownItemIds = new Set(ownItems.map((i) => i.id))
+            // A non-consumable item is SKIPPED too (lib/consumable.ts): only
+            // consumable items can be in a recipe. Skip, not refuse, by the
+            // same import rule. `!== false`: the column is NOT NULL.
+            const ownItemIds = new Set(ownItems.filter((i) => i.consumable !== false).map((i) => i.id))
             const validItems = items.filter((i) => ownItemIds.has(i.itemId))
             if (validItems.length > 0) {
               await prisma.recipeItem.createMany({
@@ -1467,6 +1470,12 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
             update: data,
           })
           changed()
+          // A replace that makes the item non-consumable deletes its recipe
+          // links (lib/consumable.ts). Not one transaction with the upsert:
+          // imports are not (see `withCatalogEvent`); `CATALOG` covers it.
+          if (data.consumable === false) {
+            await prisma.recipeItem.deleteMany({ where: { itemId: id } })
+          }
           // NO STOCK IS WRITTEN HERE either — same reason as `bulkCreateItems`
           // above (cloud locations PR 4b). The client sends this payload's stock
           // through `bulkUpsertItemStocks` on the second pass, after this one.
@@ -1686,9 +1695,12 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
             if (items.length) {
               const ownItems = await prisma.item.findMany({
                 where: { id: { in: items.map((i) => i.itemId) }, householdId },
-                select: { id: true },
+                select: { id: true, consumable: true },
               })
-              const ownItemIds = new Set(ownItems.map((i) => i.id))
+              // A non-consumable item is SKIPPED too (lib/consumable.ts): only
+              // consumable items can be in a recipe. Skip, not refuse, by the
+              // same import rule. `!== false`: the column is NOT NULL.
+              const ownItemIds = new Set(ownItems.filter((i) => i.consumable !== false).map((i) => i.id))
               const validItems = items.filter((i) => ownItemIds.has(i.itemId))
               if (validItems.length > 0) {
                 await prisma.recipeItem.createMany({

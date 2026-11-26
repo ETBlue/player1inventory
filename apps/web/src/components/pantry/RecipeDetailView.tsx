@@ -10,7 +10,7 @@ import { ListSectionDivider } from '@/components/shared/ListSectionDivider'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { Button } from '@/components/ui/button'
-import { useStockedItems, useUpdateItem } from '@/hooks'
+import { useItems, useStockedItems, useUpdateItem } from '@/hooks'
 import { useActiveLocationRights } from '@/hooks/useActiveLocationRights'
 import { useItemSearchTailWiring } from '@/hooks/useItemSearchTailWiring'
 import { useItemSortData } from '@/hooks/useItemSortData'
@@ -21,6 +21,7 @@ import { useTags, useTagTypes } from '@/hooks/useTags'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import { useVendors } from '@/hooks/useVendors'
 import { isInactive } from '@/lib/quantityUtils'
+import { cookingRecipe, nonConsumableItemIds } from '@/lib/recipeConsumables'
 import { type SortDirection, type SortField, sortItems } from '@/lib/sortUtils'
 import { isConsumable, type PantryItem, type StockFields } from '@/types'
 
@@ -34,7 +35,17 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
   const isUnsorted = recipeId === 'unsorted'
 
   const { data: allItems = [], isLoading: isItemsLoading } = useStockedItems()
-  const { data: recipes = [], isLoading: isRecipesLoading } = useRecipes()
+  const { data: storedRecipes = [], isLoading: isRecipesLoading } = useRecipes()
+  // Every item, stocked here or not, only to know which are not consumable.
+  const { data: everyItem = [] } = useItems()
+  // Only consumable items can be in a recipe (owner decision 2026-11-26).
+  // Each recipe is read without its non-consumable items, like the cooking
+  // page and the recipe group view, so an old link made before the rule
+  // shows nowhere here: not in the list, not as a badge.
+  const recipes = useMemo(() => {
+    const nonConsumable = nonConsumableItemIds(everyItem)
+    return storedRecipes.map((r) => cookingRecipe(r, nonConsumable))
+  }, [storedRecipes, everyItem])
   const { data: vendors = [] } = useVendors()
   const { data: tags = [] } = useTags()
   const { data: tagTypes = [] } = useTagTypes()

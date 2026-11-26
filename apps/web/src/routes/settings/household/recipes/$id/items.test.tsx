@@ -16,6 +16,7 @@ import {
   createVendor,
 } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
+import { addRecipeWithOldLinks } from '@/test/oldRecipeLinks'
 import { watchUnhandledRejections } from '@/test/unhandledRejections'
 import { TagColor } from '@/types'
 
@@ -1034,11 +1035,13 @@ describe('Recipe Detail - Items Tab', () => {
     })
 
     it('user sees a linked non-consumable item marked as not used in cooking and can remove it', async () => {
-      // Given a recipe that already links a non-consumable item (old data)
+      // Given a recipe that already links a non-consumable item (old data,
+      // from before the rule: no write can make one any more)
       const cup = await makeCup()
-      const recipe = await makeRecipe('Tea', [
-        { itemId: cup.id, defaultAmount: 1 },
-      ])
+      const recipe = await addRecipeWithOldLinks({
+        name: 'Tea',
+        items: [{ itemId: cup.id, defaultAmount: 1 }],
+      })
 
       renderItemsTab(recipe.id)
       const user = userEvent.setup()

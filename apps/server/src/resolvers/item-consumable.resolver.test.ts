@@ -75,8 +75,18 @@ vi.mock('../lib/prisma.js', async () => {
     ...catalog,
   })
 
+  // Turning an item non-consumable also deletes its recipe links in one
+  // transaction (lib/consumable.ts). That rule is tested with real stores in
+  // `recipe-consumable.resolver.test.ts`; here it only has to answer.
+  const recipeItem = { deleteMany: async () => ({ count: 0 }) }
+
+  const client: Record<string, unknown> = {}
+  const prismaClient = {
+    $transaction: (fn: (tx: unknown) => Promise<unknown>) => fn(client),
+    recipeItem,
+  }
   return {
-    prisma: {
+    prisma: Object.assign(client, prismaClient, {
       user: (await import('../test/userFake.js')).createUserFake([], {
         householdMembers: () => households.state.householdMembers,
         rowForEveryMember: true,
@@ -99,7 +109,7 @@ vi.mock('../lib/prisma.js', async () => {
       itemTag: itemTag.client,
       itemVendor: itemVendor.client,
       $item: item,
-    },
+    }),
   }
 })
 

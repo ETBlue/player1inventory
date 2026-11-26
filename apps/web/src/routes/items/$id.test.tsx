@@ -1954,6 +1954,123 @@ describe('targetUnit change — per-location stock conversion', () => {
     expect((await getItem(item.id))?.targetUnit).toBe('package')
   })
 
+  // Only consumable items can be in a recipe (owner decision 2026-11-26).
+  // Turning Consumable off removes the item from every recipe, and the
+  // dialog says so first.
+  it('user turning Consumable off is told how many recipes the item leaves, and it leaves them', async () => {
+    const user = userEvent.setup()
+
+    // Given flour in two recipes, and a third recipe without it
+    const { item } = await seedThreeLocations()
+    const salt = await createItem({
+      name: 'Salt',
+      tagIds: [],
+      consumeAmount: 1,
+    })
+    const bread = await createRecipe({
+      name: 'Bread',
+      items: [
+        { itemId: item.id, defaultAmount: 200 },
+        { itemId: salt.id, defaultAmount: 1 },
+      ],
+    })
+    const cake = await createRecipe({
+      name: 'Cake',
+      items: [{ itemId: item.id, defaultAmount: 100 }],
+    })
+    const soup = await createRecipe({
+      name: 'Soup',
+      items: [{ itemId: salt.id, defaultAmount: 1 }],
+    })
+
+    await renderInfoTab(item.id)
+    await screen.findByLabelText(/amount per consume/i)
+
+    // When the user turns Consumable off and saves
+    await user.click(screen.getByRole('switch', { name: /^consumable$/i }))
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    // Then the dialog says the item leaves 2 recipes
+    const dialog = await screen.findByRole('alertdialog')
+    expect(
+      within(dialog).getByText(/removed from 2 recipes/i),
+    ).toBeInTheDocument()
+
+    // When the user confirms
+    await user.click(screen.getByRole('button', { name: /update & save/i }))
+
+    // Then flour is in no recipe, and every other link stays
+    await waitFor(async () => {
+      expect(
+        (await db.recipes.get(bread.id))?.items.map((ri) => ri.itemId),
+      ).toEqual([salt.id])
+    })
+    expect((await db.recipes.get(cake.id))?.items).toEqual([])
+    expect(
+      (await db.recipes.get(soup.id))?.items.map((ri) => ri.itemId),
+    ).toEqual([salt.id])
+  })
+
+  it('user turning Consumable off for an item with no stock to convert still sees the recipe warning', async () => {
+    const user = userEvent.setup()
+
+    // Given a pack-tracked item with whole numbers (nothing to convert) in a recipe
+    const cups = await createItem({
+      name: 'Cups',
+      tagIds: [],
+      targetUnit: 'package',
+      targetQuantity: 4,
+      refillThreshold: 1,
+      packedQuantity: 4,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+    })
+    const tea = await createRecipe({
+      name: 'Tea',
+      items: [{ itemId: cups.id, defaultAmount: 1 }],
+    })
+
+    await renderInfoTab(cups.id)
+    await screen.findByLabelText(/amount per consume/i)
+
+    // When the user turns Consumable off and saves
+    await user.click(screen.getByRole('switch', { name: /^consumable$/i }))
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    // Then a dialog still opens, with its own title and the warning
+    const dialog = await screen.findByRole('alertdialog')
+    expect(
+      within(dialog).getByRole('heading', { name: /turn off consumable/i }),
+    ).toBeInTheDocument()
+    expect(
+      within(dialog).getByText(/removed from 1 recipe,/i),
+    ).toBeInTheDocument()
+    // And nothing is written before the user confirms
+    expect((await getItem(cups.id))?.consumable).not.toBe(false)
+
+    // When the user cancels
+    await user.click(within(dialog).getByRole('button', { name: /cancel/i }))
+
+    // Then the item is still consumable and still in the recipe
+    await waitFor(() => {
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    })
+    expect((await getItem(cups.id))?.consumable).not.toBe(false)
+    expect((await db.recipes.get(tea.id))?.items).toHaveLength(1)
+
+    // When the user saves again and confirms
+    await user.click(screen.getByRole('button', { name: /save/i }))
+    await user.click(
+      await screen.findByRole('button', { name: /update & save/i }),
+    )
+
+    // Then the item is non-consumable and the recipe no longer holds it
+    await waitFor(async () => {
+      expect((await getItem(cups.id))?.consumable).toBe(false)
+    })
+    expect((await db.recipes.get(tea.id))?.items).toEqual([])
+  })
+
   it('packed quantity is untouched by the switch in every location', async () => {
     const user = userEvent.setup()
 
