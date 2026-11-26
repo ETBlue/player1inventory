@@ -46,3 +46,24 @@ same as the card".
 | a converted target or threshold that is not whole (2.4 packs) | round UP | the person wanted at least that much; a threshold of 0.4 must not become 0, which would turn off the low-stock warning |
 | old non-consumable rows that still hold opened stock | read time: show packed packages only; the next save writes 0 | cloud has no data migration; a Dexie version for local alone would make the two modes differ |
 | cooking a non-consumable item with a fractional amount | not changed | the shared `consumeItem` runs on the server too, so a fix needs a server release. Reported as a known gap |
+
+## Follow-up after #437: recipes (2026-11-26)
+
+Asked after "cooking is only for consumable items" was built.
+
+**Q4. A recipe whose items are all non-consumable: hide the recipe on the cooking page?**
+**Answer:** no. The recipe stays; its non-consumable items are hidden or removed. (#437
+already shows it as "0 / 0 here", disabled.)
+
+**Q5. Where should non-consumable items be hidden?**
+**Answer:** everywhere in recipes, the pantry recipe group view included.
+
+**Q6. Should the server refuse a non-consumable item in a recipe?**
+**Answer:** yes. A recipe must not accept one, on the server too. No old app version
+matters: the non-consumable feature is not in production yet.
+
+**Decided by the main session from these answers:** remove, not only hide. Turning an item
+non-consumable deletes its recipe links in both modes, and the switch dialog says how many
+recipes it leaves. Imports skip such a link; other writes refuse a new one with
+`NOT_CONSUMABLE`. See the design doc, *Only consumable items in a recipe, on the server too*.
+
