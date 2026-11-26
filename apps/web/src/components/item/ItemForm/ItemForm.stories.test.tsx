@@ -13,6 +13,7 @@ const {
   EditValidationError,
   CreateModeEmptyError,
   Saving,
+  SubmitBlocked,
   InfoSectionReadOnly,
   StockSectionReadOnly,
   SaveInTopBar,
@@ -80,6 +81,16 @@ describe('ItemForm stories smoke tests', () => {
   it('Saving renders disabled submit button', () => {
     render(<Saving />)
     expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
+  })
+
+  it('SubmitBlocked renders a disabled Save', () => {
+    render(<SubmitBlocked />)
+    expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
+  })
+
+  it('SubmitBlocked without the prop has Save on (control)', () => {
+    render(<SubmitBlocked submitBlocked={false} />)
+    expect(screen.getByRole('button', { name: /save/i })).toBeEnabled()
   })
 
   it('InfoSectionReadOnly shows a readOnly name and no Save button', () => {

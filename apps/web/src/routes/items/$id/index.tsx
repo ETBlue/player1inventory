@@ -226,7 +226,7 @@ function ItemInfoTab() {
   const { goBack } = useAppNavigation()
   const [savedAt, setSavedAt] = useState(0)
 
-  const { data: allRecipes } = useRecipes()
+  const { data: allRecipes, isError: recipesFailed } = useRecipes()
   // The atomic unit switch — the item, every location's stock and every
   // affected recipe in one transaction. Dual-mode since PR 3c.
   const applyUnitSwitch = useApplyUnitSwitch()
@@ -235,8 +235,22 @@ function ItemInfoTab() {
   // order them by. Both hooks are dual-mode since PR 2, and since PR 3c so is
   // `useApplyUnitSwitch` — so `buildStockConversions` runs in BOTH modes and
   // the dialog lists the same conversions either way.
-  const { data: stocks } = useItemStocks(id)
+  const { data: stocks, isError: stocksFailed } = useItemStocks(id)
   const { data: locations } = useLocations()
+
+  // `handleSubmit` decides whether the converted amounts dialog opens from
+  // `allRecipes` and `stocks`. While either has not loaded it would count no
+  // recipe and no location, skip the dialog and save: the recipe warning is
+  // lost, and a unit switch leaves recipe amounts and stock in the old unit
+  // (bug 2026-11-26, `docs/features/items/2026-11-26-bug-save-before-recipes-load.md`).
+  // So Save stays off until both are here. Keyed on `data`, not `isLoading`:
+  // a read that failed with nothing cached has no data and is not loading.
+  // `locations` is left out on purpose: it only names and orders the rows
+  // of the dialog, and a missing name falls back to the location id.
+  const readsMissing = allRecipes === undefined || stocks === undefined
+  // A failed read never fills in by itself, so say why Save is off. While
+  // the reads are only loading, say nothing.
+  const readsFailed = readsMissing && (recipesFailed || stocksFailed)
 
   const [pending, setPending] = useState<PendingSave | null>(null)
   // While the converted amounts dialog is open, the answer to the save that
@@ -304,6 +318,8 @@ function ItemInfoTab() {
   // the unsaved-changes dialog's Save leaves the page only on `true`. When the
   // converted amounts dialog opens, the answer waits for it.
   const handleSubmit = async (values: ItemFormValues): Promise<boolean> => {
+    // A second line of defense: Save is already off (`submitBlocked`).
+    if (readsMissing) return false
     const oldConsumeAmount = item.consumeAmount ?? 0
     const newConsumeAmount = values.consumeAmount
     const targetUnitChanged = item.targetUnit !== values.targetUnit
@@ -538,6 +554,14 @@ function ItemInfoTab() {
           text={t('settings.catalogReadOnlyItem')}
         />
       )}
+      {canEditCatalog && readsFailed && (
+        <p
+          role="alert"
+          className="max-w-2xl mx-auto mb-4 text-sm text-status-error-foreground"
+        >
+          {t('items.detail.readsFailed')}
+        </p>
+      )}
       <ItemForm
         initialValues={formValues}
         sections={['info']}
@@ -546,6 +570,7 @@ function ItemInfoTab() {
         onSaveControlChange={registerSaveControl}
         savedAt={savedAt}
         isPending={updateItem.isPending}
+        submitBlocked={readsMissing}
         readOnly={!canEditCatalog}
         submitSlot={saveSlot}
       />

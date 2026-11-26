@@ -161,6 +161,18 @@ export const Saving: Story = {
   },
 }
 
+// Save is off because the caller has not loaded what the save needs yet.
+// The item page's Info tab does this until the recipes and the stock rows
+// have loaded (bug 2026-11-26). No `onDirtyChange`, so without
+// `submitBlocked` this Save would be on: the story shows the prop alone.
+export const SubmitBlocked: Story = {
+  name: 'Save blocked (submitBlocked)',
+  args: {
+    initialValues: editValues,
+    submitBlocked: true,
+  },
+}
+
 // A household member on the Info tab (households H5 task F.5): every field
 // is readOnly, the switch and the select are disabled, and there is no Save.
 export const InfoSectionReadOnly: Story = {

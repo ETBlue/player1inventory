@@ -120,6 +120,16 @@ interface ItemFormProps {
   submitLabel?: string
   isPending?: boolean
   /**
+   * `true` keeps Save off, with no spinner and no error text of its own. It
+   * joins `isSubmitDisabled`, so it turns off all three Saves: the button in
+   * the form, the one in `submitSlot`, and `canSave` of
+   * `onSaveControlChange`. The Info tab sets it until the recipes and the
+   * stock rows have loaded, because `onSubmit` needs both to decide whether
+   * the converted amounts dialog opens (bug 2026-11-26,
+   * `docs/features/items/2026-11-26-bug-save-before-recipes-load.md`).
+   */
+  submitBlocked?: boolean
+  /**
    * For a household member on the Info tab (households H5 task F.5). Every
    * info field is `readOnly` (the text can still be selected), the switch
    * and the select are disabled, and there is no submit button. Only the
@@ -156,6 +166,7 @@ export function ItemForm({
   savedAt,
   submitLabel,
   isPending = false,
+  submitBlocked = false,
   readOnly = false,
   submitSlot,
   onSaveControlChange,
@@ -526,7 +537,10 @@ export function ItemForm({
       consumeAmountError
     )
   const isSubmitDisabled =
-    hasFieldError || (onDirtyChange !== undefined && !isDirty) || !!isPending
+    hasFieldError ||
+    (onDirtyChange !== undefined && !isDirty) ||
+    !!isPending ||
+    submitBlocked
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()

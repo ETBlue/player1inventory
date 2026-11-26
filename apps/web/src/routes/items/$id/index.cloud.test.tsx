@@ -1,3 +1,4 @@
+import type { MockedResponse } from '@apollo/client/testing'
 import {
   MockedProvider,
   type MockedProviderProps,
@@ -492,5 +493,127 @@ describe('Item info tab unit switch — cloud mode', () => {
       },
     ])
     expect(stocks.find((s) => s.locationId === LOC_A)?.unpackedQuantity).toBe(0)
+  })
+})
+
+// Save must wait for the reads that decide whether the converted amounts
+// dialog opens (bug 2026-11-26, `docs/features/items/2026-11-26-bug-save-before-recipes-load.md`).
+// `handleSubmit` counts the recipes that hold the item and the locations to
+// convert. While `GetRecipes` or `ItemStocksForItem` has not answered, it
+// counted none, skipped the dialog and saved: the recipe warning was lost,
+// and a unit switch left recipe amounts and stock in the old unit. Found on
+// Neon by `e2e/tests/consumable-items.spec.ts`.
+//
+// `delay: Infinity` holds a read for good, so the test looks at the screen
+// while it is still loading. The item itself is NOT held: the form must be
+// on screen, or the test would prove nothing about Save.
+describe('Item info tab Save waits for recipes and stock — cloud mode', () => {
+  beforeEach(() => {
+    localStorage.setItem('data-mode', 'cloud')
+    localStorage.setItem(activeLocationStorageKey('cloud'), LOC_A)
+    sessionStorage.clear()
+    item = FLOUR
+    stocks = [FLOUR_A, FLOUR_B]
+    recipes = [BREAD]
+    sentSwitches = []
+  })
+
+  afterEach(() => {
+    localStorage.removeItem('data-mode')
+  })
+
+  const withMock = (
+    replaced: typeof getRecipesMock | typeof stocksMock,
+    replacement: MockedResponse,
+  ): MockedResponse[] =>
+    MOCKS.map((m) => (m === replaced ? replacement : (m as MockedResponse)))
+
+  it('user cannot save the Info tab while the recipes are still loading', async () => {
+    const user = userEvent.setup()
+
+    // Given the recipes read never answers
+    renderInfoTab(
+      withMock(getRecipesMock, {
+        request: { query: GetRecipesDocument },
+        maxUsageCount: Number.POSITIVE_INFINITY,
+        delay: Number.POSITIVE_INFINITY,
+      }),
+    )
+    await screen.findByDisplayValue('Flour')
+
+    // When the user turns Consumable off (the form is now dirty)
+    await user.click(screen.getByRole('switch', { name: /^consumable$/i }))
+
+    // Then Save stays off, so the recipe warning cannot be skipped
+    expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
+    // And a press sends nothing and opens no dialog
+    await user.click(screen.getByRole('button', { name: /save/i }))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(sentSwitches).toHaveLength(0)
+    // And no error text shows while the read is only loading
+    expect(screen.queryByText(/could not load/i)).not.toBeInTheDocument()
+  })
+
+  // In cloud the stock rows can only be missing after a FAILED read: `useItem`
+  // reads the same `ItemStocksForItem` query, and the item layout shows a
+  // spinner, not the form, while it loads. The loading case is tested in local
+  // mode, in `saveWaitsForReads.test.tsx`.
+  it('user sees why the Info tab cannot be saved when the stock read failed', async () => {
+    const user = userEvent.setup()
+
+    // Given the per-location stock read fails and nothing is cached
+    renderInfoTab(
+      withMock(stocksMock, {
+        request: {
+          query: ItemStocksForItemDocument,
+          variables: { itemId: 'item-flour' },
+        },
+        maxUsageCount: Number.POSITIVE_INFINITY,
+        error: new Error('network down'),
+      }),
+    )
+    await screen.findByDisplayValue('Flour')
+
+    // Then the message shows
+    expect(
+      await screen.findByText(
+        /could not load this item's recipes or stock, so it cannot be saved/i,
+      ),
+    ).toBeInTheDocument()
+
+    // And after a unit switch Save stays off, so no location is left in the
+    // old unit
+    await user.click(
+      screen.getByRole('switch', { name: /track in measurement/i }),
+    )
+    expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: /save/i }))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(sentSwitches).toHaveLength(0)
+  })
+
+  it('user sees why the Info tab cannot be saved when the recipes read failed', async () => {
+    const user = userEvent.setup()
+
+    // Given the recipes read fails and nothing is cached
+    renderInfoTab(
+      withMock(getRecipesMock, {
+        request: { query: GetRecipesDocument },
+        maxUsageCount: Number.POSITIVE_INFINITY,
+        error: new Error('network down'),
+      }),
+    )
+    await screen.findByDisplayValue('Flour')
+
+    // Then a message says the item cannot be saved and what to do
+    expect(
+      await screen.findByText(
+        /could not load this item's recipes or stock, so it cannot be saved/i,
+      ),
+    ).toBeInTheDocument()
+
+    // And Save stays off after an edit
+    await user.click(screen.getByRole('switch', { name: /^consumable$/i }))
+    expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
   })
 })
