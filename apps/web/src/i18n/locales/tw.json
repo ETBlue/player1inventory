@@ -426,6 +426,7 @@
     "detail": {
       "notFound": "查無此品項",
       "saved": "已儲存",
+      "readsFailed": "無法載入這個品項的食譜或庫存，所以無法儲存。請重新載入頁面再試一次。",
       "tabsLabel": "品項分頁",
       "tabs": {
         "info": "基本資訊",

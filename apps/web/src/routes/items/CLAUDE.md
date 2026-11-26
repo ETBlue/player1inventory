@@ -283,6 +283,41 @@ Uses `useAppNavigation()` hook from `src/hooks/useAppNavigation.ts`.
 - `src/routes/items/$id.test.tsx` - Integration tests
 - `src/hooks/useItemLayout.tsx` - Dirty state context for tab coordination, the top bar's Save slot (`saveSlot`, `setSaveSlot`), and the form's `SaveControl` for the unsaved-changes dialog (`saveControl`, `registerSaveControl`)
 
+### Save waits for the recipes and the stock rows (2026-11-26)
+
+Bug doc: `docs/features/items/2026-11-26-bug-save-before-recipes-load.md`.
+
+The Info tab's `handleSubmit` decides whether the converted amounts dialog opens from two
+reads: `useRecipes()` (`allRecipes`) and `useItemStocks(id)` (`stocks`). Before this fix,
+while either had not loaded, it counted no recipe and no location, skipped the dialog and
+saved. So turning Consumable off lost the recipe warning, and a unit switch left recipe
+amounts and every location's stock in the old unit. E2E found it on Neon
+(`consumable-items.spec.ts`, the recipe warning test).
+
+| State | Save | Message |
+|---|---|---|
+| both reads have data | on (the other rules still apply) | none |
+| one read still loading | off | none |
+| one read failed with nothing cached | off | `items.detail.readsFailed`, "Could not load this item's recipes or stock, so it cannot be saved. Reload the page to try again." (`role="alert"`, above the form) |
+
+- **One rule turns off all three Saves.** The tab passes `submitBlocked={readsMissing}` to
+  `ItemForm`, where it joins `isSubmitDisabled`: the top bar Save, the in-form Save, and the
+  unsaved-changes dialog's Save (`canSave`). `handleSubmit` also returns `false` when a read
+  is missing, as a second line of defense.
+- **Keyed on `data === undefined`, not `isLoading`.** A read that failed with nothing cached
+  is not loading and still has no data. The message uses each hook's `isError`, which is
+  `true` only when there is no data to show.
+- **`useLocations()` is NOT in the rule.** It only names and orders the dialog's rows; a
+  missing name falls back to the location id.
+- **In cloud the stock rows cannot be "still loading" on this tab.** `useItem` reads the
+  same `ItemStocksForItem` query, and the item layout (`$id.tsx`) shows a spinner until it
+  answers. Only a FAILED stock read reaches the form without stock rows. In local mode
+  `useItem` reads `getItem`, so the stock rows can still be loading.
+- Tests: `$id/saveWaitsForReads.test.tsx` (local: each read held for good with a mock of
+  `getRecipes` / `getItemStocks`, the unsaved-changes dialog's Save, and a control) and
+  `$id/index.cloud.test.tsx` (cloud: `GetRecipes` held with `delay: Infinity`, and a failed
+  `GetRecipes` and a failed `ItemStocksForItem` showing the message).
+
 ### The Consumable switch (consumable items PR 2, 2026-11-25)
 
 The first row under "Stock settings" on the Info tab is **Consumable** (`ItemForm`'s

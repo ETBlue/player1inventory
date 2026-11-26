@@ -426,6 +426,7 @@
     "detail": {
       "notFound": "Item not found",
       "saved": "Saved",
+      "readsFailed": "Could not load this item's recipes or stock, so it cannot be saved. Reload the page to try again.",
       "tabsLabel": "Item sections",
       "tabs": {
         "info": "Info",
