@@ -559,18 +559,35 @@ function ItemInfoTab() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {hasConversions
-                ? t('items.detail.unitSwitchDialog.title')
-                : pending?.toNonConsumable
-                  ? t('items.detail.unitSwitchDialog.nonConsumableTitle')
+              {/* Turning Consumable off always uses this title, with or
+                  without stock to convert (owner request 2026-11-26). */}
+              {pending?.toNonConsumable
+                ? t('items.detail.unitSwitchDialog.nonConsumableTitle')
+                : hasConversions
+                  ? t('items.detail.unitSwitchDialog.title')
                   : t('items.detail.recipeAdjustDialog.title')}
             </AlertDialogTitle>
           </AlertDialogHeader>
           {/* Exactly one description element: Radix points the dialog's
               aria-describedby at it, so a second would duplicate the id. */}
           <AlertDialogDescription>
-            {hasConversions && (
+            {/* Turning Consumable off: the recipe line comes FIRST, then the
+                conversion line (owner request 2026-11-26). */}
+            {pending?.toNonConsumable && removedFromRecipes > 0 && (
               <span className="block">
+                {t('items.detail.unitSwitchDialog.removedFromRecipes', {
+                  count: removedFromRecipes,
+                })}
+              </span>
+            )}
+            {hasConversions && (
+              <span
+                className={
+                  pending?.toNonConsumable && removedFromRecipes > 0
+                    ? 'mt-2 block'
+                    : 'block'
+                }
+              >
                 {pending?.toNonConsumable
                   ? t(
                       'items.detail.unitSwitchDialog.nonConsumableDescription',
@@ -581,13 +598,6 @@ function ItemInfoTab() {
                   : t('items.detail.unitSwitchDialog.description', {
                       unit: switchedToUnit,
                     })}
-              </span>
-            )}
-            {removedFromRecipes > 0 && (
-              <span className={hasConversions ? 'mt-2 block' : 'block'}>
-                {t('items.detail.unitSwitchDialog.removedFromRecipes', {
-                  count: removedFromRecipes,
-                })}
               </span>
             )}
             {hasAdjustments && pending && (

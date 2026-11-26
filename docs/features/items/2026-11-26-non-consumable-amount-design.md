@@ -212,3 +212,12 @@ request the new server refuses.
   cloud page runs the same code with the cloud recipe list, and E2E covers both projects.
 - `bulkUpsertItems`' link delete is not one transaction with the item write (no import is).
 
+### The dialog when Consumable is turned off (owner request 2026-11-26)
+
+- The title is always **"Mark as not consumable?"** (`nonConsumableTitle`) when the save turns
+  Consumable off, also when stock converts. "Update stock numbers?" stays for a plain unit
+  switch.
+- The body starts with the recipe line ("It will be removed from N recipes…"), when N > 0.
+  The conversion line (`nonConsumableDescription`) follows it, then the table per location.
+- Tests: `routes/items/$id.test.tsx`, *user turning Consumable off is told how many recipes the
+  item leaves*. Two mutations went red: the old title rule, and the old line order.

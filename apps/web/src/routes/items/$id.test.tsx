@@ -1992,9 +1992,22 @@ describe('targetUnit change — per-location stock conversion', () => {
 
     // Then the dialog says the item leaves 2 recipes
     const dialog = await screen.findByRole('alertdialog')
+    const recipeLine = within(dialog).getByText(/removed from 2 recipes/i)
+    expect(recipeLine).toBeInTheDocument()
+    // And it is titled "Mark as not consumable?" even though stock converts
+    // (owner request 2026-11-26), with the recipe line BEFORE the conversion
+    // line
     expect(
-      within(dialog).getByText(/removed from 2 recipes/i),
+      within(dialog).getByRole('heading', { name: /mark as not consumable/i }),
     ).toBeInTheDocument()
+    expect(
+      within(dialog).queryByText(/update stock numbers/i),
+    ).not.toBeInTheDocument()
+    const conversionLine = within(dialog).getByText(/opened packs are removed/i)
+    expect(
+      recipeLine.compareDocumentPosition(conversionLine) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
 
     // When the user confirms
     await user.click(screen.getByRole('button', { name: /update & save/i }))
