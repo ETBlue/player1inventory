@@ -1664,6 +1664,21 @@ back with `readStocksForItem`); the quick edit dialog and the Stock tab show one
 field; and an Amount saved on the Stock tab writes `unpackedQuantity: 0`.
 `FIXTURE_CUPS_NOT_CONSUMABLE` seeds Cups with half a pack open on purpose, as an old row.
 
+### A cloud stock seed is a restock — since 2026-11-26
+
+`seedCloudFixture` (and every spec that calls `upsertItemStock`) writes stock through the
+same mutation the Stock tab uses. Since 2026-11-25 that mutation writes a `stockCount` log
+row dated NOW when the amount changes, and since 2026-11-26 such a row with `delta > 0`
+is the item's last purchase date (`docs/features/items/2026-11-26-expiry-from-last-restock-design.md`).
+So in cloud every seeded item with stock was "bought" at seed time. Local seeds write no
+log, so the two modes differ here.
+
+A spec that needs an OLD purchase date in cloud seeds the stock with `bulkCreateItemStocks`
+(an import writes no log) and the purchase with `bulkCreateInventoryLogs` (it keeps a date
+in the past). `expiry-from-restock.spec.ts` does this. It runs in `local` and `cloud`: a
+Quick update that raises Yogurt's amount moves its "Expires in" from 10 to 30 days and its
+place in the Purchased sort, with no reload.
+
 ### Location order is assigned differently in the two modes — keep the default first
 
 | Helper | How it assigns `order` |

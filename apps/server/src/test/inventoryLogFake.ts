@@ -19,8 +19,11 @@
 //   - `delta: { gt: n }`, the filter `lastPurchaseDates` uses to skip
 //     consumption logs and find purchases.
 //   - `logKey`, `OR` and `NOT`, with SQL's NULL rules (design 2026-11-25,
-//     inventory log layout). `lastPurchaseDates` skips stock count rows with
-//     `OR: [{ logKey: null }, { logKey: { not: 'stockCount' } }]`. In SQL,
+//     inventory log layout). `lastPurchaseDates` skipped stock count rows with
+//     `OR: [{ logKey: null }, { logKey: { not: 'stockCount' } }]` until
+//     2026-11-26, when the owner chose to count them (design
+//     2026-11-26, expiry from last restock). No resolver filters on
+//     `logKey` today; the fake still models it. In SQL,
 //     `logKey <> 'x'` and `NOT (logKey = 'x')` are both NULL for a NULL
 //     column, so the row is NOT returned. This fake does the same, so a
 //     resolver that drops the `logKey: null` branch, or uses `NOT` instead of
