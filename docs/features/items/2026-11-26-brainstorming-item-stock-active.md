@@ -60,3 +60,18 @@ end as numbered questions.
   inactive at the office.
 - The backfill keeps every screen looking the same on the day of the release: every item that
   showed as inactive still does.
+
+## Owner answers to the design questions (2026-11-26)
+
+The design doc's *Owner questions* got these answers:
+
+| # | Question | Answer |
+|---|---|---|
+| 1 | Does a new stock row (add to location, checkout or cooking where not stocked) start active? | **A**: always active |
+| 2 | Does a new item from the Add dialog (target 0) start active? | **A**: active, no target |
+| 3 | Should the server use the old "target 0 = inactive" rule between the two releases? | **A**: no; keep the time between the releases short |
+| 4 | Text for an active item with no target | **A**: `3 / 0 pack`, as today |
+| 5 | Release path | **Neither A nor B.** First release the current `develop` into `main` (29 PRs, #410–#441). Then make `develop` again from the new `main`. Then rebase this branch onto it and do the two PRs (server, then web) as the plan says |
+
+Status when this was written: the release's checkpoint gate (`pnpm test:e2e:all:neon`, runbook
+section 15) was running on `develop` at `68da5522`. No code of this feature exists yet.

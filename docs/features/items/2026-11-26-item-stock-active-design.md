@@ -398,3 +398,6 @@ Recipes, cooking rules, checkout rules, the cart, the item card's controls, `Ite
      114 unreleased commits). Then PR 2.
    - B: PR 1 on its own from `main`, like #424. This needs a hand-made copy of the
      `upsertItemStock` change without the stock count log, and a rebase of `develop` after.
+
+**Answered 2026-11-26:** 1–4 are A. 5: release the current `develop` first, make `develop`
+again from the new `main`, then do PR 1 and PR 2 on it. See the brainstorming log.
