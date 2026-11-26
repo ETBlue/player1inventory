@@ -2040,7 +2040,7 @@ describe('targetUnit change — per-location stock conversion', () => {
     // Then a dialog still opens, with its own title and the warning
     const dialog = await screen.findByRole('alertdialog')
     expect(
-      within(dialog).getByRole('heading', { name: /turn off consumable/i }),
+      within(dialog).getByRole('heading', { name: /mark as not consumable/i }),
     ).toBeInTheDocument()
     expect(
       within(dialog).getByText(/removed from 1 recipe,/i),

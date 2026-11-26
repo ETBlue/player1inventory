@@ -449,7 +449,7 @@
         "refillHeader": "Refill When Below",
         "removedFromRecipes_one": "It will be removed from {{count}} recipe, because only consumable items can be in a recipe.",
         "removedFromRecipes_other": "It will be removed from {{count}} recipes, because only consumable items can be in a recipe.",
-        "nonConsumableTitle": "Turn off Consumable?"
+        "nonConsumableTitle": "Mark as not consumable?"
       },
       "recipeAdjustDialog": {
         "title": "Update recipe amounts?",

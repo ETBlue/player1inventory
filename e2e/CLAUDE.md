@@ -1665,7 +1665,7 @@ field; and an Amount saved on the Stock tab writes `unpackedQuantity: 0`.
 `FIXTURE_CUPS_NOT_CONSUMABLE` seeds Cups with half a pack open on purpose, as an old row.
 
 Since 2026-11-26 (only consumable items in a recipe) it also checks: turning Consumable off
-for Cups, which is in a recipe and has no stock to convert, opens "Turn off Consumable?"
+for Cups, which is in a recipe and has no stock to convert, opens "Mark as not consumable?"
 with "It will be removed from 1 recipe", and afterwards the recipe holds Tissue only (read
 back from IndexedDB or the `recipe` query; `readRecipeItemIds` in the spec). A cloud-only
 test, with no browser, checks that `updateRecipe` with a non-consumable item is refused
