@@ -7,7 +7,7 @@
 //
 // | Read held | Hook | Why the save went wrong without the fix |
 // |---|---|---|
-// | `getRecipes` | `useRecipes` | 0 recipes counted: no recipe warning, no recipe amount converted |
+// | `getRecipes` | `useRecipes` | 0 recipes counted: no recipe warning, no recipe amount converted on a unit switch |
 // | `getItemStocks` | `useItemStocks` | 0 locations converted on a unit switch |
 //
 // `useItem` reads `getItem`, not `getItemStocks`, so the form is still on
@@ -139,6 +139,32 @@ describe('Item info tab Save waits for recipes and stock — local mode', () => 
     await user.click(save)
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
     expect((await getItem(item.id))?.targetUnit).toBe('measurement')
+  })
+
+  it('user cannot save a unit switch while the recipes are still loading', async () => {
+    const user = userEvent.setup()
+
+    // Given the recipes read never answers
+    const item = await seed()
+    held.recipes = true
+    renderInfoTab(item.id)
+    await screen.findByDisplayValue('Flour')
+
+    // When the user switches tracking to packages (a unit switch)
+    await user.click(
+      screen.getByRole('switch', { name: /track in measurement/i }),
+    )
+
+    // Then Save stays off, and a press opens no dialog and writes nothing,
+    // so the recipe amount is not left in the old unit
+    const save = screen.getByRole('button', { name: /save/i })
+    expect(save).toBeDisabled()
+    await user.click(save)
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect((await getItem(item.id))?.targetUnit).toBe('measurement')
+    // `getRecipes` is held, so read the row from Dexie directly
+    const [recipe] = await db.recipes.toArray()
+    expect(recipe?.items).toEqual([{ itemId: item.id, defaultAmount: 200 }])
   })
 
   it('user sees Save off in the unsaved-changes dialog while the recipes are still loading', async () => {
