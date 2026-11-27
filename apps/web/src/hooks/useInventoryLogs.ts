@@ -48,7 +48,7 @@ export function useItemLogs(itemId: string) {
         ...(log.note ? { note: log.note } : {}),
         ...(log.logKey ? { logKey: log.logKey } : {}),
         ...(log.logParams
-          ? { logParams: log.logParams as Record<string, string> }
+          ? { logParams: log.logParams as Record<string, unknown> }
           : {}),
       }),
     )
@@ -89,7 +89,7 @@ export function useAddInventoryLog() {
       occurredAt: Date
       note?: string
       logKey?: string
-      logParams?: Record<string, string>
+      logParams?: Record<string, unknown>
     }) => {
       if (isCloud) {
         // Resolved at CALL time, not render time — see `useCloudLocationId`.

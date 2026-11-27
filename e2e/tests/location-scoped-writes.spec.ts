@@ -175,8 +175,29 @@ type StockRow = {
 }
 
 const ITEM_LOGS = `query ($itemId: ID!, $locationId: ID!) {
-  itemLogs(itemId: $itemId, locationId: $locationId) { id delta quantity note }
+  itemLogs(itemId: $itemId, locationId: $locationId) { id delta quantity note logKey }
 }`
+
+type LogRow = {
+  id: string
+  delta: number
+  quantity: number
+  note: string | null
+  logKey: string | null
+}
+
+// The seed sets stock with `upsertItemStock`, which since the inventory log
+// layout (2026-11-25) also writes a `stockCount` log row whenever the amount
+// changes. These tests are about the rows checkout, cooking and
+// `addInventoryLog` write, and about WHERE they land, so every read here
+// leaves the stock count rows out.
+async function logsWithoutStockCounts(
+  gql: ReturnType<typeof makeGql>,
+  variables: { itemId: string; locationId: string },
+): Promise<{ itemLogs: LogRow[] }> {
+  const { itemLogs } = await gql<{ itemLogs: LogRow[] }>(ITEM_LOGS, variables)
+  return { itemLogs: itemLogs.filter((l) => l.logKey !== 'stockCount') }
+}
 const STOCKS_FOR_ITEM = `query ($itemId: ID!) {
   itemStocksForItem(itemId: $itemId) {
     itemId locationId targetQuantity refillThreshold packedQuantity unpackedQuantity
@@ -273,9 +294,10 @@ test.describe('cloud location-scoped writes — checkout and cooking', () => {
     })
 
     // Then the inventory log is at the OFFICE
-    const officeLogs = await gql<{
-      itemLogs: { delta: number; quantity: number; note: string | null }[]
-    }>(ITEM_LOGS, { itemId: MILK, locationId: office })
+    const officeLogs = await logsWithoutStockCounts(gql, {
+      itemId: MILK,
+      locationId: office,
+    })
     expect(officeLogs.itemLogs).toHaveLength(1)
     expect(officeLogs.itemLogs[0].delta).toBe(2)
     expect(officeLogs.itemLogs[0].note).toBe('bought at the office')
@@ -283,7 +305,7 @@ test.describe('cloud location-scoped writes — checkout and cooking', () => {
     // And the DEFAULT location has no log at all. This is the assertion that
     // fails when `checkout` writes the caller's default location instead of
     // the cart's.
-    const homeLogs = await gql<{ itemLogs: unknown[] }>(ITEM_LOGS, {
+    const homeLogs = await logsWithoutStockCounts(gql, {
       itemId: MILK,
       locationId: home,
     })
@@ -344,9 +366,10 @@ test.describe('cloud location-scoped writes — checkout and cooking', () => {
     // EXISTS FOR, and the only one in the repo that runs the whole path against
     // real Postgres: every server unit test for `checkout` uses the
     // hand-written Prisma fake in apps/server/src/test/.
-    const officeLogs = await gql<{
-      itemLogs: { delta: number; quantity: number; note: string | null }[]
-    }>(ITEM_LOGS, { itemId: MILK, locationId: office })
+    const officeLogs = await logsWithoutStockCounts(gql, {
+      itemId: MILK,
+      locationId: office,
+    })
     expect(officeLogs.itemLogs).toHaveLength(1)
     expect(officeLogs.itemLogs[0].quantity).toBe(3.5)
     // `delta` is the amount bought, so a swap of the two fields fails here.
@@ -355,7 +378,7 @@ test.describe('cloud location-scoped writes — checkout and cooking', () => {
 
     // And the DEFAULT location still has no log — the location assertion this
     // file exists for, kept on the new test too.
-    const homeLogs = await gql<{ itemLogs: unknown[] }>(ITEM_LOGS, {
+    const homeLogs = await logsWithoutStockCounts(gql, {
       itemId: MILK,
       locationId: home,
     })
@@ -409,9 +432,10 @@ test.describe('cloud location-scoped writes — checkout and cooking', () => {
     expect(consumeRecipes.allSucceeded).toBe(true)
 
     // Then the inventory log is at the OFFICE
-    const officeLogs = await gql<{
-      itemLogs: { delta: number; quantity: number; note: string | null }[]
-    }>(ITEM_LOGS, { itemId: MILK, locationId: office })
+    const officeLogs = await logsWithoutStockCounts(gql, {
+      itemId: MILK,
+      locationId: office,
+    })
     expect(officeLogs.itemLogs).toHaveLength(1)
     expect(officeLogs.itemLogs[0].delta).toBe(-1)
     expect(officeLogs.itemLogs[0].note).toBe('cooked at the office')
@@ -420,7 +444,7 @@ test.describe('cloud location-scoped writes — checkout and cooking', () => {
 
     // And the DEFAULT location has no log at all — the assertion that fails
     // when `consumeRecipes` falls back to the caller's default location.
-    const homeLogs = await gql<{ itemLogs: unknown[] }>(ITEM_LOGS, {
+    const homeLogs = await logsWithoutStockCounts(gql, {
       itemId: MILK,
       locationId: home,
     })
@@ -466,10 +490,10 @@ test.describe('cloud location-scoped writes — checkout and cooking', () => {
     )
     expect(stockAt(itemStocksForItem, office)?.packedQuantity).toBe(3)
     // And each log total is the stock after its own cook
-    const { itemLogs } = await gql<{ itemLogs: { quantity: number }[] }>(
-      ITEM_LOGS,
-      { itemId: MILK, locationId: office },
-    )
+    const { itemLogs } = await logsWithoutStockCounts(gql, {
+      itemId: MILK,
+      locationId: office,
+    })
     expect(itemLogs.map((l) => l.quantity).sort()).toEqual([3, 4])
   })
 
@@ -573,18 +597,15 @@ test.describe('cloud location-scoped writes — removing an item from one locati
     expect(stockAt(after.itemStocksForItem, home)?.packedQuantity).toBe(3)
 
     // And the OFFICE logs are gone while MY HOME's survive
-    const officeLogs = await gql<{ itemLogs: unknown[] }>(ITEM_LOGS, {
+    const officeLogs = await logsWithoutStockCounts(gql, {
       itemId: MILK,
       locationId: office,
     })
     expect(officeLogs.itemLogs).toHaveLength(0)
-    const homeLogs = await gql<{ itemLogs: { note: string | null }[] }>(
-      ITEM_LOGS,
-      {
-        itemId: MILK,
-        locationId: home,
-      },
-    )
+    const homeLogs = await logsWithoutStockCounts(gql, {
+      itemId: MILK,
+      locationId: home,
+    })
     expect(homeLogs.itemLogs).toHaveLength(1)
     expect(homeLogs.itemLogs[0].note).toBe('home log')
 

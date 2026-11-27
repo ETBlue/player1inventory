@@ -1,4 +1,4 @@
-import type { Locator, Page } from '@playwright/test'
+import { expect, type Locator, type Page } from '@playwright/test'
 import { withSteps } from './step'
 
 export class ItemPage {
@@ -57,34 +57,37 @@ export class ItemPage {
   }
 
   async saveExisting() {
-    // For saving an already-existing item (not /items/new).
-    // After saving, the app navigates back (via goBack()) — typically to the pantry (/).
-    // We wait for any URL change away from the current item page.
-    const currentUrl = this.page.url()
-    await this.page.getByRole('button', { name: /save/i }).click()
-    // Wait for navigation away from the current URL
-    await this.page.waitForURL((url) => url.toString() !== currentUrl, {
-      timeout: 10000,
+    // For saving an already-existing item (not /items/new) on the Info or
+    // Stock tab. Since 2026-11-24 a save STAYS on the page (design
+    // docs/features/items/2026-11-24-item-tabs-flat-design.md, part A): it
+    // shows the toast "Saved" (`items.detail.saved`, routes/items/$id/index.tsx
+    // and stock.tsx) and disables Save again. Wait for both, so the caller can
+    // rely on the write having finished. Since 2026-11-25 Save is in the
+    // item page's top bar, outside the <form> (owner decision; ItemForm's
+    // `submitSlot`, routes/items/$id.tsx).
+    const saveButton = this.page.getByRole('button', {
+      name: 'Save',
+      exact: true,
     })
+    await saveButton.click()
+    await this.page
+      .getByText('Saved', { exact: true })
+      .first()
+      .waitFor({ timeout: 10000 })
+    await expect(saveButton).toBeDisabled()
   }
 
   async navigateToTab(tab: 'tags' | 'vendors' | 'recipes' | 'log' | 'stock') {
-    // Tabs are icon-only links without ARIA tab role, so we navigate directly.
-    // Note: this bypasses the dirty-state navigation guard — do not use to test guard behavior.
-    // After the item-detail tab refactor, tags/vendors/recipes live under the
-    // Relation submenu (/items/$id/relation/{tags,vendors,recipes}); stock has its
-    // own tab (/items/$id/stock); log is unchanged (/items/$id/log).
-    // (src/routes/items/$id/relation/*.tsx, src/routes/items/$id/stock.tsx, src/routes/items/$id/log.tsx)
+    // Navigates directly by URL, so this bypasses the dirty-state navigation
+    // guard — do not use it to test the guard.
+    // Since 2026-11-24 every tab is one level: /items/$id/{stock,tags,vendors,
+    // recipes,log} (src/routes/items/$id/*.tsx). The old /items/$id/relation/…
+    // addresses redirect (src/routes/items/$id/).
     const url = this.page.url()
     const match = url.match(/\/items\/([^/?]+)/)
     if (!match) throw new Error(`Not on an item page. Current URL: ${url}`)
     const id = match[1]
-    const isRelationTab =
-      tab === 'tags' || tab === 'vendors' || tab === 'recipes'
-    const path = isRelationTab
-      ? `/items/${id}/relation/${tab}`
-      : `/items/${id}/${tab}`
-    await this.page.goto(path)
+    await this.page.goto(`/items/${id}/${tab}`)
   }
 
   async navigateToStockTab() {
@@ -127,7 +130,7 @@ export class ItemPage {
     await this.navigateToTab('tags')
     // "New Tag" button lives inside the tag type section.
     // exact: true so it doesn't also match the page's "New Tag Type" button
-    // (both render on /items/$id/relation/tags — src/routes/items/$id/relation/tags.tsx).
+    // (both render on /items/$id/tags — src/routes/items/$id/tags.tsx).
     await this.page
       .getByRole('button', { name: 'New Tag', exact: true })
       .first()
@@ -139,6 +142,8 @@ export class ItemPage {
       .getByRole('button', { name: /add tag/i })
       .click()
     // Tag is created and immediately assigned (pressed: true) — no extra click needed.
+    // It shows as pressed while the assign is still being saved; it carries
+    // aria-busy="true" until the save is done (issue #402).
   }
 
   async ensureStockTab() {
@@ -190,7 +195,7 @@ export class ItemPage {
 
   async assignVendor(name: string) {
     // Click the vendor badge (role="button" aria-pressed=false) to assign it to the item
-    // Badge: role="button" aria-pressed={isAssigned} (src/routes/items/$id/relation/vendors.tsx)
+    // Badge: role="button" aria-pressed={isAssigned} (src/routes/items/$id/vendors.tsx)
     await this.page
       .getByRole('button', { name, exact: false, pressed: false })
       .click()
@@ -199,18 +204,18 @@ export class ItemPage {
   // ── Recipes tab ───────────────────────────────────────────────────────────────
 
   async clickNewRecipeButton() {
-    // "New Recipe" button inline with recipe badges (src/routes/items/$id/relation/recipes.tsx)
+    // "New Recipe" button inline with recipe badges (src/routes/items/$id/recipes.tsx)
     await this.page.getByRole('button', { name: /new recipe/i }).click()
   }
 
   async fillRecipeName(name: string) {
     // AddNameDialog input: label "Name", placeholder "e.g., Pasta Sauce, Smoothie"
-    // (src/routes/items/$id/relation/recipes.tsx, src/components/AddNameDialog/index.tsx)
+    // (src/routes/items/$id/recipes.tsx, src/components/AddNameDialog/index.tsx)
     await this.page.getByRole('dialog').getByLabel('Name').fill(name)
   }
 
   async submitRecipeDialog() {
-    // "Add Recipe" submit button in AddNameDialog (src/routes/items/$id/relation/recipes.tsx)
+    // "Add Recipe" submit button in AddNameDialog (src/routes/items/$id/recipes.tsx)
     await this.page
       .getByRole('dialog')
       .getByRole('button', { name: /add recipe/i })
@@ -218,7 +223,7 @@ export class ItemPage {
   }
 
   getRecipeBadge(name: string) {
-    // Recipe badge: role="button" aria-pressed={isAssigned} (src/routes/items/$id/relation/recipes.tsx)
+    // Recipe badge: role="button" aria-pressed={isAssigned} (src/routes/items/$id/recipes.tsx)
     return this.page.getByRole('button', { name, exact: false, pressed: true })
   }
 
@@ -240,10 +245,14 @@ export class ItemPage {
   }
 
   getLogEntries() {
-    // Each log entry shows a quantity change line like "+1 → 1 pkg" (src/routes/items/$id/log.tsx:34-38)
-    // The → character (Unicode U+2192) is the reliable unique identifier for log entry quantity lines.
-    // We use getByText with the arrow character since Tailwind v4 class names may not be stable DOM selectors.
-    return this.page.getByText(/→\s*\d+/)
+    // One <li> per log row, newest first, inside a list named by the tab's
+    // label "Log" (`items.detail.tabs.history`, src/routes/items/$id/log.tsx).
+    // Since 2026-11-25 (inventory log layout) a row reads
+    // "−30 g · Stock count … 470 g" and then the date; the old "+1 → 1 pkg"
+    // text and its arrow are gone.
+    return this.page
+      .getByRole('list', { name: 'Log', exact: true })
+      .getByRole('listitem')
   }
 
   getLogEntryByText(text: string) {
@@ -252,12 +261,12 @@ export class ItemPage {
   }
 
   getTagBadge(name: string): Locator {
-    // Assigned tag badge: role="button" aria-pressed=true (src/routes/items/$id/relation/tags.tsx)
+    // Assigned tag badge: role="button" aria-pressed=true (src/routes/items/$id/tags.tsx)
     return this.page.getByRole('button', { name, exact: false, pressed: true })
   }
 
   getAssignedVendorBadge(name: string): Locator {
-    // Assigned vendor badge: role="button" aria-pressed=true (src/routes/items/$id/relation/vendors.tsx)
+    // Assigned vendor badge: role="button" aria-pressed=true (src/routes/items/$id/vendors.tsx)
     return this.page.getByRole('button', { name, exact: false, pressed: true })
   }
 

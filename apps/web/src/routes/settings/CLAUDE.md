@@ -84,6 +84,24 @@ Plan: `docs/global/permissions/2026-11-20-households-plan-h6.md`, Task J.6. Hook
 - Mobile: full-screen (no bottom bar) since 2026-11-23, like Members; its own Back button (`lg:hidden`).
 - Tests: `activity.cloud.test.tsx` (the hook replaced, each state), `activity.test.tsx` (local mode), `components/household/ActivityList/ActivityList.test.tsx` (every action, tw word order, fallbacks), `components/global/Sidebar/HouseholdSidebar.activity.test.tsx`, `routes/settings/index.activity.test.tsx`. Stories (real route, real hook): `Owner`, `Empty`, `Loading`, `NoAccess`, `LoadError`. The axe scans (light and dark) belong to J.8's cloud spec, because `a11y.spec.ts` does not run in cloud.
 
+### The unsaved-changes dialog on the detail pages (since 2026-11-25)
+
+Design: `docs/global/ui-polish/2026-11-25-unsaved-dialog-save-design.md`. The tag, vendor,
+recipe and shelf detail layouts (`settings/household/{tags,vendors,recipes}/$id.tsx`,
+`shelves/$shelfId.tsx`) show `UnsavedChangesDialog` when the user leaves the Info tab with
+edits, by a tab or Back: **Cancel** (`neutral-outline`), **Discard** (`destructive-outline`),
+**Save** (`primary`).
+
+- **The dialog's Save goes where the user pressed. The page's own Save still goes back.**
+  So the "go back" step moved OUT of the save: the three InfoForms call `onSaved` (the
+  page passes `goBack`) only after their own Save, and the shelf page's `handleSave` calls
+  `goBack()` after `saveShelf()` answers `true`. The dialog uses the form's `SaveControl`
+  (`hooks/useSaveControl.ts`), which runs the same `submit()` and never navigates.
+- Save is off while the name is empty (the field error) or a save runs. A failed save shows
+  the usual `showSaveError` toast and the dialog stays open.
+- Tests: `settings/household/unsavedDialogSave.cloud.test.tsx`, 6 tests × the 4 pages (the
+  tab, Back, a held write, a failed write, an empty name, Cancel and Discard).
+
 ### The Items tabs are global assignment pages
 
 Settings entities (tags, vendors, recipes, shelves) are **global**, and so are the

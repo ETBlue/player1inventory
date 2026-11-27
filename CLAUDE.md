@@ -109,9 +109,13 @@ that really set up that role.
 
 ## Authorization (cloud)
 
+**All of H3a, H3b, H3c-1, H3c-2, H4, H5a, H5b, H5c, H6a, H6b, H7a and H7b are deployed to
+production** (2026-11-23, release #403, merge `16929909`). Where a paragraph below says
+"merged into `develop` … not deployed", it describes the state before that release.
+
 > See `docs/global/permissions/2026-10-04-households-design.md` (which replaces the role table of `docs/global/permissions/2026-08-29-design-location-rbac.md`). Rights come from roles, not from having created the row. **Households are built in H3a** (merged into `develop` in #375, not deployed; deploy steps in `docs/global/backend/2026-11-11-deploy-runbook-households-h3a.md`). **Shared carts are built in H3b** (merged into `develop` in #377, not deployed; deploy steps in `docs/global/backend/2026-11-15-deploy-runbook-households-h3b.md`): a cart belongs to its location, every cart read and write is scoped by location role, `Cart.userId` is dropped, and `CartItem.userId` means only "added by". **Import and export are built in H4** (merged into `develop` in #382, merge `bf87e839`, not deployed; deploy steps in `docs/global/backend/2026-11-17-deploy-runbook-households-h4.md`). H4 needs the **server before the web**, the opposite of H3a; that runbook says how the two rules fit in one release. Each person still has exactly one household until H5b (invites), so nothing is shared yet in production.
 >
-> **Roles in the web, read-only views and empty households are built in H5a** (merged into `develop` in #384, merge `4307d30a`, 2026-11-18; not deployed; plan `docs/global/permissions/2026-11-17-households-plan-h5.md`; deploy notes in section 8 of the H4 runbook). **The households release deploys the SERVER first, then the web** (owner decision 2026-11-17, option 4; runbook section 8.3). For that, the server keeps a one-release shim: see *Old-bundle shim* below. What H5a adds:
+> **Roles in the web, read-only views and empty households are built in H5a** (merged into `develop` in #384, merge `4307d30a`, 2026-11-18; not deployed; plan `docs/global/permissions/2026-11-17-households-plan-h5.md`; deploy notes in section 8 of the H4 runbook). **The households release deploys the SERVER first, then the web** (owner decision 2026-11-17, option 4; runbook section 8.3). For that, the server kept a one-release shim, removed since 2026-11-25: see *The old-bundle shim is removed* below. What H5a adds:
 >
 > | Part | What |
 > |---|---|
@@ -163,7 +167,7 @@ that really set up that role.
 > | one lock order (decision T16) | the `User` row (`lockUser`) before any household row (`lockHouseholds`, sorted by id). See *Joining a household* below |
 > | 3 queries | `householdInvites` (owner and manager; a manager sees `member` invites only, O15-A). The `token` is on the `HouseholdInvite` type only, so only this query and the `createInvite` answer carry it, `invitePreview(token)` (`requireAuth` only, never throws for a token: `status` is `VALID`, `ALREADY_MEMBER` or `INVALID`, and `INVALID` carries no name), `householdMembers` (any household role, no e-mail) |
 > | 7 mutations | `createInvite` and `revokeInvite` (`resolvers/invite.resolver.ts`, task G.3), `joinHousehold` (G.4), `setHouseholdRole`, `removeMember`, `leaveHousehold`, `createHousehold` (`resolvers/household.resolver.ts`, G.5). All seven publish household-level `LOCATION` after the commit (decision T19), so the live guard holds **69** fields. `revokeInvite` answers `false`, not an error, for every invite this caller may not revoke (unknown, another household's, used, revoked, or a `manager` invite for a manager) |
-> | refusals (decision T18) | `BAD_USER_INPUT` with `extensions.reason`: `INVITE_INVALID` (one answer for unknown, expired, used and revoked), `ALREADY_MEMBER`, `ALREADY_IN_HOUSEHOLD`. Role refusals stay `FORBIDDEN`. A person in no household gets `NO_HOUSEHOLD` (a `GraphQLError` code) |
+> | refusals (decision T18) | `BAD_USER_INPUT` with `extensions.reason`: `INVITE_INVALID` (one answer for unknown, expired, used and revoked), `ALREADY_MEMBER`, `ALREADY_IN_HOUSEHOLD`. Role refusals stay `FORBIDDEN`. A person in no household gets `NO_HOUSEHOLD` (a `GraphQLError` code). (Not households: since 2026-11-26 a recipe write that attaches a non-consumable item, and `consumeRecipes` with one, give `BAD_USER_INPUT` with reason `NOT_CONSUMABLE`; see `apps/server/src/lib/consumable.ts`) |
 > | web: the household guard | `HouseholdChangeGuard` (`apps/web/src/apollo/householdGuard.ts`, decision T23) clears the Apollo cache and reloads when the server answers another household id. It cannot see a move into NO household; `NoHouseholdGate` clears the cache then. See `apps/web/src/routes/CLAUDE.md`, *Join Page* and *No household* |
 > | web: pages | `/join/$token`, `/sign-in?redirect=` and `/sign-up?redirect=` (`safeRedirectPath`; `/sign-up` since 2026-11-23, `docs/global/bugs/2026-11-23-bug-join-redirect-lost-on-sign-up.md`), `/settings/household/members` (cloud only), the no-household screen (`apps/web/src/routes/settings/CLAUDE.md`, `apps/web/src/components/CLAUDE.md`) |
 > | E2E | `household-invites.spec.ts`, 8 cloud tests; see *E2E* below and `e2e/CLAUDE.md` |
@@ -353,7 +357,7 @@ that really set up that role.
 > |---|---|
 > | the migration (decisions T74, T75, T79, task M.1) | one enum `LocationSort` (`name`, `lastUpdated`, `lastVisited`, `custom`); `User.locationSort` (nullable: `null` means the default, O52-A); `Location.dataUpdatedAt` (nullable, filled ONCE with the newest `ItemStock.updatedAt` of the location; a location with no stock row keeps `NULL`); the table `LocationPreference` (`userId`, `locationId`, `customOrder?`, `lastVisitedAt?`, `updatedAt`; primary key `(userId, locationId)`; both foreign keys `ON DELETE CASCADE`; an index on `locationId`). NOT in `emptyHouseholdWhere`: a preference is not data a person loses. The backfill on a nullable column is a named exception in `apps/server/prisma/CLAUDE.md` |
 > | `dataUpdatedAt` (T79, task M.2) | `publishChange` sets it to now on every location it publishes `STOCK`, `CART` or `LOG` to, in ONE `location.updateMany`, in `finally`, after the events, in its own guard (it never throws). `LOCATION` and `CATALOG` do not set it. Prisma's `updateMany` also moves `Location.updatedAt` (`@updatedAt`). It is written after the commit, so a crash between the two loses one timestamp |
-> | the personal order (T76, T77, task M.3) | no copy of `Location.order`. `inPersonalOrder` (`location.resolver.ts`) sorts by the caller's `customOrder`, then the rows with none by the shared `order`, then by `id`, and sets `order` to the row's place, 0 to n−1. `locations` and `householdLocations` use it. The caller's preference rows are read ONCE per request (`locationPreferencesOf` in `lib/locationPreferences.ts`, `RequestCache.locationPreferences`, cleared by `forgetLocationRoles`). The shared `Location.order` is still written by `createLocation` (max + 1) and by imports, and `firstLocationIdOf` (the old-bundle `isDefault` shim) still reads it |
+> | the personal order (T76, T77, task M.3) | no copy of `Location.order`. `inPersonalOrder` (`location.resolver.ts`) sorts by the caller's `customOrder`, then the rows with none by the shared `order`, then by `id`, and sets `order` to the row's place, 0 to n−1. `locations` and `householdLocations` use it. The caller's preference rows are read ONCE per request (`locationPreferencesOf` in `lib/locationPreferences.ts`, `RequestCache.locationPreferences`, cleared by `forgetLocationRoles`). The shared `Location.order` is still written by `createLocation` (max + 1) and by imports, and `firstLocationIdOf` (the old-bundle `isDefault` shim) read it until the shim was removed (2026-11-25) |
 > | `reorderLocations` (T78) | writes the CALLER's own order: one `LocationPreference` upsert per id, in one transaction. Any household role (it was `manager`). A repeated id is `BAD_USER_INPUT`; an id outside the caller's own settings list (`householdLocations` for an owner or manager, `locations` for a member) is `FORBIDDEN`, the same answer as an unknown id; a list that is not the full set is `BAD_USER_INPUT`. It moved from `publishes` to `publishesNothing`: only this person sees the change |
 > | 2 fields (T82) | `Location.dataUpdatedAt` (ISO, shared) and `Location.lastVisitedAt` (ISO, the caller's own) |
 > | 1 query, 2 mutations (T74, T80) | `myLocationSort` (`custom` when the column is `null`, `DEFAULT_LOCATION_SORT`); `setLocationSort(sort)`; `markLocationVisited(locationId)` (`viewer` on a location of the household the caller acts in; writes `lastVisitedAt`, or nothing and answers `false` under 60 seconds, `VISIT_INTERVAL_MS`). All three publish nothing |
@@ -440,9 +444,9 @@ that really set up that role.
 > git grep -c "userId: String!" -- apps/server/src/schema/        # must return nothing since 2312707a
 > ```
 >
-> Why the two steps were split: dropping a field a deployed bundle still selects fails GraphQL **validation**, so the whole query errors rather than one field going null. The Cloudflare deploy and the server deploy are separate steps, so there is always a window where the two disagree. Removing the selections first closed that window for `userId`. **`Location.isDefault` did NOT get a step one**: `main`'s web bundle still selects it. The H3a runbook first solved that by deploying the web before the server; since 2026-11-17 the server keeps the field instead (next paragraph).
+> Why the two steps were split: dropping a field a deployed bundle still selects fails GraphQL **validation**, so the whole query errors rather than one field going null. The Cloudflare deploy and the server deploy are separate steps, so there is always a window where the two disagree. Removing the selections first closed that window for `userId`. **`Location.isDefault` did NOT get a step one**: `main`'s web bundle still selects it. The H3a runbook first solved that by deploying the web before the server; from 2026-11-17 the server kept the field for one release instead, and it is removed since 2026-11-25 (next paragraph).
 >
-> **Old-bundle shim — read this before you remove or change any GraphQL field or input field** (built 2026-11-17, H4 runbook section 8.3). Until every device has the households bundle, the server must accept everything `main`'s old web bundle sends. Five schema fields exist only for that, all `@deprecated(reason: "Old web bundles only. … Remove in the release after households.")`: `Location.isDefault` (`true` for the first location of the caller's list), `CheckoutItemInput.itemId` (with `cartItemId` made optional; the stored amount is bought), and `ConsumeRecipesItemInput.packedQuantity` / `.unpackedQuantity` / `.quantity` (ignored). `apps/server/src/test/oldBundleCompat.test.ts` guards it in four ways: (1) it validates a COPY of `main`'s documents (`apps/server/src/test/fixtures/main-web-operations/`) against the schema; (2) it checks the old `Checkout` and `ConsumeRecipes` variables; (3) it compares a COPY of `main`'s server schema (`apps/server/src/test/fixtures/main-server-schema.graphql`) with the current one, and `findBreakingChanges` must return exactly the six `userId` fields, `Mutation.purgeUserData` and `PurgeResult`, and `findDangerousChanges` only the optional `CheckoutItemInput.cartItemId`; (4) it fails if a current web document selects a deprecated field. Document validation alone does NOT look inside an input type sent as a variable, and the variable test covers only two operations. Check (3) is what catches a change to any other input type the old bundle sends, for example `ItemInput` or `TagInput` from `main`'s import (proved by mutation: `ItemInput.estimatedDueDays` made `Int!` and `TagInput.parentId` deleted turn it red). If you change a type on purpose, check that no old document or variable uses it before you add it to the list. The old checkout shape buys the STORED amount and SKIPS an `itemId` with no row being bought, as `main`'s server did; its amount rule of `CART_CHANGED` cannot fire. `isDefault` reads the first id once per household per request (`RequestCache.firstLocationIds`, cleared by `forgetLocationRoles`). Remove together, in the release after households: the five fields, `firstLocationIdOf` and the `firstLocationIds` cache entry, both fixtures and the test.
+> **The old-bundle shim is removed** (on branch `chore/remove-old-bundle-shim`, 2026-11-25, into `develop`; not yet released). For the households release (deployed 2026-11-23, release #403) the server kept five `@deprecated` schema fields so that `main`'s web bundle from before households still worked while the server was deployed first (H4 runbook section 8.3): `Location.isDefault` (`true` for the first location of the caller's list, read through `firstLocationIdOf` and the `RequestCache.firstLocationIds` cache), `CheckoutItemInput.itemId` (with `cartItemId` made optional; `checkoutInputShape` and `fromOldCheckoutInput` in `cart.resolver.ts` bought the stored amount), and `ConsumeRecipesItemInput.packedQuantity` / `.unpackedQuantity` / `.quantity` (ignored). `apps/server/src/test/oldBundleCompat.test.ts` guarded it with a copy of `main`'s web documents and of `main`'s server schema (two fixtures under `apps/server/src/test/fixtures/`). All of that is deleted now. `CheckoutItemInput.cartItemId` is `ID!` again. **What this means:** a device still on a bundle from before households gets `GRAPHQL_VALIDATION_FAILED` on every location query, and `BAD_USER_INPUT` on checkout and cooking, until it accepts the service-worker update prompt. Server tests pin the refusals: `cart-checkout.resolver.test.ts` (*checkout input without a cartItemId*) and `recipe-consume.resolver.test.ts` (an old-bundle input with final numbers). **What is lost with the test:** check (3) of `oldBundleCompat.test.ts` compared the whole schema with `main`'s copy using `findBreakingChanges`, so it caught ANY breaking change to a type an old bundle sends (for example `ItemInput` or `TagInput`), not just the five fields. Nothing replaces it. Before you remove or change a GraphQL field or input field, check by hand which deployed web bundle still uses it, and choose the deploy order (see the deploy runbooks in `docs/global/backend/`).
 >
 > **The `userId` still named in `exportData.ts` and `importData.ts` tests is deliberate.** Those mappers are allow-lists — each names the keys it forwards, so anything else is dropped by omission. The tests feed `userId` in by hand, so they now prove the general rule that an unexpected key never reaches a backup file, not that one real field is stripped. No live Apollo result carries it any more.
 
@@ -494,7 +498,7 @@ that really set up that role.
 > `docs/global/backend/2026-11-16-deploy-runbook-households-h3c-1.md` (section 9 is H3c-2).
 >
 > **Built in households H3c-1 and H3c-2 (2026-11-16).** H3c-1 is merged into `develop`
-> (#379), and so is H3c-2 (#380). Neither is deployed. A change in one
+> (#379), and so is H3c-2 (#380). Both are deployed (release #403, 2026-11-23). A change in one
 > tab reaches the other open tabs of the same household within about a second. The event
 > says only "this changed" (`kind`, `locationId`); the web refetches.
 >
@@ -504,7 +508,7 @@ that really set up that role.
 > |---|---|---|---|
 > | `CART` | location | cart mutations, `checkout`, `removeItemFromLocation`, `deleteItem`, `createVendor`, `deleteVendor`, `removeAllLocationItems` (H6a) | the 5 cart queries |
 > | `STOCK` | location | `upsertItemStock`, `addItemToLocation`, `checkout`, `consumeRecipes`, `applyUnitSwitch`, stock imports, `deleteItem`, `removeAllLocationItems` (H6a) | `PantryData`, `ItemStocksForItem` |
-> | `LOG` | location | `addInventoryLog`, `checkout`, `consumeRecipes`, log imports, `deleteItem` | `ItemLogs`, `InventoryLogCountByItem`, `LastPurchaseDates` |
+> | `LOG` | location | `addInventoryLog`, `checkout`, `consumeRecipes`, `upsertItemStock` (only when it wrote a stock count row, since 2026-11-25), log imports, `deleteItem` | `ItemLogs`, `InventoryLogCountByItem`, `LastPurchaseDates` |
 > | `LOCATION` | household (`locationId: null`) | the location mutations and imports (not `reorderLocations` since H7b: the order is personal), `clearAllData`, `deleteAllLocations` (H6a), the household and member mutations (H5b, H5c), the four offer writes and the `user.deleted` hand-over (H6b) | **every active query** (`'all'`) |
 > | `CATALOG` | household (`locationId: null`) | every catalog mutation and import, `renameHousehold`, `clearAllData` | `PantryData` and the 15 catalog queries |
 >
@@ -1633,18 +1637,58 @@ Use git worktrees by default for feature work. Create isolated workspaces in `.w
 
 **Worktree before implementation (mandatory):** After brainstorming is complete and the branch name is derived, before writing the design doc, always create a git worktree using `superpowers:using-git-worktrees` (or follow the manual steps in "Advanced: Git Worktrees" below if the skill is unavailable). All subsequent work — design doc, implementation plan, and code — happens inside the worktree. Branch name is derived from the brainstorming topic: choose `feature/`, `fix/`, `refactor/`, or `docs/` prefix based on context, then add a short kebab-case topic (e.g. brainstorming about cooking expand/collapse → `feature/cooking-expand`).
 
-**Households work targets `develop`, not `main` (since 2026-11-12).** A merge to `main`
-deploys to production: Cloudflare Pages builds the web, and Railway deploys the server. So
-until the households feature is done, households phase PRs (H3a onward) use `develop` as their
-base, and `develop` is merged into `main` only at planned **checkpoint releases**. Each
-checkpoint has its own deploy runbook and a fresh rehearsal on a Neon branch of production.
-Base a households branch on `origin/develop` and rebase onto it. **No changes go to `main`
-until households is done.** The owner decided this on 2026-11-13 ("I'll not touch branch main
-before the household feature is done"). So the question of how a `main` hotfix reaches
-`develop` is closed. If that ever changes, ask the owner first: rebasing `develop` onto `main`
-rewrites a shared branch and needs a force-push, and merging `main` into `develop` breaks the
-rebase rule below. See `docs/global/permissions/2026-10-31-households-plan.md`, *How this plan
-is split*.
+**Every PR targets `develop`. `develop` goes into `main` in batch releases.** A merge to
+`main` deploys to production: Cloudflare Pages builds the web, and Railway deploys the
+server (and runs `prisma migrate deploy`). A merge to `develop` deploys nothing, so the owner
+can test several PRs together on a local server first. Base every branch on
+`origin/develop` and rebase onto it. A release is a PR from `develop` to `main`, merged with
+"Create a merge commit", never with `--delete-branch`.
+
+History: from 2026-11-12 to 2026-11-23 the households phases (H3a to H7b) collected in
+`develop` and went to production together in release #403 (merge `16929909`). On 2026-11-24
+the owner deleted `develop`, then asked for it back the same day for batch testing. It was
+made again from `main` at `56d7de3a`. See `docs/global/backend/2026-11-23-households-release-plan.md`,
+*Results*.
+
+**After a release, bring `develop` level with `main`.** The release merge commit is on
+`main` only. Fast-forward `develop` with `git push origin origin/main:develop` (no force),
+when no PR has merged into `develop` since the release. Check that
+`git log origin/develop..origin/main --oneline` prints nothing.
+
+**When `main` has commits `develop` lacks AND `develop` has its own, rebase `develop` onto
+`main`.** Owner decision 2026-11-25. Do not merge `main` into `develop`. The owner must
+say yes each time, because it rewrites a shared branch:
+
+1. Check that no open PR targets `develop` and no local branch is built on it.
+2. Try it on a throwaway branch first: `git rebase --rebase-merges origin/main`. Without
+   `--rebase-merges` the PR merge commits are lost.
+3. Rebase `develop`, run the root `pnpm build`, then
+   `git push --force-with-lease=develop:<old sha> origin develop` (the pre-push hook runs
+   `pnpm test`).
+4. Every commit only on `develop` gets a new id. Search the docs for the old ids and
+   replace them.
+
+First done on 2026-11-25, after #424 (the consumable items server change) went straight to
+`main` as a server-first release: `develop` moved from `a217ce37` to `ebdfb717`, with no
+conflicts and all 13 PR merges kept.
+
+**When the web needs a server change first, put them in two releases.** For example, the web
+selects a new field or sends a new argument that today's server does not know. One release
+deploys both apps at about the same time, so the new web would talk to the old server for a
+while and fail GraphQL validation.
+
+1. Release the server change first: the schema, the resolvers and their tests.
+2. Wait until Railway shows the new deployment of that commit as active.
+3. Release the web change after that.
+
+The server change must keep today's web documents valid: add fields and OPTIONAL arguments
+only. A new required argument that a web document omits makes `pnpm codegen` write nothing
+(see *`pnpm codegen` is all-or-nothing* above), and the old web would fail on it anyway.
+
+**After every merge to `main`, check that Railway started a new deploy of that commit.** In
+release #403 it did not, and the owner had to start the deploy by hand. The cause is not
+confirmed (the owner thinks the server may have been asleep). Release #409 deployed on its
+own.
 
 **Absorbing upstream changes: always rebase, never merge**
 

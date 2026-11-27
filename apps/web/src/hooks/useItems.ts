@@ -152,6 +152,10 @@ function toCreateItemInput(input: ItemMutationInput): CreateItemInput {
     estimatedDueDays: input.estimatedDueDays,
     expirationThreshold: input.expirationThreshold,
     expirationMode: input.expirationMode,
+    // Absent from every create form today, so `undefined`, and the server
+    // writes its default, `true`. Listed so a form that grows the switch
+    // cannot have its value dropped.
+    consumable: input.consumable,
   }
   // Safe to widen: the `undefined`s this shape may carry never reach the wire
   // (Apollo serialises variables as JSON, which drops undefined-valued keys).
@@ -794,7 +798,11 @@ export function useCreateItem(options?: { catalogOnly?: boolean }) {
 // it somewhere. `PantryData` does have to be listed even though it shares
 // `ROOT_QUERY.items` with `GetItems`, because `itemStocks` is a different root
 // field that a `GetItems` refetch never reaches.
-function stockListRefetches(locationId: string): RefetchAfterWrite[] {
+//
+// Exported for `useConsumeRecipes` (`useRecipes.ts`): a cook changes stock at
+// one location the same way, and its mutation returns no `ItemStock` either
+// (issue #404).
+export function stockListRefetches(locationId: string): RefetchAfterWrite[] {
   return [
     { query: PantryDataDocument, variables: { locationId } },
     'ItemStocksForItem',
@@ -1049,10 +1057,16 @@ export function useUpdateItem() {
     // reader `useItemStocks`, behind the Stock pager, reads back. (It named
     // `useItemStock` too until that hook was deleted on 2026-10-07 — it had no
     // caller; see hooks/useItemStocks.ts.)
+    //
+    // `['sort']` too, since 2026-11-26: a save that raises the amount writes a
+    // stock count row, and that row now moves the last purchase date
+    // (`getLastPurchaseDate`), so the expiry and the Purchased sort read it
+    // again (`useItemSortData`).
     onSuccess: () =>
       Promise.all([
         queryClient.invalidateQueries({ queryKey: ['items'] }),
         queryClient.invalidateQueries({ queryKey: ['itemStocks'] }),
+        queryClient.invalidateQueries({ queryKey: ['sort'] }),
       ]),
   })
 
@@ -1106,7 +1120,14 @@ export function useUpdateItem() {
             input: toStockInput(updates),
           },
         })
-        await refetchAfterWrite(stockListRefetches(target))
+        // `LastPurchaseDates` by NAME (only a mounted list asks), since
+        // 2026-11-26: the server writes a stock count row when the amount
+        // changed, and a row that raised it now moves the last purchase date.
+        // The live `LOG` event never reaches the tab that made the change.
+        await refetchAfterWrite([
+          ...stockListRefetches(target),
+          'LastPurchaseDates',
+        ])
       }
       return itemResult?.data?.updateItem
     }

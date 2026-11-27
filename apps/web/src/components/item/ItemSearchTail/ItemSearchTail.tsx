@@ -15,6 +15,13 @@ export interface ItemSearchTailAction {
    */
   pendingItemId?: string | null
   icon?: ReactNode
+  /**
+   * A row this action cannot apply to. Return a note and the row shows it in
+   * place of the button; return `null` or `undefined` for the button. Used
+   * for a non-consumable item where the action would add it to a recipe
+   * (owner decision 2026-11-26: only consumable items can be in a recipe).
+   */
+  blockedNote?: (item: PantryItem) => ReactNode | null | undefined
 }
 
 export interface ItemSearchTailProps {
@@ -103,26 +110,38 @@ export function ItemSearchTail(props: ItemSearchTailProps) {
   const showInLocation =
     (!!groupAction || !!groupNote) && inLocationItems.length > 0
 
-  const actionButton = (item: PantryItem, action: ItemSearchTailAction) => (
-    <Button
-      size="sm"
-      variant="neutral-outline"
-      className="mx-2 shrink-0"
-      // Every row's button carries the same visible label, so the accessible
-      // name has to name the row too — otherwise the whole section is a pile
-      // of identically-named buttons to a screen reader and to a role query.
-      aria-label={t('items.searchTail.rowAction', {
-        action: action.label,
-        name: item.name,
-      })}
-      disabled={!!action.pendingItemId}
-      isLoading={action.pendingItemId === item.id}
-      {...(action.icon ? { icon: action.icon } : {})}
-      onClick={() => action.onAction(item)}
-    >
-      {action.label}
-    </Button>
+  // Inert explanatory text in the button's place (bucket 2's `groupNote`,
+  // or an action's `blockedNote` for one row).
+  const note = (content: ReactNode) => (
+    <span className="mx-3 shrink-0 text-foreground-muted text-xs">
+      {content}
+    </span>
   )
+
+  const actionButton = (item: PantryItem, action: ItemSearchTailAction) => {
+    const blocked = action.blockedNote?.(item)
+    if (blocked) return note(blocked)
+    return (
+      <Button
+        size="sm"
+        variant="neutral-outline"
+        className="mx-2 shrink-0"
+        // Every row's button carries the same visible label, so the accessible
+        // name has to name the row too — otherwise the whole section is a pile
+        // of identically-named buttons to a screen reader and to a role query.
+        aria-label={t('items.searchTail.rowAction', {
+          action: action.label,
+          name: item.name,
+        })}
+        disabled={!!action.pendingItemId}
+        isLoading={action.pendingItemId === item.id}
+        {...(action.icon ? { icon: action.icon } : {})}
+        onClick={() => action.onAction(item)}
+      >
+        {action.label}
+      </Button>
+    )
+  }
 
   const renderRow = (item: PantryItem, trailing: ReactNode) => (
     <div key={item.id} className="flex items-center bg-background-surface">
@@ -141,15 +160,11 @@ export function ItemSearchTail(props: ItemSearchTailProps) {
           {inLocationItems.map((item) =>
             renderRow(
               item,
-              groupAction ? (
-                actionButton(item, groupAction)
-              ) : (
-                // Not actionable — but never silent. The note says which other
-                // group already holds the item, so the row explains itself.
-                <span className="mx-3 shrink-0 text-foreground-muted text-xs">
-                  {groupNote?.(item)}
-                </span>
-              ),
+              groupAction
+                ? actionButton(item, groupAction)
+                : // Not actionable — but never silent. The note says which other
+                  // group already holds the item, so the row explains itself.
+                  note(groupNote?.(item)),
             ),
           )}
         </>

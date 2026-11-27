@@ -274,7 +274,7 @@ interface CheckoutArgs {
   items: { cartItemId: string; quantity: number }[]
   note?: string
   logKey?: string
-  logParams?: Record<string, string>
+  logParams?: Record<string, unknown>
 }
 
 /**

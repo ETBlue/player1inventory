@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { elementAt } from '@/test/narrow'
@@ -1362,10 +1362,14 @@ describe('ItemForm — stock tab progress row previews live form state', () => {
 // The unit is no longer a bordered `UnitBadge` — it is a trailing bare word
 // inside the quantity's own span (the badge's `opacity-75` failed WCAG AA;
 // see docs/global/bugs/2026-08-29-bug-unit-badge-contrast.md) — so the guard
-// now asserts the label ENDS in the honest "unit" fallback rather than
-// trailing off after the numbers.
+// now asserts the label ENDS in a unit word rather than trailing off after the
+// numbers.
+//
+// Since 2026-11-26 that word is the default package unit, "pack", the word the
+// item's card shows (`item.packageUnit || DEFAULT_PACKAGE_UNIT`), not the
+// literal "unit" (owner decision 2026-11-26).
 describe('ItemForm — stock tab unit falls back honestly when unconfigured', () => {
-  it('renders the unit as "unit", not nothing, when packageUnit and measurementUnit are both unset', () => {
+  it('user sees the unit as "pack", the same word as the card, when packageUnit and measurementUnit are both unset', () => {
     render(
       <ItemForm
         initialValues={{
@@ -1383,7 +1387,7 @@ describe('ItemForm — stock tab unit falls back honestly when unconfigured', ()
       />,
     )
 
-    expect(screen.getByText('0 / 4 unit')).toBeInTheDocument()
+    expect(screen.getByText('0 / 4 pack')).toBeInTheDocument()
   })
 })
 
@@ -1425,7 +1429,9 @@ describe('ItemForm — readOnly (households H5 task F.5)', () => {
       expect(field, id).not.toBeDisabled()
     }
     // And the switch and the select, which cannot be readOnly, are disabled
-    expect(screen.getByRole('switch')).toBeDisabled()
+    // Both switches: Consumable and Track in measurement
+    expect(screen.getAllByRole('switch')).toHaveLength(2)
+    for (const sw of screen.getAllByRole('switch')) expect(sw).toBeDisabled()
     expect(screen.getByRole('combobox')).toBeDisabled()
     // And there is no Save button
     expect(screen.queryByRole('button', { name: /save/i })).toBeNull()
@@ -1440,7 +1446,9 @@ describe('ItemForm — readOnly (households H5 task F.5)', () => {
       />,
     )
     expect(document.getElementById('name')).not.toHaveAttribute('readonly')
-    expect(screen.getByRole('switch')).not.toBeDisabled()
+    expect(screen.getAllByRole('switch')).toHaveLength(2)
+    for (const sw of screen.getAllByRole('switch'))
+      expect(sw).not.toBeDisabled()
     expect(screen.getByRole('button', { name: /save/i })).toBeInTheDocument()
   })
 })
@@ -1522,5 +1530,356 @@ describe('ItemForm — readOnly stock section (households H5 task F.6)', () => {
       expect(screen.getByRole('button', { name }), String(name)).toBeEnabled()
     }
     expect(screen.getByRole('button', { name: /save/i })).toBeInTheDocument()
+  })
+})
+
+// Owner decision 2026-11-25: on the item page Save is in the top bar. The
+// page passes an element as `submitSlot`, and the form renders its Save there
+// with a portal, linked back to the form by the HTML `form` attribute.
+describe('ItemForm — Save in a slot outside the form (submitSlot)', () => {
+  function makeSlot() {
+    const slot = document.createElement('div')
+    slot.setAttribute('data-testid', 'slot')
+    document.body.appendChild(slot)
+    return slot
+  }
+
+  it('renders Save in the slot, not in the form, linked by the form attribute', () => {
+    // Given a slot outside the form
+    const slot = makeSlot()
+    const { container } = render(
+      <ItemForm
+        onSubmit={vi.fn()}
+        initialValues={{ name: 'Milk' }}
+        onDirtyChange={vi.fn()}
+        submitSlot={slot}
+      />,
+    )
+
+    // Then Save is in the slot and nowhere in the form
+    const save = screen.getByRole('button', { name: /^save$/i })
+    expect(slot).toContainElement(save)
+    const form = container.querySelector('form')
+    if (!form) throw new Error('expected the form to render')
+    expect(form).not.toContainElement(save)
+    // And it submits that form
+    expect(form.id).toBeTruthy()
+    expect(save).toHaveAttribute('form', form.id)
+    expect(save).toHaveAttribute('type', 'submit')
+    slot.remove()
+  })
+
+  it('user can submit the form with the Save in the slot once it is dirty', async () => {
+    const user = userEvent.setup()
+    // Given an edit form with its Save in a slot
+    const slot = makeSlot()
+    const onSubmit = submitSpy()
+    render(
+      <ItemForm
+        onSubmit={onSubmit}
+        initialValues={{ name: 'Milk' }}
+        onDirtyChange={vi.fn()}
+        submitSlot={slot}
+      />,
+    )
+    const save = screen.getByRole('button', { name: /^save$/i })
+
+    // Save is disabled while the form is clean
+    expect(save).toBeDisabled()
+
+    // When the user changes the name and presses Save
+    const name = screen.getByRole('textbox', { name: /^name/i })
+    await user.clear(name)
+    await user.type(name, 'Oat milk')
+    expect(save).toBeEnabled()
+    await user.click(save)
+
+    // Then the form submits the new values
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    expect(elementAt(elementAt(onSubmit.mock.calls, 0), 0).name).toBe(
+      'Oat milk',
+    )
+    slot.remove()
+  })
+
+  it('shows Save disabled while saving', () => {
+    const slot = makeSlot()
+    render(
+      <ItemForm
+        onSubmit={vi.fn()}
+        initialValues={{ name: 'Milk' }}
+        submitSlot={slot}
+        isPending
+      />,
+    )
+    expect(within(slot).getByRole('button', { name: /^save$/i })).toBeDisabled()
+    slot.remove()
+  })
+
+  it('shows no Save when read only, in the slot or in the form', () => {
+    const slot = makeSlot()
+    render(
+      <ItemForm
+        onSubmit={vi.fn()}
+        initialValues={{ name: 'Milk' }}
+        submitSlot={slot}
+        readOnly
+      />,
+    )
+    // Present first: the form rendered
+    expect(screen.getByRole('textbox', { name: /^name/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^save$/i })).toBeNull()
+    slot.remove()
+  })
+
+  it('shows no Save while the slot is not there yet (null)', () => {
+    render(
+      <ItemForm
+        onSubmit={vi.fn()}
+        initialValues={{ name: 'Milk' }}
+        submitSlot={null}
+      />,
+    )
+    expect(screen.getByRole('textbox', { name: /^name/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^save$/i })).toBeNull()
+  })
+})
+
+describe('ItemForm — the Consumable switch', () => {
+  const flour = {
+    name: 'Flour',
+    packageUnit: 'pack',
+    measurementUnit: 'g',
+    amountPerPackage: 500,
+    targetUnit: 'measurement' as const,
+    targetQuantity: 2000,
+    refillThreshold: 500,
+    packedQuantity: 2,
+    unpackedQuantity: 250,
+    consumeAmount: 100,
+    expirationMode: 'days from purchase' as const,
+    estimatedDueDays: 30,
+    expirationThreshold: 3,
+  }
+
+  it('is on for a new item', () => {
+    render(<ItemForm onSubmit={vi.fn()} />)
+    expect(screen.getByRole('switch', { name: /^consumable$/i })).toBeChecked()
+  })
+
+  it('user turning it off hides measurement, opened packs and expiration, and turning it on shows them again with their values', async () => {
+    const user = userEvent.setup()
+    render(
+      <ItemForm
+        onSubmit={vi.fn()}
+        sections={['info', 'stock']}
+        initialValues={{ ...flour, targetUnit: 'package' }}
+      />,
+    )
+    const consumable = screen.getByRole('switch', { name: /^consumable$/i })
+
+    // Before: every field shows
+    expect(screen.getByLabelText(/measurement unit/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/^unpacked/i)).toBeInTheDocument()
+    expect(
+      screen.getByLabelText(/expiration/i, { selector: 'button' }),
+    ).toBeInTheDocument()
+
+    // When the user turns Consumable off
+    await user.click(consumable)
+
+    // Then the measurement settings, the opened packs (Unpacked, Unpack,
+    // Pack) and the expiration settings are hidden
+    expect(
+      screen.queryByRole('switch', { name: /track in measurement/i }),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/measurement unit/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/^unpacked/i)).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /^unpack$/i }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /^pack$/i }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByLabelText(/expiration/i, { selector: 'button' }),
+    ).not.toBeInTheDocument()
+    // And the one stock field is now "Amount", not "Packed"
+    expect(screen.getByLabelText(/^amount \(/i)).toBeInTheDocument()
+    expect(screen.queryByLabelText(/^packed/i)).not.toBeInTheDocument()
+
+    // When the user turns it on again
+    await user.click(consumable)
+
+    // Then the fields show again with their old values
+    expect(screen.getByLabelText(/measurement unit/i)).toHaveValue('g')
+    expect(screen.getByLabelText(/^expires in/i)).toHaveValue(30)
+  })
+
+  it('user turning it off swaps the stock bar for squares before saving', async () => {
+    const user = userEvent.setup()
+    render(
+      <ItemForm
+        onSubmit={vi.fn()}
+        sections={['info', 'stock']}
+        initialValues={{
+          ...flour,
+          targetUnit: 'package',
+          targetQuantity: 4,
+          packedQuantity: 2,
+          unpackedQuantity: 0,
+        }}
+      />,
+    )
+
+    // Before: the progress bar, no squares
+    expect(screen.queryAllByTestId('count-square')).toHaveLength(0)
+
+    // When the user turns Consumable off
+    await user.click(screen.getByRole('switch', { name: /^consumable$/i }))
+
+    // Then the stock row draws one square per piece: 4 wanted, 2 filled
+    const squares = screen.getAllByTestId('count-square')
+    expect(squares).toHaveLength(4)
+    expect(squares.filter((s) => s.dataset.filled === 'true')).toHaveLength(2)
+  })
+
+  it('user turning it off keeps the hidden values in what is saved', async () => {
+    const user = userEvent.setup()
+    const onSubmit = submitSpy()
+    render(
+      <ItemForm
+        onSubmit={onSubmit}
+        onDirtyChange={vi.fn()}
+        initialValues={{ ...flour, targetUnit: 'package' }}
+      />,
+    )
+    await user.click(screen.getByRole('switch', { name: /^consumable$/i }))
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    const values = elementAt(onSubmit.mock.calls, 0)[0]
+    expect(values.consumable).toBe(false)
+    expect(values.measurementUnit).toBe('g')
+    expect(values.amountPerPackage).toBe(500)
+    expect(values.expirationMode).toBe('days from purchase')
+    expect(values.estimatedDueDays).toBe(30)
+  })
+
+  it('user turning it off on an item tracked in grams moves it to packages and converts the amounts', async () => {
+    const user = userEvent.setup()
+    const onSubmit = submitSpy()
+    render(
+      <ItemForm
+        onSubmit={onSubmit}
+        onDirtyChange={vi.fn()}
+        sections={['info', 'stock']}
+        initialValues={flour}
+      />,
+    )
+
+    // When the user turns Consumable off
+    await user.click(screen.getByRole('switch', { name: /^consumable$/i }))
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    // Then the item tracks in packages, and the amounts held in grams are
+    // converted: 2000 g -> 4 packs, 500 g -> 1, 250 g -> 0.5, 100 g -> 0.2
+    const values = elementAt(onSubmit.mock.calls, 0)[0]
+    expect(values.consumable).toBe(false)
+    expect(values.targetUnit).toBe('package')
+    expect(values.targetQuantity).toBe(4)
+    expect(values.refillThreshold).toBe(1)
+    expect(values.unpackedQuantity).toBe(0.5)
+    expect(values.consumeAmount).toBe(0.2)
+    // The measurement unit itself is kept
+    expect(values.measurementUnit).toBe('g')
+  })
+
+  it('a stored false starts the switch off, and the form is not dirty', () => {
+    const onDirtyChange = vi.fn()
+    render(
+      <ItemForm
+        onSubmit={vi.fn()}
+        onDirtyChange={onDirtyChange}
+        initialValues={{ ...flour, targetUnit: 'package', consumable: false }}
+      />,
+    )
+    expect(
+      screen.getByRole('switch', { name: /^consumable$/i }),
+    ).not.toBeChecked()
+    expect(onDirtyChange).not.toHaveBeenCalledWith(true)
+  })
+})
+
+describe('ItemForm — the Amount field of a non-consumable item', () => {
+  // Cups, already non-consumable, tracked in packages. Stocked 3 of 5,
+  // refill below 2.
+  const cups = {
+    name: 'Cups',
+    packageUnit: 'cup',
+    measurementUnit: 'ml',
+    amountPerPackage: 250,
+    targetUnit: 'package' as const,
+    targetQuantity: 5,
+    refillThreshold: 2,
+    packedQuantity: 3,
+    unpackedQuantity: 0,
+    consumeAmount: 1,
+    consumable: false,
+  }
+
+  it('user sees one "Amount" field in the package unit, not Packed and Unpacked', () => {
+    render(
+      <ItemForm onSubmit={vi.fn()} sections={['stock']} initialValues={cups} />,
+    )
+
+    // One field, "Amount (cup)", holding the whole pieces
+    expect(screen.getByLabelText(/^amount \(/i)).toHaveValue(3)
+    expect(screen.queryByLabelText(/^packed/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/^unpacked/i)).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /increase amount/i }),
+    ).toBeInTheDocument()
+    // And the stock row says the same as the card: "3 / 5 cup"
+    expect(screen.getByText('3 / 5 cup')).toBeInTheDocument()
+  })
+
+  it('user sees Target and Refill in whole pieces of the package unit, not the measurement unit', async () => {
+    const user = userEvent.setup()
+    // An item still tracked in ml (only a hand-edited file can give this):
+    // the labels must still say "cup", the unit the person counts in.
+    render(
+      <ItemForm
+        onSubmit={vi.fn()}
+        sections={['stock']}
+        initialValues={{ ...cups, targetUnit: 'measurement' }}
+      />,
+    )
+    expect(screen.getByLabelText(/^target quantity/i)).toBeInTheDocument()
+    expect(
+      screen.getByText((_, el) => el?.textContent === 'Target Quantity (cup)'),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        (_, el) => el?.textContent === 'Refill When Below (cup)',
+      ),
+    ).toBeInTheDocument()
+
+    // And the steppers move by one whole piece
+    const target = screen.getByLabelText(/^target quantity/i)
+    expect(target).toHaveAttribute('step', '1')
+    await user.click(screen.getByRole('button', { name: /increase refill/i }))
+    expect(screen.getByLabelText(/^refill when below/i)).toHaveValue(3)
+  })
+
+  it('user typing a fraction into Target gets whole pieces, rounded up', async () => {
+    const user = userEvent.setup()
+    render(
+      <ItemForm onSubmit={vi.fn()} sections={['stock']} initialValues={cups} />,
+    )
+    const target = screen.getByLabelText(/^target quantity/i)
+    await user.clear(target)
+    await user.type(target, '2.4')
+    await user.tab()
+    expect(target).toHaveValue(3)
   })
 })

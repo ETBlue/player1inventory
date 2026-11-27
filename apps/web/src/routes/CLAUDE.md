@@ -178,7 +178,7 @@ groupBy=recipe, id present → RecipeDetailView  (items in one recipe)
   | Shelf type | Bucket 2 | Why |
   | --- | --- | --- |
   | `selection` | `groupAction` — `t('items.searchTail.addToShelf')`, appends the item to `shelf.itemIds` | the only shelf type with a real "membership" to grant |
-  | `filter` (satisfiable) | `groupAction` — `t('items.searchTail.addToShelf')`; the press always opens `ShelfFilterPicksDialog` for the user to pick per axis (one pick per tag type present in `filterConfig.tagIds`, one vendor, one recipe), even when every unmet axis offers exactly one option — that axis is pre-selected by `defaultPicksFor` so Confirm is enabled immediately, but the dialog itself is never skipped (designer ruling, 2026-08-28: it is a double-confirm step, reversing PR D's original direct-apply bypass) | PR D — a plain button press alone carries no criteria to satisfy `matchesFilterConfig`'s AND-across-axes rule (OR within a tag type, AND between types/vendors/recipes), so the picker supplies them; **nothing else about the wiring changes** |
+  | `filter` (satisfiable) | `groupAction` — `t('items.searchTail.addToShelf')`; the press always opens `ShelfFilterPicksDialog` for the user to pick per axis (one pick per tag type present in `filterConfig.tagIds` — the named tags and, since 2026-11-25, their child tags, indented — one vendor, one recipe), even when every unmet axis offers exactly one option — that axis is pre-selected by `defaultPicksFor` so Confirm is enabled immediately, but the dialog itself is never skipped (designer ruling, 2026-08-28: it is a double-confirm step, reversing PR D's original direct-apply bypass) | PR D — a plain button press alone carries no criteria to satisfy `matchesFilterConfig`'s AND-across-axes rule (OR within a tag type, AND between types/vendors/recipes), so the picker supplies them; **nothing else about the wiring changes** |
   | `filter` (unsatisfiable) | `groupNote` — `t('items.searchTail.notMatchingShelf')`, an inert line | `isFilterConfigSatisfiable` is false: a vendor or recipe axis in `filterConfig` names only a deleted entity, so no press could ever satisfy it — a tag axis is never unsatisfiable, since `matchesFilterConfig`/`deriveFilterAxes` silently drop dangling tag ids rather than treat them as a constraint |
   | `system` / `unsorted` (pseudo-shelf) | neither | no add path ever existed for these (`handleAddToSelectionShelf` used to early-return), and inventing one is out of scope |
 
@@ -238,7 +238,10 @@ const searchedItems = items.filter((item) =>
 // Branch B: all URL-param filters, no search
 const tagFiltered = filterItems(items, filterState)
 const vendorFiltered = filterItemsByVendors(tagFiltered, selectedVendorIds)
-const filteredItems = filterItemsByRecipes(vendorFiltered, selectedRecipeIds, recipes)
+const filteredItems = filterItemsByConsumable(
+  filterItemsByRecipes(vendorFiltered, selectedRecipeIds, recipes),
+  consumableFilter, // since consumable items PR 2: 'all' keeps every item
+)
 
 // Converge at sort — `search.trim()` guards whitespace-only input
 const sortedItems = sortItems(search.trim() ? searchedItems : filteredItems, ...)
@@ -252,7 +255,8 @@ const sortedItems = sortItems(search.trim() ? searchedItems : filteredItems, ...
 - `activeTagIds` — badge renders bold `x` variant instead of tint `x-tint` variant; defaults to tint when not provided
 
 **`ItemFilters` dropdown behavior:**
-- Render order: vendor dropdown → recipe dropdown → tag type dropdowns → Edit link
+- Render order: Consumable dropdown → vendor dropdown → recipe dropdown → tag type dropdowns → Edit link
+- The Consumable dropdown (`ConsumableFilterDropdown`, All / Consumable / Not consumable) shows on every list that shows `ItemFilters`: pantry, shelf page, cart page, the four settings item lists. It is a URL filter like the others (`f_consumable`), and a choice other than All counts as an active filter. Each page applies `filterItemsByConsumable` LAST in Branch B; `ItemListToolbar`'s "Showing N of M" count does the same
 - Tag badges inside tag type dropdowns: unselected tags render with `${color}-tint` variant (light), selected tags render with `${color}` variant (solid)
 - Vendor and recipe dropdowns include a "Manage X" link at the bottom (always visible, with Pencil icon): "Manage vendors" (`settings.vendors.manage`) → `/settings/household/vendors` and "Manage recipes" (`settings.recipes.manage`) → `/settings/household/recipes`
 
@@ -313,6 +317,7 @@ Row 1 (single combined toolbar):
 
 Row 2 (ItemListToolbar):
 - Same filter/sort/search as other item list pages
+- The sort starts at **Stock, ascending**, so low stock is on top: items below their refill level, then items at it, then the rest (`useSortFilter('shopping', { defaultSortBy: 'stock' })`, since 2026-11-24). Every other item list starts at Name, and the pantry list at Expiring. A choice saved in `localStorage['shopping-sort-prefs']` still wins, so a person who already picked a sort keeps it
 - No vendor `leading` prop — items are already scoped to this vendor
 
 **Item scoping:**
@@ -341,9 +346,26 @@ Row 2 (ItemListToolbar):
 
 **Pinned items:** Same behavior as before — quantity 0, stay in cart after checkout, move to the same vendor's new cart.
 
-**Checkout:** `logKey` is always `'shopping.log.purchasedAt'`; `logParams` is `{ vendor: vendor?.name ?? t('shopping.noVendor') }`. After checkout → navigate to `/shopping`.
+**The amount of a row is set in a dialog** (since 2026-11-25, `docs/features/shopping/2026-11-25-cart-amount-dialog-design.md`). Before, each `−` or `+` press sent one request, so 1 to 10 cost 9 round trips.
 
-**Cloud checkout sends what the screen showed (households H3b task B.5).** The page sends every row of the cart being bought (`isBeingBought`), as `{ cartItemId, quantity }`, and no stock total. A cart is shared at its location, so a co-member may change it after this screen loaded; the server then refuses with `CART_CHANGED` and writes nothing. `useCheckout` reloads the cart's rows, and the page closes the dialog and shows the toast `shopping.cartChanged` ("This cart changed. Please check and try again."). Any other failure keeps the dialog open and shows `common.saveFailed` (since 2026-11-19; before, it showed nothing). Abandon, create-from-search, and checking, unchecking or changing the amount of a row show the same toast when the write fails (`docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md`). See `hooks/CLAUDE.md`, `useCheckout()`.
+| Action | What happens |
+|---|---|
+| press the amount button of a row in the cart (it shows only the number, `10`; the unit is in its accessible name) | `CartAmountDialog` opens in `edit` mode with the row's amount. Save sends ONE `updateCartItem(id, amount)` |
+| tick a row not in the cart | the same dialog opens in `add` mode, with `suggestedCartAmount(item)` (`lib/quantityUtils.ts`). Nothing is written yet. Save sends ONE `addToCart(cartId, itemId, amount)`; Cancel or Escape adds nothing and the row stays unticked |
+| untick a row in the cart | `removeFromCart` at once, as before (no dialog) |
+
+- **The checkbox and the amount are separate** (owner decision Q4). The checkbox means "in the cart"; the amount means "how many to buy now". Amount 0 is allowed in both modes: the row stays in the cart and is not bought (`isBeingBought` is `quantity > 0`). The dialog shows a note at 0 (`shopping.amountDialog.zeroNote`). `addToCart` with 0 is allowed too: it writes a pinned row. Neither the local operation nor the cloud resolver checks the amount, so 0 always worked; the field refuses a negative or fractional number.
+- **The suggested amount is in PACKS.** The card shows stock and target in the item's tracking unit (`getCurrentQuantity`, `targetQuantity`, the measurement unit for a measurement item), and the dialog's context line shows the same numbers. A cart amount counts packages, so `suggestedCartAmount` first turns both into packs with `getItemPackUnits`, then takes `max(1, ceil(target − stock))`. A measurement item with no `amountPerPackage` has a pack target of 0, so it gets 1. The difference is rounded to 6 places before `ceil`, because `2.1 / 0.3` is `7.000000000000001`.
+- **A failed save shows in the dialog** (`common.saveFailed`, `role="alert"`), and the dialog stays open with the number. No toast. The page closes the dialog only when the write resolves.
+- **A location viewer** sees the amount button disabled, with the view-only note as its `aria-describedby`, the same as the checkbox. The checkbox is disabled too, so the `add` dialog cannot open.
+- **A row added by someone else while the add dialog is open:** Save still calls `addToCart`, which ADDS the amount to theirs (an upsert with `increment`). Known, not changed.
+- The row stays the same object while the dialog is open: `amountDialog` state holds the item id, the mode and the amount it opened with, and the dialog is mounted only while open, so a live refetch does not reset what the person typed.
+- The cooking page and the recipe items tab keep their `− n +` control. See `ItemCard`'s `onAmountEdit` in `components/CLAUDE.md`.
+- Tests: `shopping/$vendorId.test.tsx` (*cart amount dialog*, local), `shopping/amountDialog.cloud.test.tsx` (cloud, one mutation per Save), `shopping/saveFailed.cloud.test.tsx`, `locationViewer.test.tsx`; E2E in `e2e/tests/shopping.spec.ts` (*cart amount dialog*, local and cloud, with axe scans of the dialog in light and dark).
+
+**Checkout:** `logKey` is `'purchase'` (`PURCHASE_LOG_KEY`); `logParams` is `{ vendorId, vendorName }` (`PurchaseLogParams`), both `null` for the no-vendor cart. No `note` (since 2026-11-25, inventory log layout; until then `logKey` was `'shopping.log.purchasedAt'` with a translated `note`). After checkout → navigate to `/shopping`.
+
+**Cloud checkout sends what the screen showed (households H3b task B.5).** The page sends every row of the cart being bought (`isBeingBought`), as `{ cartItemId, quantity }`, and no stock total. A cart is shared at its location, so a co-member may change it after this screen loaded; the server then refuses with `CART_CHANGED` and writes nothing. `useCheckout` reloads the cart's rows, and the page closes the dialog and shows the toast `shopping.cartChanged` ("This cart changed. Please check and try again."). Any other failure keeps the dialog open and shows `common.saveFailed` (since 2026-11-19; before, it showed nothing). Abandon, create-from-search, and unchecking a row show the same toast when the write fails (a failed amount save, from ticking or from the amount button, shows in the amount dialog instead, since 2026-11-25) (`docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md`). See `hooks/CLAUDE.md`, `useCheckout()`.
 
 **Abandon:** After abandoning → navigate to `/shopping`.
 
@@ -414,6 +436,8 @@ Row 3:            [A / T here · N empty · N low stock]
 
 **Consumption calculation:** `totalByItemId[itemId] = servings × sessionAmounts[recipeId][itemId]` for each checked item with amount > 0, summed across all checked recipes.
 
+**Only consumable items (owner decision 2026-11-26).** Cooking is only for consumable items. The page reads every recipe through `cookingRecipe(recipe, nonConsumableItemIds(items))` (`lib/recipeConsumables.ts`), in ONE `useMemo` at the top of `CookingPage` (`allRecipes` is the raw list, `recipes` the filtered one). So a non-consumable item is never listed, never counted ("A / T here", empty, low stock, the sort by item count), never matched by search, and never sent to `consumeRecipes` (local or cloud). Since `feature/recipes-consumable-only` no write can make such a link and turning an item off deletes its links, so the filter is a safety net for old data; `consumeRecipes` refuses a non-consumable item in both modes (`NOT_CONSUMABLE`), and the Done dialog then shows `common.notConsumable`. A recipe whose only items are non-consumable reads "0 / 0 here", is disabled and sinks below the divider. `totalByItemId` also requires each item to be in the recipe's current filtered items, so an item that turns non-consumable while the page is open is not consumed even when it was already checked. Do not add a second filter for this rule elsewhere on the page. The pantry recipe group view (`RecipeGroupView`) and the recipe page (`RecipeDetailView`) read recipes through the same two helpers. Tests: the `non-consumable items` describe in `cooking.test.tsx`, one cloud test in `cooking.cloud.test.tsx` (the mutation payload), E2E in `e2e/tests/consumable-items.spec.ts`. Design: `docs/features/items/2026-11-26-non-consumable-amount-design.md`, *Cooking is only for consumable items*.
+
 **Unavailable items (active-location scoping, PR D):** Cooking reads `useItems()` (the full catalog joined with active-location stock). A recipe item **not stocked in the active location** has `stockId === undefined` and is treated as **unavailable**: rendered greyed (`opacity-50`) with a "Not stocked in this location" note (`cooking.recipe.unavailable`), its checkbox disabled (`ItemCard disabled`), excluded from the recipe checkbox's auto-check / tri-state, and excluded from `totalByItemId` so it is never consumed. The set of available item ids is `availableItemIds`; `isItemAvailable(itemId)` gates `handleToggleItem`, `getDefaultCheckedItems`, and the toggle-all logic.
 
 **Fully unavailable recipes are disabled.** When `availableRecipeItems.length === 0` (nothing in the recipe is stocked in the active location) the recipe `Checkbox` is `disabled` and the card is dimmed `opacity-80`, matching how `ItemCard` dims an inactive item. Before this the checkbox looked enabled but was inert — `handleToggleRecipeCheckbox` computed an empty `effectiveItemIds` set and did nothing. The chevron and the name link stay live so the user can still open the recipe and see *why* it is unavailable, and the checkbox's `aria-describedby` gives non-visual users the same reason (see Row 3 above). A recipe with no items at all falls into the same branch, which is correct: it has nothing to consume either.
@@ -445,14 +469,14 @@ Row 3:            [A / T here · N empty · N low stock]
 **State** (in `CookingControlBar`):
 - `searchVisible: boolean` — whether the search input row is visible; initialized from `!!q`
 
-**Cloud cooking sends the amount used, not final numbers (households H3b task B.6).** `handleConfirmDone` sends one `{ itemId, delta, note, logKey, logParams }` per item, where `delta` is minus the amount used (the inventory log's signed change, the same in both modes). It no longer computes `packedQuantity`, `unpackedQuantity` or the log `quantity`. The cloud server reads the stock row at the cook's location, locks it (`SELECT … FOR UPDATE`), applies the shared `consumeItem` and writes the log total with `getPackedTotal`, all in one transaction. Before B.6 two people cooking the same item from the same screen sent the same final numbers, and one use was lost. Local mode computes the same numbers as before, now inside `useConsumeRecipes` from the `localStock` the page passes (see `hooks/CLAUDE.md`). Any failure shows one toast, `cooking.consumeFailed`, and the dialog stays open. Before B.6 a failure showed nothing.
+**Cloud cooking sends the amount used, not final numbers (households H3b task B.6).** `handleConfirmDone` sends one `{ itemId, delta, logKey, logParams }` per item (since 2026-11-25 `logKey: 'cooking'` and `logParams: { recipes: [{ id, name }] }`, and no `note`; see `i18n/CLAUDE.md`), where `delta` is minus the amount used (the inventory log's signed change, the same in both modes). It no longer computes `packedQuantity`, `unpackedQuantity` or the log `quantity`. The cloud server reads the stock row at the cook's location, locks it (`SELECT … FOR UPDATE`), applies the shared `consumeItem` and writes the log total with `getPackedTotal`, all in one transaction. Before B.6 two people cooking the same item from the same screen sent the same final numbers, and one use was lost. Local mode computes the same numbers as before, now inside `useConsumeRecipes` from the `localStock` the page passes (see `hooks/CLAUDE.md`). Any failure shows one toast, `cooking.consumeFailed`, and the dialog stays open. Before B.6 a failure showed nothing. **In cloud the page shows the new quantities right after Done** (issue #404, fixed 2026-11-24): `useConsumeRecipes` reads `PantryData` (for the cook's location) and `GetRecipes` again before it resolves. Until then the item cards kept the old amounts until the page mounted again, because the mutation returns no stock and the live `STOCK` event never reaches the tab that made the change. See `hooks/CLAUDE.md`.
 
 **`lastCookedAt`:** When Done is confirmed, `lastCookedAt` is recorded on each Recipe that had at least one item checked. This timestamp drives the `recent` sort order.
 
 **Files:**
 - `src/routes/cooking.tsx` — main page
 - `src/routes/cooking.test.tsx` — integration tests
-- `src/routes/cooking.stories.tsx` — Storybook stories (Default, WithRecipes, WithCheckedRecipe, WithExpandedRecipe, WithActiveToolbar, WithSearch, SortByRecent, SortByCount, StockStatusHealthy, StockStatusPartial, StockStatusUnavailable, NotStockedHereSplit)
+- `src/routes/cooking.stories.tsx` — Storybook stories (Default, WithRecipes, WithCheckedRecipe, WithExpandedRecipe, NonConsumableIgnored, WithActiveToolbar, WithSearch, SortByRecent, SortByCount, StockStatusHealthy, StockStatusPartial, StockStatusUnavailable, NotStockedHereSplit)
 - `src/components/recipe/CookingControlBar/index.tsx` — second-row toolbar component
 
 ### Join Page (`/join/$token`, households H5b task G.7)

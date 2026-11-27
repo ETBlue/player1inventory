@@ -278,6 +278,11 @@ test.describe('two people in one household', () => {
     // When OWNER adds Milk to the cart in OWNER's browser
     await owner.page.goto(`/shopping/${seed.vendorId}`)
     await owner.page.getByRole('checkbox', { name: 'Add Shared Milk' }).click()
+    // Ticking asks for the amount first (cart amount dialog); Save adds it
+    await owner.page
+      .getByRole('dialog')
+      .getByRole('button', { name: 'Save' })
+      .click()
     await expect(
       owner.page.getByRole('checkbox', { name: 'Remove Shared Milk' }),
     ).toBeChecked()

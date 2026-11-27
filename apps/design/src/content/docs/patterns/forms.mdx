@@ -2,4 +2,57 @@
 title: Forms
 ---
 
-TODO: Add content.
+Two rules hold for every form in the app: when **Save** can be pressed, and what
+the **unsaved changes** dialog offers when the user leaves a form with edits.
+
+## When Save can be pressed
+
+Save (the submit button) is **disabled** while any of these is true:
+
+| Case | Why |
+|------|-----|
+| A field has an error | The error shows next to the field, so the user sees what to fix. Save waits until it is fixed. |
+| Nothing changed (edit forms only) | There is nothing to save. A create form has no "unchanged" state. |
+| A save is running | The button shows a spinner. A second press cannot send a second save. |
+
+Show the field error as text under the field (the `error` prop of `Input`), not
+as a toast. A toast is for a save that the server or the database refused.
+
+```tsx
+<Button
+  type="submit"
+  disabled={!!nameError || !isDirty || isPending}
+  isLoading={isPending}
+>
+  {t('common.save')}
+</Button>
+```
+
+## The unsaved changes dialog
+
+When the user leaves a form that has edits (a tab, Back, or another location's
+page), the app asks first. The dialog has three buttons, in this order:
+
+| Button | Variant | What it does |
+|--------|---------|--------------|
+| Cancel | `neutral-outline` | Closes the dialog. The user stays, and the edits stay. |
+| Discard | `destructive-outline` | Leaves without saving. The edits are lost. |
+| Save | `primary` | Saves, then goes where the user was going. |
+
+- **Save is the one solid button**, on the right. Discard is outline, because it
+  sits next to a solid button. It uses the destructive color, because it loses the
+  edits and cannot be undone.
+- **Save follows the first rule.** It is disabled while a field has an error or a
+  save is running.
+- **Save runs the same save as the page's own Save button.** It goes where the
+  user pressed, not to the place the page's own Save goes after a save.
+- **While the save runs**, Save shows a spinner, every button is disabled, and the
+  dialog stays open.
+- **If the save fails**, the usual error toast shows and the dialog stays open. The
+  user can try again, Discard, or Cancel.
+- **If the save needs to ask something first** (the item page's converted amounts
+  dialog), that dialog opens on top of this one. Confirm saves and then leaves.
+  Cancel closes only the top dialog, and this one shows again.
+
+In code, use the shared `UnsavedChangesDialog`
+(`apps/web/src/components/shared/UnsavedChangesDialog`). Do not build a new copy.

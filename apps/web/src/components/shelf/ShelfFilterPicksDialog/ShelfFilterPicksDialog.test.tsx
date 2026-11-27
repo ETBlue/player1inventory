@@ -9,35 +9,108 @@ const tagAxis: FilterAxis = {
   kind: 'tag',
   typeName: 'Category',
   options: [
-    { id: 'dairy', name: 'Dairy' },
-    { id: 'frozen', name: 'Frozen' },
+    { id: 'dairy', name: 'Dairy', depth: 0 },
+    { id: 'frozen', name: 'Frozen', depth: 0 },
   ],
 }
 const metAxis: FilterAxis = {
   key: 'tt-sto',
   kind: 'tag',
   typeName: 'Storage',
-  options: [{ id: 'fridge', name: 'Fridge' }],
+  options: [{ id: 'fridge', name: 'Fridge', depth: 0 }],
   metBy: 'fridge',
 }
 const vendorAxis: FilterAxis = {
   key: 'vendor',
   kind: 'vendor',
   options: [
-    { id: 'v1', name: 'Costco' },
-    { id: 'v2', name: '7-Eleven' },
+    { id: 'v1', name: 'Costco', depth: 0 },
+    { id: 'v2', name: '7-Eleven', depth: 0 },
   ],
 }
 const recipeAxis: FilterAxis = {
   key: 'recipe',
   kind: 'recipe',
   options: [
-    { id: 'r1', name: 'Pancakes' },
-    { id: 'r2', name: 'Waffles' },
+    { id: 'r1', name: 'Pancakes', depth: 0 },
+    { id: 'r2', name: 'Waffles', depth: 0 },
   ],
 }
 
+// A rule naming Dairy only: Dairy, then its child Milk, then Milk's child Oat Milk.
+const treeAxis: FilterAxis = {
+  key: 'tt-cat',
+  kind: 'tag',
+  typeName: 'Category',
+  options: [
+    { id: 'dairy', name: 'Dairy', depth: 0 },
+    { id: 'milk', name: 'Milk', depth: 1 },
+    { id: 'oat-milk', name: 'Oat Milk', depth: 2 },
+  ],
+}
+
+// The row that holds a radio: the radio's parent element.
+const rowOf = (name: string) =>
+  screen.getByRole('radio', { name }).parentElement as HTMLElement
+
 describe('ShelfFilterPicksDialog', () => {
+  it('user sees child tags indented under the tag the shelf rule names', () => {
+    render(
+      <ShelfFilterPicksDialog
+        open
+        itemName="Oat Milk"
+        shelfName="Dairy"
+        axes={[treeAxis]}
+        onConfirm={vi.fn()}
+        onOpenChange={vi.fn()}
+      />,
+    )
+    // 24px per level; the named tag is not indented
+    expect(rowOf('Dairy').style.marginLeft).toBe('')
+    expect(rowOf('Milk').style.marginLeft).toBe('24px')
+    expect(rowOf('Oat Milk').style.marginLeft).toBe('48px')
+  })
+
+  it('user sees the named tag picked when the dialog opens, even with child tags', () => {
+    render(
+      <ShelfFilterPicksDialog
+        open
+        itemName="Oat Milk"
+        shelfName="Dairy"
+        axes={[treeAxis]}
+        onConfirm={vi.fn()}
+        onOpenChange={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole('radio', { name: 'Dairy' })).toBeChecked()
+    expect(screen.getByRole('radio', { name: 'Milk' })).not.toBeChecked()
+    expect(screen.getByRole('button', { name: /add/i })).toBeEnabled()
+  })
+
+  it('user can pick a child tag, and Add sends that child tag', async () => {
+    // Given the dialog with Dairy picked by default
+    const onConfirm = vi.fn().mockResolvedValue(undefined)
+    render(
+      <ShelfFilterPicksDialog
+        open
+        itemName="Oat Milk"
+        shelfName="Dairy"
+        axes={[treeAxis]}
+        onConfirm={onConfirm}
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    // When the user picks the grandchild and presses Add
+    await userEvent.click(screen.getByRole('radio', { name: 'Oat Milk' }))
+    await userEvent.click(screen.getByRole('button', { name: /add/i }))
+
+    // Then only the grandchild's id is sent
+    await waitFor(() =>
+      expect(onConfirm).toHaveBeenCalledWith({ tagIds: ['oat-milk'] }),
+    )
+  })
+
   it('user cannot confirm until every open axis has a pick', async () => {
     // Given two open axes, neither picked
     render(
@@ -70,7 +143,7 @@ describe('ShelfFilterPicksDialog', () => {
     const single: FilterAxis = {
       key: 'vendor',
       kind: 'vendor',
-      options: [{ id: 'v1', name: 'Costco' }],
+      options: [{ id: 'v1', name: 'Costco', depth: 0 }],
     }
     render(
       <ShelfFilterPicksDialog
@@ -268,7 +341,7 @@ describe('ShelfFilterPicksDialog', () => {
       key: tagAxis.key,
       kind: 'tag',
       typeName: 'Category',
-      options: [{ id: 'canned', name: 'Canned' }],
+      options: [{ id: 'canned', name: 'Canned', depth: 0 }],
     }
     rerender(
       <ShelfFilterPicksDialog

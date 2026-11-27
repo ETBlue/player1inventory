@@ -1,0 +1,469 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import {
+  createMemoryHistory,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { db } from '@/db'
+import { createItem, createVendor } from '@/db/operations'
+import * as hooksModule from '@/hooks'
+import * as vendorsHooksModule from '@/hooks/useVendors'
+import { routeTree } from '@/routeTree.gen'
+import { watchUnhandledRejections } from '@/test/unhandledRejections'
+
+// `useUpdateItem` returns a UNION of its two data-mode branches: local mode's
+// TanStack `UseMutationResult`, and the cloud branch's hand-built
+// `{ mutate, mutateAsync, isPending }` (src/hooks/useItems.ts:1041). The stub
+// below builds the cloud member, which is the smaller of the two. The test
+// asserts on `isPending`. `mutate` is called by the badge click
+// (src/routes/items/$id/vendors.tsx:40) and its return value is
+// ignored there, so a resolved promise is enough.
+const pendingCloudUpdateItem = (): ReturnType<
+  typeof hooksModule.useUpdateItem
+> => ({
+  mutate: () => Promise.resolve(),
+  mutateAsync: () => Promise.resolve(undefined),
+  isPending: true,
+})
+
+const toastError = vi.fn()
+// The route tree renders sonner's `Toaster`, so the module stays real and
+// only `toast.error` is replaced.
+vi.mock('sonner', async (importOriginal) => {
+  const original = await importOriginal<typeof import('sonner')>()
+  return {
+    ...original,
+    toast: Object.assign(
+      (...a: Parameters<typeof original.toast>) => original.toast(...a),
+      original.toast,
+      {
+        error: (...args: unknown[]) => toastError(...args),
+      },
+    ),
+  }
+})
+
+describe('Vendors Tab', () => {
+  let queryClient: QueryClient
+
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.vendors.clear()
+    await db.inventoryLogs.clear()
+
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+  })
+
+  const renderVendorsTab = (itemId: string) => {
+    const history = createMemoryHistory({
+      initialEntries: [`/items/${itemId}/vendors`],
+    })
+    const router = createRouter({ routeTree, history })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+  }
+
+  it('user can see all vendors on the vendors tab', async () => {
+    // Given an item and two vendors
+    const item = await createItem({
+      name: 'Test Item',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+    await createVendor('Costco')
+    await createVendor("Trader Joe's")
+
+    renderVendorsTab(item.id)
+
+    // Then both vendor names appear as badges
+    await waitFor(() => {
+      expect(screen.getByText('Costco')).toBeInTheDocument()
+      expect(screen.getByText("Trader Joe's")).toBeInTheDocument()
+    })
+  })
+
+  it('user can see new vendor button when no vendors exist', async () => {
+    // Given an item and no vendors
+    const item = await createItem({
+      name: 'Test Item',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    renderVendorsTab(item.id)
+
+    // Then the new vendor button is shown
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /new vendor/i }),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it('user can see assigned vendors highlighted', async () => {
+    // Given a vendor assigned to an item
+    const vendor = await createVendor('Costco')
+    const item = await createItem({
+      name: 'Test Item',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+      vendorIds: [vendor.id],
+    })
+
+    renderVendorsTab(item.id)
+
+    // Then the assigned vendor badge shows an X icon (aria-label or role)
+    await waitFor(() => {
+      expect(screen.getByText('Costco')).toBeInTheDocument()
+    })
+    // Assigned badge contains an X icon (lucide X renders as svg)
+    const badge = screen
+      .getByText('Costco')
+      .closest('[class*="badge"], span, div')
+    expect(badge).toBeInTheDocument()
+  })
+
+  it('user can assign a vendor to an item', async () => {
+    // Given an item with no vendors and one available vendor
+    const vendor = await createVendor('Costco')
+    const item = await createItem({
+      name: 'Test Item',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    renderVendorsTab(item.id)
+    const user = userEvent.setup()
+
+    // When user clicks the vendor badge
+    await waitFor(() => {
+      expect(screen.getByText('Costco')).toBeInTheDocument()
+    })
+    await user.click(screen.getByText('Costco'))
+
+    // Then the item's vendorIds is updated in the database
+    await waitFor(async () => {
+      const updatedItem = await db.items.get(item.id)
+      expect(updatedItem?.vendorIds).toContain(vendor.id)
+    })
+  })
+
+  it('user can create a new vendor from the vendors tab', async () => {
+    // Given an item and no vendors
+    const item = await createItem({
+      name: 'Test Item',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    renderVendorsTab(item.id)
+    const user = userEvent.setup()
+
+    // When user clicks "New Vendor" and types a name
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /new vendor/i }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /new vendor/i }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+    await user.type(screen.getByLabelText(/name/i), 'Costco')
+    await user.click(screen.getByRole('button', { name: /add vendor/i }))
+
+    // Then the vendor is created and assigned to the item
+    await waitFor(async () => {
+      const vendors = await db.vendors.toArray()
+      const newVendor = vendors.find((v) => v.name === 'Costco')
+      expect(newVendor).toBeDefined()
+      const updatedItem = await db.items.get(item.id)
+      expect(updatedItem?.vendorIds).toContain(newVendor?.id)
+    })
+  })
+
+  it('vendor badge has aria-pressed reflecting assigned state', async () => {
+    // Given a vendor not assigned to the item
+    const vendor = await createVendor('Costco')
+    const item = await createItem({
+      name: 'Test Item',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+    })
+
+    renderVendorsTab(item.id)
+    const user = userEvent.setup()
+
+    // Then the unassigned badge has aria-pressed="false"
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: 'Costco', pressed: false }),
+      ).toBeInTheDocument()
+    })
+
+    // When user clicks to assign
+    await user.click(
+      screen.getByRole('button', { name: 'Costco', pressed: false }),
+    )
+
+    // Then the badge has aria-pressed="true"
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Costco/i, pressed: true }),
+      ).toBeInTheDocument()
+    })
+
+    // And the vendor is assigned in the database
+    await waitFor(async () => {
+      const updatedItem = await db.items.get(item.id)
+      expect(updatedItem?.vendorIds).toContain(vendor.id)
+    })
+  })
+
+  it('user can unassign a vendor from an item', async () => {
+    // Given an item with a vendor already assigned
+    const vendor = await createVendor('Costco')
+    const item = await createItem({
+      name: 'Test Item',
+      targetUnit: 'package',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      tagIds: [],
+      vendorIds: [vendor.id],
+    })
+
+    renderVendorsTab(item.id)
+    const user = userEvent.setup()
+
+    // When user clicks the assigned vendor badge
+    await waitFor(() => {
+      expect(screen.getByText('Costco')).toBeInTheDocument()
+    })
+    await user.click(screen.getByText('Costco'))
+
+    // Then the vendor is removed from the item's vendorIds
+    await waitFor(async () => {
+      const updatedItem = await db.items.get(item.id)
+      expect(updatedItem?.vendorIds ?? []).not.toContain(vendor.id)
+    })
+  })
+
+  describe('loading state', () => {
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    it('shows spinner on vendor badge while mutation is in flight', async () => {
+      // Given: useUpdateItem is mocked to stay pending indefinitely
+      vi.spyOn(hooksModule, 'useUpdateItem').mockReturnValue(
+        pendingCloudUpdateItem(),
+      )
+
+      await createVendor('Costco')
+      const item = await createItem({
+        name: 'Test Item',
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        tagIds: [],
+      })
+
+      renderVendorsTab(item.id)
+      const user = userEvent.setup()
+
+      // When the badge is visible and user clicks it
+      await waitFor(() => {
+        expect(
+          screen.getByRole('button', { name: 'Costco', pressed: false }),
+        ).toBeInTheDocument()
+      })
+      await user.click(
+        screen.getByRole('button', { name: 'Costco', pressed: false }),
+      )
+
+      // Then a spinner appears on the badge
+      await waitFor(() => {
+        const badge = screen.getByRole('button', { name: /Costco/i })
+        expect(badge.querySelector('.animate-spin')).not.toBeNull()
+      })
+    })
+  })
+  describe('when creating a vendor fails', () => {
+    afterEach(() => {
+      vi.restoreAllMocks()
+      toastError.mockReset()
+    })
+
+    it('user sees an error message when a new vendor cannot be created', async () => {
+      // Given the create is refused (a household manager who is only a
+      // viewer of the active location got FORBIDDEN here before H5's fix)
+      vi.spyOn(vendorsHooksModule, 'useCreateVendor').mockReturnValue({
+        mutate: () => Promise.resolve(),
+        mutateAsync: () => Promise.reject(new Error('refused')),
+        isPending: false,
+      } as unknown as ReturnType<typeof vendorsHooksModule.useCreateVendor>)
+      const item = await createItem({
+        name: 'Test Item',
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        tagIds: [],
+      })
+      renderVendorsTab(item.id)
+      const user = userEvent.setup()
+
+      // When the user adds a vendor named Lidl
+      await user.click(
+        await screen.findByRole('button', { name: /new vendor/i }),
+      )
+      await user.type(await screen.findByLabelText(/name/i), 'Lidl')
+      await user.click(screen.getByRole('button', { name: /add vendor/i }))
+
+      // Then a toast says it failed, and the dialog stays open
+      await waitFor(() =>
+        expect(toastError).toHaveBeenCalledWith(
+          'Could not add Lidl. Please try again.',
+        ),
+      )
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+  })
+
+  // A failed save (docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md).
+  // Before the fix a failed write showed nothing.
+  it('user sees a message when assigning a vendor fails', async () => {
+    const rejections = watchUnhandledRejections()
+    try {
+      // Given an item, a vendor, and a database that refuses the write
+      const item = await createItem({
+        name: 'Test Item',
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        tagIds: [],
+      })
+      await createVendor('Costco')
+      vi.spyOn(db.items, 'update').mockRejectedValueOnce(new Error('disk full'))
+      toastError.mockClear()
+      renderVendorsTab(item.id)
+      const user = userEvent.setup()
+
+      // When the user presses the vendor badge
+      await user.click(await screen.findByRole('button', { name: /costco/i }))
+
+      // Then a message says the change was not saved
+      await waitFor(() =>
+        expect(toastError).toHaveBeenCalledWith(
+          'Could not save the change. Please try again.',
+        ),
+      )
+      // And the badge is still unpressed and the item unchanged
+      expect(
+        screen.getByRole('button', { name: /costco/i, pressed: false }),
+      ).toBeInTheDocument()
+      expect((await db.items.get(item.id))?.vendorIds ?? []).toEqual([])
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    } finally {
+      rejections.stop()
+      vi.restoreAllMocks()
+    }
+  })
+
+  // A failed assign after a new vendor is created
+  // (docs/global/bugs/2026-11-19-bug-screens-ignore-save-errors.md). Before the
+  // fix the assign was a `mutate` with no `onError`, so nothing on screen said so.
+  it('user sees a message when assigning a newly created vendor fails', async () => {
+    const rejections = watchUnhandledRejections()
+    try {
+      // Given an item, and a database that refuses the item write
+      const item = await createItem({
+        name: 'Test Item',
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        tagIds: [],
+      })
+      vi.spyOn(db.items, 'update').mockRejectedValueOnce(new Error('disk full'))
+      toastError.mockClear()
+      renderVendorsTab(item.id)
+      const user = userEvent.setup()
+
+      // When the user adds a vendor named "Costco"
+      await user.click(
+        await screen.findByRole('button', { name: /new vendor/i }),
+      )
+      await user.type(screen.getByLabelText(/name/i), 'Costco')
+      await user.click(screen.getByRole('button', { name: /add vendor/i }))
+
+      // Then a message says the change was not saved
+      await waitFor(() =>
+        expect(toastError).toHaveBeenCalledWith(
+          'Could not save the change. Please try again.',
+        ),
+      )
+      // And the vendor exists but is not on the item
+      expect(await db.vendors.count()).toBe(1)
+      expect((await db.items.get(item.id))?.vendorIds ?? []).toEqual([])
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    } finally {
+      rejections.stop()
+      vi.restoreAllMocks()
+    }
+  })
+})

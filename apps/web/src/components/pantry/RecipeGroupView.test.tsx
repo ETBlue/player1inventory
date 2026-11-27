@@ -4,12 +4,13 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db, ensureDefaultLocationRow } from '@/db'
 import { createItem, createLocation, createRecipe } from '@/db/operations'
 import { activeLocationStorageKey } from '@/hooks/useActiveLocation'
 import { routeTree } from '@/routeTree.gen'
+import { addRecipeWithOldLinks } from '@/test/oldRecipeLinks'
 import { DEFAULT_LOCATION_ID } from '@/types'
 
 // Every group card renders its name as `aria-label` on an explicit
@@ -215,5 +216,46 @@ describe('RecipeGroupView location partition', () => {
     ).not.toBeInTheDocument()
     // ...and only Campfire Stew sinks
     expect(divider()).toHaveTextContent('1 not stocked here')
+  })
+
+  // Only consumable items can be in a recipe (owner decision 2026-11-26).
+  // The view reads each recipe like the cooking page does, so an old link to
+  // a non-consumable item (made before the rule) counts nowhere.
+  it('user sees a recipe card count only its consumable items', async () => {
+    // Given a recipe that holds Tea Leaves and an old link to Cup, which is
+    // not consumable, both stocked here
+    const tea = await stockItem('Tea Leaves', DEFAULT_LOCATION_ID)
+    const cup = await createItem(
+      {
+        name: 'Cup',
+        tagIds: [],
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 1,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        consumable: false,
+      },
+      DEFAULT_LOCATION_ID,
+    )
+    await addRecipeWithOldLinks({
+      name: 'Tea',
+      items: [
+        { itemId: tea.id, defaultAmount: 1 },
+        { itemId: cup.id, defaultAmount: 1 },
+      ],
+    })
+
+    renderRecipeGroupView()
+
+    // Then the Tea card counts one item, not two
+    const card = await screen.findByRole('button', { name: 'Tea' })
+    expect(within(card).getByText('1 / 1 active')).toBeInTheDocument()
+    // And Cup counts as not added to a recipe
+    const unsorted = await screen.findByRole('button', {
+      name: 'Not added to recipe',
+    })
+    expect(within(unsorted).getByText('1 / 1 active')).toBeInTheDocument()
   })
 })

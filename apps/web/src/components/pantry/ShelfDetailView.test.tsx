@@ -19,6 +19,7 @@ import { Toaster } from '@/components/ui/sonner'
 import { db } from '@/db'
 import {
   createItem,
+  createRecipe,
   createShelf,
   createTag,
   createTagType,
@@ -645,6 +646,40 @@ describe('ShelfDetailView filter shelf picker', () => {
     ).toBeInTheDocument()
     expect(
       within(dialog).getByRole('radio', { name: 'Walmart' }),
+    ).toBeInTheDocument()
+  })
+
+  it('user sees a note instead of Add to shelf when joining would add a non-consumable item to a recipe', async () => {
+    // Given a filter shelf keyed on a recipe, a non-consumable Cup and a
+    // consumable Cocoa, both stocked here and in no recipe (owner decision
+    // 2026-11-26: only consumable items can be in a recipe)
+    const recipe = await createRecipe({ name: 'Hot Chocolate', items: [] })
+    const shelf = await createShelf({
+      name: 'Hot Drinks',
+      type: 'filter',
+      order: 0,
+      filterConfig: { recipeIds: [recipe.id] },
+    })
+    await createItem({
+      name: 'Cup',
+      tagIds: [],
+      consumable: false,
+      ...itemDefaults,
+    })
+    await createItem({ name: 'Cocoa', tagIds: [], ...itemDefaults })
+
+    // When the user searches for "c"
+    await renderSearching(shelf.id, 'c')
+
+    // Then Cocoa can join, and Cup shows the reason instead of a button
+    expect(
+      await screen.findByRole('button', { name: 'Add to shelf: Cocoa' }),
+    ).toBeEnabled()
+    expect(
+      screen.queryByRole('button', { name: 'Add to shelf: Cup' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByText('Not consumable, so it cannot be added to a recipe.'),
     ).toBeInTheDocument()
   })
 

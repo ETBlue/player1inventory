@@ -30,6 +30,7 @@ interface FakeItem {
   targetUnit: string
   amountPerPackage: number | null
   consumeAmount: number
+  consumable?: boolean
   createdAt: Date
   updatedAt: Date
 }
@@ -81,11 +82,20 @@ vi.mock('../lib/prisma.js', async () => {
   }
 
   const recipeItem = {
+    // `recipeId` for a recipe's list, `itemId` for "turning an item
+    // non-consumable deletes its links" (lib/consumable.ts).
     deleteMany: async ({ where = {} }: { where?: Record<string, unknown> } = {}) => {
-      checkWhere('applyUnitSwitch.test(recipeItem)', where, { recipeId: 'equals' })
+      checkWhere('applyUnitSwitch.test(recipeItem)', where, { recipeId: 'equals', itemId: 'equals' })
+      const hit = (ri: FakeRecipeItem) =>
+        (where.recipeId === undefined || ri.recipeId === where.recipeId) &&
+        (where.itemId === undefined || ri.itemId === where.itemId)
       const before = extra.recipeItems.length
-      extra.recipeItems = extra.recipeItems.filter((ri) => ri.recipeId !== where.recipeId)
+      extra.recipeItems = extra.recipeItems.filter((ri) => !hit(ri))
       return { count: before - extra.recipeItems.length }
+    },
+    findMany: async ({ where = {} }: { where?: Record<string, unknown>; select?: unknown } = {}) => {
+      checkWhere('applyUnitSwitch.test(recipeItem)', where, { recipeId: 'equals' })
+      return extra.recipeItems.filter((ri) => ri.recipeId === where.recipeId).map((ri) => ({ ...ri }))
     },
     createMany: async ({ data }: { data: FakeRecipeItem[] }) => {
       if (extra.recipeWriteFails) throw new Error('recipeItem.createMany failed')
@@ -253,6 +263,8 @@ function seed() {
     item('item_flour', 'hh_a', 'Flour'),
     item('item_salt', 'hh_a', 'Salt'),
     item('item_theirs', 'hh_b', 'Not mine'),
+    // Not consumable: no recipe may attach it (lib/consumable.ts).
+    { ...item('item_cups', 'hh_a', 'Cups'), consumable: false },
   ])
   recipes.reset([
     { id: 'r_bread', householdId: 'hh_a', userId: 'user_a', name: 'Bread', lastCookedAt: null },
@@ -617,5 +629,70 @@ describe('applyUnitSwitch takes only the household\'s items', () => {
       },
     })
     expect(res.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
+  })
+})
+
+describe('applyUnitSwitch and non-consumable items', () => {
+  beforeEach(() => {
+    seed()
+  })
+
+  const toNonConsumable = {
+    itemId: 'item_flour',
+    updates: { targetUnit: 'package', consumable: false },
+    stockConversions: [{ locationId: LOC_KITCHEN, quantities: { unpackedQuantity: 0, targetQuantity: 2, refillThreshold: 1 } }],
+    recipeUpdates: [],
+  }
+
+  it('user who turns Consumable off removes the item from every recipe, in the same write', async () => {
+    // Given Bread holds flour and salt
+    // When the user turns flour non-consumable
+    const res = await run(MUTATION, { input: toNonConsumable })
+
+    // Then flour's link is gone and salt's stays
+    expect(res.errors).toBeUndefined()
+    expect(flour()?.consumable).toBe(false)
+    expect(extra.recipeItems.map((ri) => ri.itemId)).toEqual(['item_salt'])
+  })
+
+  it("a switch that still names the item's own old link does not bring it back", async () => {
+    const res = await run(MUTATION, {
+      input: {
+        ...toNonConsumable,
+        recipeUpdates: [
+          {
+            recipeId: 'r_bread',
+            items: [
+              { itemId: 'item_flour', defaultAmount: 1 },
+              { itemId: 'item_salt', defaultAmount: 5 },
+            ],
+          },
+        ],
+      },
+    })
+
+    expect(res.errors).toBeUndefined()
+    expect(extra.recipeItems.map((ri) => ri.itemId)).toEqual(['item_salt'])
+  })
+
+  it('a recipe list that attaches a non-consumable item is refused, and nothing is written', async () => {
+    const before = structuredClone({ stocks: stockFake.state.itemStocks, links: extra.recipeItems, items: items.state.rows })
+    const res = await run(MUTATION, {
+      input: {
+        ...fullSwitch,
+        recipeUpdates: [
+          {
+            recipeId: 'r_bread',
+            items: [
+              { itemId: 'item_flour', defaultAmount: 0.4 },
+              { itemId: 'item_cups', defaultAmount: 1 },
+            ],
+          },
+        ],
+      },
+    })
+
+    expect(res.errors?.[0]?.extensions).toMatchObject({ code: 'BAD_USER_INPUT', reason: 'NOT_CONSUMABLE' })
+    expect({ stocks: stockFake.state.itemStocks, links: extra.recipeItems, items: items.state.rows }).toEqual(before)
   })
 })

@@ -385,11 +385,15 @@ function logImport(id: string, itemId: string, locationId: string) {
 // ─── upsertItemStock, addItemToLocation, addInventoryLog ─────────────────────
 
 describe('the one-row stock and log mutations', () => {
-  it('upsertItemStock publishes STOCK for its location, after the write', async () => {
+  // Since the inventory log layout (design 2026-11-25) a save that changes
+  // the on-hand total also writes a `stockCount` log row, in the same
+  // transaction, so it publishes `LOG` with `STOCK`.
+  it('upsertItemStock that changes the amount publishes STOCK and LOG for its location, after the write', async () => {
     const res = await run(UPSERT_STOCK, { i: 'item_bread', l: LOC_GARAGE, input: { packedQuantity: 2 } }, ALICE)
 
     expect(res.errors).toBeUndefined()
-    expect(events()).toEqual([change('STOCK', LOC_GARAGE, 'hh_home')])
+    expect(events()).toEqual([change('STOCK', LOC_GARAGE, 'hh_home'), change('LOG', LOC_GARAGE, 'hh_home')])
+    expect(seen.every((e) => !e.inTransaction)).toBe(true)
     // The new row was already in the store when the listener ran.
     const saved = world.stock.state.itemStocks.find((s) => s.itemId === 'item_bread')
     expect(seen[0]?.stockIds).toContain(saved?.id)
@@ -399,7 +403,14 @@ describe('the one-row stock and log mutations', () => {
     const res = await run(UPSERT_STOCK, { i: 'item_tea', l: LOC_SECOND, input: { packedQuantity: 9 } }, ALICE)
 
     expect(res.errors).toBeUndefined()
-    expect(events()).toEqual([change('STOCK', LOC_SECOND, 'hh_second')])
+    expect(events()).toEqual([change('STOCK', LOC_SECOND, 'hh_second'), change('LOG', LOC_SECOND, 'hh_second')])
+  })
+
+  it('upsertItemStock that changes only the target publishes STOCK alone, no LOG', async () => {
+    const res = await run(UPSERT_STOCK, { i: 'item_bread', l: LOC_GARAGE, input: { targetQuantity: 4 } }, ALICE)
+
+    expect(res.errors).toBeUndefined()
+    expect(events()).toEqual([change('STOCK', LOC_GARAGE, 'hh_home')])
   })
 
   it('addItemToLocation publishes STOCK for its location', async () => {

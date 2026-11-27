@@ -15,6 +15,7 @@ import {
   GetRecipesDocument,
   type GetRecipesQuery,
   ItemStocksForItemDocument,
+  LastPurchaseDatesDocument,
   PantryDataDocument,
   type PantryDataQuery,
   UpdateItemDocument,
@@ -30,13 +31,14 @@ import {
   LOC_B,
   markLocationVisitedMock,
 } from '@/test/cloudFixtures'
-import { DEFAULT_LOCATION_ID } from '@/types'
+import { DEFAULT_LOCATION_ID, type PantryItem } from '@/types'
 import {
   ActiveLocationProvider,
   activeLocationStorageKey,
 } from './useActiveLocation'
 import { NoCloudLocationError } from './useCloudLocationId'
 import * as dataModeHooks from './useDataMode'
+import { useItemSortData } from './useItemSortData'
 import { useItemStocks } from './useItemStocks'
 import {
   useApplyUnitSwitch,
@@ -837,5 +839,91 @@ describe('cloud stock writes whose refresh fails', () => {
         query: GetRecipesDocument,
       })?.recipes,
     ).toEqual([])
+  })
+})
+
+// Since 2026-11-26 the server counts a stock count that raised the amount as
+// the last purchase date. The live event (`LOG`) never reaches the tab that
+// made the change, so the save itself must read `LastPurchaseDates` again, or
+// the pantry keeps the old expiry until it mounts again.
+describe('a cloud stock save refreshes the last purchase date', () => {
+  const OLD = '2026-01-01T00:00:00.000Z'
+  const NEW = '2026-11-26T00:00:00.000Z'
+  let lastPurchase = OLD
+
+  const lastPurchaseMock = {
+    request: {
+      query: LastPurchaseDatesDocument,
+      variables: { itemIds: ['item-milk'], locationId: LOC_A },
+    },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+    result: () => {
+      count('LastPurchaseDates')
+      return {
+        data: {
+          lastPurchaseDates: [{ itemId: 'item-milk', date: lastPurchase }],
+        },
+      }
+    },
+  }
+  // The stock save writes a stock count row on the server: here it moves the
+  // date the next read answers.
+  const savingUpsertMock = {
+    ...upsertMock(LOC_A),
+    result: (vars: Record<string, unknown>) => {
+      lastPurchase = NEW
+      return upsertMock(LOC_A).result(vars)
+    },
+  }
+
+  beforeEach(() => {
+    vi.mocked(dataModeHooks.useDataMode).mockReturnValue({
+      mode: 'cloud',
+      setMode: vi.fn(),
+    })
+    localStorage.clear()
+    localStorage.setItem(activeLocationStorageKey('cloud'), LOC_A)
+    catalog = [MILK, RICE]
+    stocks = [MILK_A, MILK_B, RICE_B]
+    served = {}
+    failPantry = false
+    lastPurchase = OLD
+  })
+
+  it('user saving a higher amount sees the last purchase date move without a reload', async () => {
+    // Given Milk at Cloud Kitchen, last bought on 2026-01-01
+    const items = [{ ...MILK_A, ...MILK } as unknown as PantryItem]
+    const mocks = [
+      bootstrapCartsMock,
+      markLocationVisitedMock,
+      getLocationsMock,
+      getItemsMock,
+      pantryMock(LOC_A),
+      milkStocksMock,
+      savingUpsertMock,
+      lastPurchaseMock,
+    ]
+    const { result } = renderHook(
+      () => ({ update: useUpdateItem(), sort: useItemSortData(items) }),
+      { wrapper: makeWrapper(mocks) },
+    )
+    await waitFor(() =>
+      expect(result.current.sort.purchaseDates?.get('item-milk')).toEqual(
+        new Date(OLD),
+      ),
+    )
+
+    // When the user counts the stock and saves a higher amount
+    await result.current.update.mutateAsync({
+      id: 'item-milk',
+      updates: { packedQuantity: 9 },
+    })
+
+    // Then the date the pantry shows moves to the stock count
+    await waitFor(() =>
+      expect(result.current.sort.purchaseDates?.get('item-milk')).toEqual(
+        new Date(NEW),
+      ),
+    )
   })
 })

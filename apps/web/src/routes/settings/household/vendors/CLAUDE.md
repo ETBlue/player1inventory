@@ -20,13 +20,13 @@ Vendor CRUD at `/settings/household/vendors`. Vendors are separate entities (not
 
 **Settings link**: the household sidebar (`src/components/global/Sidebar/HouseholdSidebar.tsx`) and the mobile `/settings` accordion (`src/routes/settings/index.tsx`), both with the `Store` icon
 
-**Assignment UI**: `src/routes/items/$id/relation/vendors.tsx` — Vendors subtab in item detail (under the Relation tab). Click-to-toggle badges, immediate save via `useUpdateItem`. "New Vendor" button inline with badges opens `AddNameDialog` to create and immediately assign a vendor. No Save button (same as tags tab).
+**Assignment UI**: `src/routes/items/$id/vendors.tsx` — Vendors tab of the item page (its own tab since 2026-11-24; it was under a Relation tab before). Click-to-toggle badges, immediate save via `useUpdateItem`. "New Vendor" button inline with badges opens `AddNameDialog` to create and immediately assign a vendor. No Save button (same as tags tab).
 
 **Vendor detail page**: `src/routes/settings/household/vendors/$id.tsx` — Tabbed layout (Info + Items). Info tab: edit vendor name with Save button. Items tab: combined search+create input with a searchable checklist of all items showing their current vendor assignments; saves immediately when a checkbox is clicked (no staged state, no Save button), same pattern as the Tags tab. Typing a name that matches no items reveals a `+ Create "<name>"` row — clicking it or pressing Enter creates the item inline (no dialog) and immediately assigns it to this vendor; pressing Escape clears the input.
 
 The Items tab is a **global** assignment surface: rows carry `showStock={false}`, order is assigned-then-unassigned with no active/inactive split, and create-from-search calls `useCreateItem({ catalogOnly: true })` directly so the new item is stocked in no location. See `settings/CLAUDE.md` for the three rules.
 
-**Dirty state**: `src/hooks/useVendorLayout.tsx` — same pattern as `useItemLayout`. Navigation guard on parent layout applies only to the Info tab (vendor name editing); the Items tab has no unsaved state.
+**Dirty state**: `src/hooks/useVendorLayout.tsx` — same pattern as `useItemLayout`. Navigation guard on parent layout applies only to the Info tab (vendor name editing); the Items tab has no unsaved state. Leaving it with edits opens `UnsavedChangesDialog` (Cancel · Discard · Save); see `routes/settings/CLAUDE.md`, *The unsaved-changes dialog on the detail pages*.
 
 **Navigation:**
 

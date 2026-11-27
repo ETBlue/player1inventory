@@ -13,8 +13,11 @@ const {
   EditValidationError,
   CreateModeEmptyError,
   Saving,
+  SubmitBlocked,
   InfoSectionReadOnly,
   StockSectionReadOnly,
+  SaveInTopBar,
+  NotConsumable,
 } = composeStories(stories)
 
 describe('ItemForm stories smoke tests', () => {
@@ -80,6 +83,16 @@ describe('ItemForm stories smoke tests', () => {
     expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
   })
 
+  it('SubmitBlocked renders a disabled Save', () => {
+    render(<SubmitBlocked />)
+    expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
+  })
+
+  it('SubmitBlocked without the prop has Save on (control)', () => {
+    render(<SubmitBlocked submitBlocked={false} />)
+    expect(screen.getByRole('button', { name: /save/i })).toBeEnabled()
+  })
+
   it('InfoSectionReadOnly shows a readOnly name and no Save button', () => {
     render(<InfoSectionReadOnly />)
     expect(document.getElementById('name')).toHaveAttribute('readonly')
@@ -95,5 +108,25 @@ describe('ItemForm stories smoke tests', () => {
       screen.getByRole('button', { name: /increase packed/i }),
     ).toBeDisabled()
     expect(screen.queryByRole('button', { name: /save/i })).toBeNull()
+  })
+
+  it('SaveInTopBar puts Save in the top bar, outside the form', async () => {
+    render(<SaveInTopBar />)
+    const save = await screen.findByRole('button', { name: /^save$/i })
+    expect(save.closest('form')).toBeNull()
+    expect(
+      screen.getByRole('heading', { name: 'Whole Milk' }).parentElement,
+    ).toContainElement(save)
+  })
+
+  it('NotConsumable shows the switch off and hides the opened packs', () => {
+    render(<NotConsumable />)
+    expect(
+      screen.getByRole('switch', { name: /^consumable$/i }),
+    ).not.toBeChecked()
+    // One "Amount" field in place of Packed and Unpacked
+    expect(screen.getByLabelText(/^amount \(/i)).toBeInTheDocument()
+    expect(screen.queryByLabelText(/^packed/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/^unpacked/i)).not.toBeInTheDocument()
   })
 })

@@ -4,7 +4,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
@@ -19,6 +19,7 @@ import {
 } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 import { elementAt } from '@/test/narrow'
+import { addRecipeWithOldLinks } from '@/test/oldRecipeLinks'
 import { TagColor } from '@/types'
 
 const divider = () => screen.getByText(/not stocked here/i)
@@ -306,7 +307,7 @@ describe('Use (Cooking) Page', () => {
   it('user can confirm consumption and inventory is reduced', async () => {
     // Given a recipe with an item (packedQuantity = 5)
     const item = await makeItem('Flour', 1, 5)
-    await createRecipe({
+    const pasta = await createRecipe({
       name: 'Pasta',
       items: [{ itemId: item.id, defaultAmount: 2 }],
     })
@@ -359,7 +360,13 @@ describe('Use (Cooking) Page', () => {
         .filter((l) => l.itemId === item.id)
         .toArray()
       expect(logs.length).toBeGreaterThan(0)
-      expect(elementAt(logs, 0).note).toBe('consumed via Pasta')
+      // Data, not text (design 2026-11-25, inventory log layout): the kind
+      // and the recipe's id plus a name snapshot, and no note.
+      expect(elementAt(logs, 0).logKey).toBe('cooking')
+      expect(elementAt(logs, 0).logParams).toEqual({
+        recipes: [{ id: pasta.id, name: 'Pasta' }],
+      })
+      expect(elementAt(logs, 0).note).toBeUndefined()
       expect(elementAt(logs, 0).delta).toBeLessThan(0)
     })
 
@@ -1671,10 +1678,10 @@ describe('Use (Cooking) Page', () => {
     })
   })
 
-  it('user can see recipe name in inventory log note after confirming done', async () => {
+  it('user can see the recipe in the inventory log after confirming done', async () => {
     // Given a recipe named "Pasta Bolognese" with an item
     const item = await makeItem('Flour', 1, 5)
-    await createRecipe({
+    const recipe = await createRecipe({
       name: 'Pasta Bolognese',
       items: [{ itemId: item.id, defaultAmount: 2 }],
     })
@@ -1711,13 +1718,15 @@ describe('Use (Cooking) Page', () => {
     })
     await user.click(screen.getByRole('button', { name: /confirm/i }))
 
-    // Then the inventory log note names the recipe
+    // Then the inventory log names the recipe by id, with a name snapshot
     await waitFor(async () => {
       const logs = await db.inventoryLogs
         .filter((l) => l.itemId === item.id)
         .toArray()
       expect(logs.length).toBeGreaterThan(0)
-      expect(elementAt(logs, 0).note).toBe('consumed via Pasta Bolognese')
+      expect(elementAt(logs, 0).logParams).toEqual({
+        recipes: [{ id: recipe.id, name: 'Pasta Bolognese' }],
+      })
     })
   })
 
@@ -2236,5 +2245,154 @@ describe('Use (Cooking) Page', () => {
     expect(screen.queryByText(/empty/)).not.toBeInTheDocument()
     expect(screen.queryByText(/low stock/)).not.toBeInTheDocument()
     expect(screen.getByLabelText('Beef Stew')).toBeEnabled()
+  })
+
+  // Owner decision 2026-11-26: cooking is only for consumable items. A
+  // recipe may still link a non-consumable item (old data); cooking ignores
+  // that link. Both items are stocked here, so the location gate cannot be
+  // what hides the cup: only the consumable rule can.
+  describe('non-consumable items', () => {
+    // No write can link a non-consumable item to a recipe any more, and
+    // turning an item off deletes its links. These recipes are "old links"
+    // from before that rule, written straight to Dexie: the cooking page
+    // still hides them, as a safety net.
+    const makeCup = () =>
+      createItem({
+        name: 'Cup',
+        targetUnit: 'package',
+        targetQuantity: 4,
+        refillThreshold: 1,
+        packedQuantity: 4,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        consumable: false,
+        tagIds: [],
+      })
+
+    it('user does not see a non-consumable item in a recipe on the cooking page', async () => {
+      // Given a recipe with one consumable item and one non-consumable item,
+      // both stocked here
+      const tea = await makeItem('Tea Leaves')
+      const cup = await makeCup()
+      await addRecipeWithOldLinks({
+        name: 'Tea',
+        items: [
+          { itemId: tea.id, defaultAmount: 1 },
+          { itemId: cup.id, defaultAmount: 1 },
+        ],
+      })
+
+      renderPage()
+      const user = userEvent.setup()
+
+      // When the user expands the recipe
+      await user.click(
+        await screen.findByRole('button', { name: /Expand Tea/i }),
+      )
+
+      // Then only the consumable item is listed
+      expect(await screen.findByText('Tea Leaves')).toBeInTheDocument()
+      expect(screen.queryByText('Cup')).not.toBeInTheDocument()
+      // And the counts leave the non-consumable item out
+      expect(screen.getByText('1 / 1 here')).toBeInTheDocument()
+    })
+
+    it('user cooks a recipe with a non-consumable item and only the consumable item is used', async () => {
+      // Given a recipe with one consumable item and one non-consumable item,
+      // both stocked here with 5 and 4 packs
+      const tea = await makeItem('Tea Leaves', 1, 5)
+      const cup = await makeCup()
+      await addRecipeWithOldLinks({
+        name: 'Tea',
+        items: [
+          { itemId: tea.id, defaultAmount: 1 },
+          { itemId: cup.id, defaultAmount: 1 },
+        ],
+      })
+
+      renderPage()
+      const user = userEvent.setup()
+
+      // When the user checks the recipe and confirms Done
+      await user.click(await screen.findByLabelText('Tea'))
+      await user.click(screen.getByRole('button', { name: /done/i }))
+      await user.click(await screen.findByRole('button', { name: /confirm/i }))
+
+      // Then the consumable item is used
+      await waitFor(async () => {
+        const teaStock = await getItemStock(tea.id, 'local')
+        expect(teaStock?.packedQuantity).toBe(4)
+      })
+      // And the non-consumable item is untouched, with no opened stock and
+      // no log
+      const cupStock = await getItemStock(cup.id, 'local')
+      expect(cupStock?.packedQuantity).toBe(4)
+      expect(cupStock?.unpackedQuantity).toBe(0)
+      const cupLogs = await db.inventoryLogs
+        .filter((l) => l.itemId === cup.id)
+        .toArray()
+      expect(cupLogs).toHaveLength(0)
+    })
+
+    it('user cooks after an item turned non-consumable while the page was open, and that item is not used', async () => {
+      // Given a recipe with Tea Leaves and a Cup that is still consumable
+      const tea = await makeItem('Tea Leaves', 1, 5)
+      const cup = await makeItem('Cup', 1, 4)
+      await addRecipeWithOldLinks({
+        name: 'Tea',
+        items: [
+          { itemId: tea.id, defaultAmount: 1 },
+          { itemId: cup.id, defaultAmount: 1 },
+        ],
+      })
+
+      renderPage()
+      const user = userEvent.setup()
+
+      // And the user has checked the recipe, with both items
+      await user.click(await screen.findByLabelText('Tea'))
+      await waitFor(() =>
+        expect(screen.getByText('2 / 2 here')).toBeInTheDocument(),
+      )
+
+      // When the Cup turns non-consumable (another tab, or a live update)
+      await db.items.update(cup.id, { consumable: false })
+      await act(async () => {
+        await queryClient.invalidateQueries()
+      })
+      await waitFor(() =>
+        expect(screen.getByText('1 / 1 here')).toBeInTheDocument(),
+      )
+
+      // And the user confirms Done
+      await user.click(screen.getByRole('button', { name: /done/i }))
+      await user.click(await screen.findByRole('button', { name: /confirm/i }))
+
+      // Then only Tea Leaves is used
+      await waitFor(async () => {
+        const teaStock = await getItemStock(tea.id, 'local')
+        expect(teaStock?.packedQuantity).toBe(4)
+      })
+      const cupStock = await getItemStock(cup.id, 'local')
+      expect(cupStock?.packedQuantity).toBe(4)
+      expect(cupStock?.unpackedQuantity).toBe(0)
+    })
+
+    it('user sees a recipe whose only item is non-consumable as having nothing to cook', async () => {
+      // Given a recipe that links only a non-consumable item
+      const cup = await makeCup()
+      await addRecipeWithOldLinks({
+        name: 'Table Setting',
+        items: [{ itemId: cup.id, defaultAmount: 1 }],
+      })
+
+      renderPage()
+
+      // Then its checkbox is disabled and it counts no items
+      await waitFor(() => {
+        expect(screen.getByLabelText('Table Setting')).toBeDisabled()
+      })
+      expect(screen.getByText('0 / 0 here')).toBeInTheDocument()
+    })
   })
 })

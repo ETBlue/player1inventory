@@ -1,6 +1,7 @@
 import { GraphQLError } from 'graphql'
 import type { Prisma } from '@prisma/client'
 import { requireCatalogIds, requireCatalogRole } from '../lib/authz.js'
+import { notConsumableError } from '../lib/consumable.js'
 import { prisma } from '../lib/prisma.js'
 import { publishHouseholdChange } from '../lib/publishChange.js'
 import { requireAuth, type Context } from '../context.js'
@@ -194,6 +195,12 @@ export const shelfResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         }
 
         if (addRecipeId) {
+          // Only consumable items can be in a recipe (lib/consumable.ts).
+          // Refused, not skipped: the person asked for this recipe link, so
+          // dropping it quietly would add the tags and not the recipe. It
+          // throws inside the transaction, so the tag and vendor writes above
+          // roll back with it. `=== false`: the column is NOT NULL.
+          if (item.consumable === false) throw notConsumableError([itemId])
           const recipe = await tx.recipe.findFirst({
             where: { id: addRecipeId, householdId },
             include: { items: true },

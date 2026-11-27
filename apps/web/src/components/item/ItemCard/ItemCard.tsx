@@ -10,21 +10,22 @@ import {
 } from 'lucide-react'
 import type React from 'react'
 import { Fragment, useEffect, useState } from 'react'
-import { ItemProgressBar } from '@/components/item/ItemProgressBar'
+import { ItemStockSummary } from '@/components/item/ItemStockSummary'
 import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { computeExpiryDate, inferExpirationMode } from '@/lib/expiration'
 import {
   getCurrentQuantity,
+  getPieceCounts,
   getStockStatus,
   isInactive,
 } from '@/lib/quantityUtils'
 import { sortTagsByTypeAndName } from '@/lib/tagSortUtils'
 import { cn } from '@/lib/utils'
 import type { PantryItem, Recipe, Tag, TagType, Vendor } from '@/types'
-import { DEFAULT_PACKAGE_UNIT } from '@/types'
+import { isConsumable } from '@/types'
 
 interface ItemCardProps {
   item: PantryItem
@@ -56,6 +57,16 @@ interface ItemCardProps {
   controlAmount?: number // shown in right-side controls (cart qty, recipe amount)
   minControlAmount?: number // minimum before minus disables (default: 1)
   onAmountChange?: (delta: number) => void
+  // Shows ONE amount button instead of the `− n +` group: only the amount
+  // (the unit is in its accessible name only). Pressing it calls this, and the caller opens a
+  // dialog to set the amount in one request (the cart page, since
+  // 2026-11-25; `CartAmountDialog`). A separate callback, not another
+  // `mode`, so the cooking page and the recipe items tab keep `− n +` with
+  // no change. When both are passed, this one wins.
+  onAmountEdit?: () => void
+  // The unit word in the amount button's accessible name, for example
+  // "pack" or "bottle". It is not shown on the button.
+  amountUnit?: string
   onQuickUpdate?: () => void
   disabled?: boolean // disables checkbox and amount buttons (e.g. while saving)
   // The id of an element that says why the checkbox and amount buttons are
@@ -95,6 +106,8 @@ export function ItemCard({
   controlAmount,
   minControlAmount = 0,
   onAmountChange,
+  onAmountEdit,
+  amountUnit,
   onQuickUpdate,
   disabled,
   controlsDescribedBy,
@@ -116,19 +129,14 @@ export function ItemCard({
     lastPurchaseDate ?? undefined,
   )
 
-  const currentQuantity = getCurrentQuantity(item)
-  const status = getStockStatus(currentQuantity, item.refillThreshold)
-  const progressStatus = isInactive(item) ? 'inactive' : status
-  // Convert packed quantity to measurement units for display when tracking in measurement
-  const displayPacked =
-    item.targetUnit === 'measurement' && item.amountPerPackage
-      ? item.packedQuantity * item.amountPerPackage
-      : item.packedQuantity
-
-  const unitLabel =
-    item.targetUnit === 'measurement' && item.measurementUnit
-      ? item.measurementUnit
-      : (item.packageUnit ?? DEFAULT_PACKAGE_UNIT)
+  // A non-consumable item shows no expiry (design, PR 2).
+  const consumable = isConsumable(item)
+  // The card's colour follows the same numbers as its bar: whole pieces for a
+  // non-consumable item (`getPieceCounts`, shared with `ItemStockSummary`).
+  const pieces = consumable ? undefined : getPieceCounts(item, item)
+  const status = pieces
+    ? getStockStatus(pieces.inStock, pieces.refillThreshold)
+    : getStockStatus(getCurrentQuantity(item), item.refillThreshold)
 
   const isAmountControllable = [
     'shopping',
@@ -136,8 +144,15 @@ export function ItemCard({
     'cooking',
   ].includes(mode)
 
-  if (import.meta.env.DEV && isAmountControllable && !onAmountChange) {
-    console.warn('ItemCard: controlAmount requires onAmountChange to function.')
+  if (
+    import.meta.env.DEV &&
+    isAmountControllable &&
+    !onAmountChange &&
+    !onAmountEdit
+  ) {
+    console.warn(
+      'ItemCard: controlAmount requires onAmountChange or onAmountEdit to function.',
+    )
   }
 
   // "Inactive" is targetQuantity === 0 — a per-location fact. When stock is
@@ -158,7 +173,12 @@ export function ItemCard({
       }
       className={cn(
         onCheckboxToggle ? 'ml-10' : '',
-        isAmountControllable ? 'mr-28' : '',
+        // The right inset reserves room for the amount control, which sits
+        // outside the card. The cart's one amount button (`onAmountEdit`) is
+        // 3rem wide at `-right-14`, so it needs 4rem: 0.5rem on each side of it.
+        // The `− n +` group (cooking, recipe items) is 6rem wide and keeps
+        // its 7rem.
+        isAmountControllable ? (onAmountEdit ? 'mr-16' : 'mr-28') : '',
       )}
     >
       {onCheckboxToggle &&
@@ -179,7 +199,25 @@ export function ItemCard({
             className="absolute -ml-10"
           />
         ))}
-      {isChecked && isAmountControllable && (
+      {isChecked && isAmountControllable && onAmountEdit && (
+        <Button
+          variant="neutral-outline"
+          size="sm"
+          className="absolute -right-14 top-1.5 w-12 justify-center px-1"
+          onClick={(e) => {
+            e.preventDefault()
+            onAmountEdit()
+          }}
+          // The button shows only the number. The name keeps the unit, and the
+          // visible number is inside the name (WCAG 2.5.3).
+          aria-label={`Edit amount of ${item.name}: ${controlAmount ?? 0} ${amountUnit ?? ''}`.trimEnd()}
+          aria-describedby={controlsDescribedBy}
+          disabled={disabled || isPending}
+        >
+          <span className="truncate">{controlAmount ?? 0}</span>
+        </Button>
+      )}
+      {isChecked && isAmountControllable && !onAmountEdit && (
         <div className="flex items-stretch absolute -right-26 top-1.5">
           <Button
             variant="neutral-outline"
@@ -241,45 +279,11 @@ export function ItemCard({
           params={{ id: item.id }}
           className="flex-1 min-w-0"
         >
-          <CardTitle className="flex gap-1 items-baseline justify-between mb-1">
-            <h3 className="truncate capitalize">
-              {showsInactive && <span className="sr-only">Inactive </span>}
-              {highlightedName ?? item.name}
-            </h3>
-            <div className="flex-1" />
-            {showStock && (
-              // The unit is a trailing bare word inside the quantity's own
-              // span (no parentheses, no pill) so it inherits
-              // `text-foreground-muted` at FULL opacity. It used to be a
-              // separate bordered `UnitBadge` at `opacity-75`, which
-              // composited to 4.44:1 on the card surface and failed WCAG AA
-              // — see docs/global/bugs/2026-08-29-bug-unit-badge-contrast.md.
-              <span className="text-xs font-normal text-foreground-muted whitespace-nowrap">
-                {item.unpackedQuantity > 0
-                  ? `${displayPacked} (+${item.unpackedQuantity}) / ${item.targetQuantity} ${unitLabel}`
-                  : `${currentQuantity} / ${item.targetQuantity} ${unitLabel}`}
-              </span>
-            )}
-          </CardTitle>
-          {showStock && (
-            <ItemProgressBar
-              current={currentQuantity}
-              target={item.targetQuantity}
-              status={progressStatus}
-              targetUnit={item.targetUnit}
-              packed={displayPacked}
-              unpacked={item.unpackedQuantity}
-              {...(item.measurementUnit
-                ? { measurementUnit: item.measurementUnit }
-                : {})}
-              {...(item.amountPerPackage
-                ? { amountPerPackage: item.amountPerPackage }
-                : {})}
-              // `item` is the joined per-location row, so this is the
-              // active location's threshold.
-              refillThreshold={item.refillThreshold}
-            />
-          )}
+          <ItemStockSummary
+            item={item}
+            showStock={showStock}
+            name={highlightedName}
+          />
         </Link>
         {onQuickUpdate && mode === 'pantry' && (
           <Button
@@ -305,7 +309,12 @@ export function ItemCard({
       <CardContent className={`mt-1 ${showsInactive ? 'opacity-80' : ''}`}>
         <div className="flex items-center gap-1">
           {[
-            showExpiration && currentQuantity > 0 && estimatedDueDate
+            // A non-consumable item shows no expiry (design, PR 2). Its
+            // expiration settings are kept, only hidden.
+            showExpiration &&
+            consumable &&
+            getCurrentQuantity(item) > 0 &&
+            estimatedDueDate
               ? {
                   key: 'expiration',
                   node: (() => {

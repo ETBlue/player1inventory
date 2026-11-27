@@ -16,6 +16,7 @@ import { ListSectionDivider } from '@/components/shared/ListSectionDivider'
 import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { ReadOnlyNote } from '@/components/shared/ReadOnlyNote'
 import { Toolbar } from '@/components/shared/Toolbar'
+import { CartAmountDialog } from '@/components/shopping/CartAmountDialog'
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -53,11 +54,25 @@ import { isCartChangedError } from '@/hooks/useShoppingCart'
 import { useShowStock } from '@/hooks/useShowStock'
 import { useSortFilter } from '@/hooks/useSortFilter'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
-import { filterItems, filterItemsByRecipes } from '@/lib/filterUtils'
-import { isInactiveHere, isStockedHere } from '@/lib/quantityUtils'
+import {
+  filterItems,
+  filterItemsByConsumable,
+  filterItemsByRecipes,
+} from '@/lib/filterUtils'
+import {
+  isInactiveHere,
+  isStockedHere,
+  suggestedCartAmount,
+} from '@/lib/quantityUtils'
 import { showSaveError } from '@/lib/saveError'
 import { sortItems } from '@/lib/sortUtils'
-import { isBeingBought, type PantryItem } from '@/types'
+import {
+  DEFAULT_PACKAGE_UNIT,
+  isBeingBought,
+  type PantryItem,
+  PURCHASE_LOG_KEY,
+  type PurchaseLogParams,
+} from '@/types'
 
 export const Route = createFileRoute('/shopping/$vendorId')({
   component: VendorCartRoute,
@@ -129,12 +144,26 @@ function VendorCart() {
   const [showCheckoutDialog, setShowCheckoutDialog] = useState(false)
   const [pendingItemIds, setPendingItemIds] = useState<Set<string>>(new Set())
   const [isCheckoutRefetching, setIsCheckoutRefetching] = useState(false)
+  // The open `CartAmountDialog`, or null. `initialAmount` is read once, when
+  // it opens, so a live update to the row does not reset what the user typed.
+  const [amountDialog, setAmountDialog] = useState<{
+    itemId: string
+    mode: 'add' | 'edit'
+    initialAmount: number
+  } | null>(null)
 
   const { data: recipes = [], isLoading: isRecipesLoading } = useRecipes()
 
-  const { sortBy, sortDirection, setSortBy, setSortDirection } =
-    useSortFilter('shopping')
-  const { search, filterState, selectedRecipeIds } = useUrlSearchAndFilters()
+  // A cart sorts by stock by default, low stock on top. With `'asc'` (the
+  // direction `useSortFilter` starts at), `'stock'` puts items below their
+  // refill level first, then items at it, then the rest (`sortItems`). A choice
+  // saved in `localStorage['shopping-sort-prefs']` still wins.
+  const { sortBy, sortDirection, setSortBy, setSortDirection } = useSortFilter(
+    'shopping',
+    { defaultSortBy: 'stock' },
+  )
+  const { search, filterState, selectedRecipeIds, consumableFilter } =
+    useUrlSearchAndFilters()
 
   const allDataLoaded =
     !isLoading && !isTagsLoading && !isTagTypesLoading && !isRecipesLoading
@@ -195,10 +224,9 @@ function VendorCart() {
   )
 
   const tagFiltered = filterItems(vendorScopedItems, filterState, tags)
-  const filteredItems = filterItemsByRecipes(
-    tagFiltered,
-    selectedRecipeIds,
-    recipes,
+  const filteredItems = filterItemsByConsumable(
+    filterItemsByRecipes(tagFiltered, selectedRecipeIds, recipes),
+    consumableFilter,
   )
 
   const displayItems = search.trim() ? searchedItems : filteredItems
@@ -365,45 +393,45 @@ function VendorCart() {
       clearPending()
       showSaveError(err)
     }
-    setPendingItemIds((prev) => new Set(prev).add(item.id))
     if (ci) {
+      setPendingItemIds((prev) => new Set(prev).add(item.id))
       removeFromCart.mutate(ci.id, {
         onSuccess: clearPending,
         onError: failed,
       })
     } else if (cart) {
-      addToCart.mutate(
-        { cartId: cart.id, itemId: item.id, quantity: 1 },
-        { onSuccess: clearPending, onError: failed },
-      )
-    } else {
-      clearPending()
+      // Ticking does not add at once: it asks how many first. Cancel adds
+      // nothing, so the row stays unticked.
+      setAmountDialog({
+        itemId: item.id,
+        mode: 'add',
+        initialAmount: suggestedCartAmount(item),
+      })
     }
   }
 
-  function handleUpdateCartQuantity(item: PantryItem, qty: number) {
-    const ci = cartItemMap.get(item.id)
-    if (ci) {
-      const clearPending = () =>
-        setPendingItemIds((prev) => {
-          const s = new Set(prev)
-          s.delete(item.id)
-          return s
-        })
-      setPendingItemIds((prev) => new Set(prev).add(item.id))
-      updateCartItem.mutate(
-        { cartItemId: ci.id, quantity: qty },
-        {
-          onSuccess: clearPending,
-          // Before, a failed write only cleared the pending row
-          onError: (err) => {
-            clearPending()
-            showSaveError(err)
-          },
-        },
-      )
+  // ONE request per Save, whatever the amount. It rejects on a failure, so
+  // the dialog stays open and shows the error itself.
+  async function handleSaveAmount(amount: number) {
+    if (!amountDialog) return
+    const ci = cartItemMap.get(amountDialog.itemId)
+    if (amountDialog.mode === 'edit' && ci) {
+      await updateCartItem.mutateAsync({ cartItemId: ci.id, quantity: amount })
+    } else if (cart) {
+      // Also when the row was added elsewhere while the dialog was open:
+      // `addToCart` then adds this amount to it (an upsert with increment).
+      await addToCart.mutateAsync({
+        cartId: cart.id,
+        itemId: amountDialog.itemId,
+        quantity: amount,
+      })
     }
+    setAmountDialog(null)
   }
+
+  const amountDialogItem = amountDialog
+    ? vendorScopedItems.find((i) => i.id === amountDialog.itemId)
+    : undefined
 
   function renderItemCard(item: PantryItem) {
     const ci = cartItemMap.get(item.id)
@@ -427,9 +455,14 @@ function VendorCart() {
           isPending={pendingItemIds.has(item.id)}
           {...(ci ? { controlAmount: ci.quantity } : {})}
           onCheckboxToggle={() => handleToggleCart(item)}
-          onAmountChange={(delta) => {
-            const newQty = (ci?.quantity ?? 0) + delta
-            handleUpdateCartQuantity(item, newQty)
+          amountUnit={item.packageUnit || DEFAULT_PACKAGE_UNIT}
+          onAmountEdit={() => {
+            if (!ci) return
+            setAmountDialog({
+              itemId: item.id,
+              mode: 'edit',
+              initialAmount: ci.quantity,
+            })
           }}
         />
       </div>
@@ -595,6 +628,17 @@ function VendorCart() {
         )}
       </div>
 
+      {amountDialogItem && amountDialog && (
+        <CartAmountDialog
+          key={`${amountDialog.itemId}:${amountDialog.mode}`}
+          item={amountDialogItem}
+          mode={amountDialog.mode}
+          initialAmount={amountDialog.initialAmount}
+          onClose={() => setAmountDialog(null)}
+          onSubmit={handleSaveAmount}
+        />
+      )}
+
       <AlertDialog open={showAbandonDialog} onOpenChange={setShowAbandonDialog}>
         <AlertDialogContent
           onEscapeKeyDown={(e) => {
@@ -665,17 +709,20 @@ function VendorCart() {
               isLoading={checkout.isPending}
               onClick={async () => {
                 if (cart) {
-                  const logKey = 'shopping.log.purchasedAt'
-                  const logParams = {
-                    vendor: vendor?.name ?? t('shopping.noVendor'),
+                  // Data, not text (design 2026-11-25, inventory log
+                  // layout): the vendor's id and a snapshot of its name,
+                  // both `null` for the no-vendor cart. No `note`: the Log
+                  // tab builds the label in the reader's language, with the
+                  // vendor's CURRENT name while it still exists.
+                  const logParams: PurchaseLogParams = {
+                    vendorId: cartVendorId,
+                    vendorName: vendor?.name ?? null,
                   }
-                  const note = t(logKey, logParams)
                   try {
                     await checkout.mutateAsync({
                       cartId: cart.id,
                       items: checkoutRows,
-                      note,
-                      logKey,
+                      logKey: PURCHASE_LOG_KEY,
                       logParams,
                     })
                     navigate({

@@ -1,4 +1,4 @@
-import { getTagAndDescendantIds } from '@/lib/tagUtils'
+import { buildDepthFirstTagList, getTagAndDescendantIds } from '@/lib/tagUtils'
 import type { FilterConfig, Item, Tag, TagType } from '@/types'
 
 /**
@@ -68,6 +68,11 @@ export function matchesFilterConfig(
 export interface FilterAxisOption {
   id: string
   name: string
+  /**
+   * 0 for an id the rule names. On a tag axis, the named tag's children follow it with
+   * depth 1, grandchildren with depth 2, and so on. Vendor and recipe options are always 0.
+   */
+  depth: number
 }
 
 export interface FilterAxis {
@@ -80,7 +85,10 @@ export interface FilterAxis {
    * the dialog translates their labels, because a pure function must not call `t`.
    */
   typeName?: string
-  /** Resolvable options only, in `filterConfig` order. Never contains a dangling id. */
+  /**
+   * Resolvable options only, in `filterConfig` order. Never contains a dangling id.
+   * On a tag axis each named tag is followed by its descendants (see `tagAxisOptions`).
+   */
   options: FilterAxisOption[]
   /**
    * Set when the item ALREADY satisfies this axis — the configured id that does it.
@@ -171,6 +179,8 @@ export function deriveFilterAxes(
       tagId,
     ])
   }
+  // The whole tag tree, built once, and only when there is a tag axis.
+  const tree = tagIdsByType.size > 0 ? buildDepthFirstTagList(tags) : []
   for (const [typeId, typeTagIds] of tagIdsByType) {
     const metBy = typeTagIds.find((id) =>
       getTagAndDescendantIds(id, tags).some((expanded) =>
@@ -181,10 +191,7 @@ export function deriveFilterAxes(
       key: typeId,
       kind: 'tag',
       typeName: tagTypes.find((tt) => tt.id === typeId)?.name ?? '',
-      options: typeTagIds.map((id) => ({
-        id,
-        name: tags.find((t) => t.id === id)?.name ?? '',
-      })),
+      options: tagAxisOptions(typeTagIds, tags, tree),
       ...(metBy ? { metBy } : {}),
     })
   }
@@ -201,7 +208,7 @@ export function deriveFilterAxes(
       kind: 'vendor',
       options: safeVendorIds.flatMap((id) => {
         const vendor = vendors.find((v) => v.id === id)
-        return vendor ? [{ id, name: vendor.name }] : []
+        return vendor ? [{ id, name: vendor.name, depth: 0 }] : []
       }),
       ...(metBy ? { metBy } : {}),
     })
@@ -218,13 +225,65 @@ export function deriveFilterAxes(
       kind: 'recipe',
       options: safeRecipeIds.flatMap((id) => {
         const recipe = recipes.find((r) => r.id === id)
-        return recipe ? [{ id, name: recipe.name }] : []
+        return recipe ? [{ id, name: recipe.name, depth: 0 }] : []
       }),
       ...(metBy ? { metBy } : {}),
     })
   }
 
   return axes
+}
+
+/**
+ * The options of one tag axis: each tag the rule names, followed by its children and
+ * grandchildren, in the order the tag settings page shows them (`buildDepthFirstTagList`,
+ * which sorts each level by name with `sortTagsByName`).
+ *
+ * Any of them can be picked. A descendant still makes the item match the shelf, because
+ * `matchesFilterConfig` expands each named tag to its descendants.
+ *
+ * A named tag that is also a descendant of another named tag of the same axis is listed
+ * once, under its ancestor, not again as its own top entry.
+ *
+ * `tree` is `buildDepthFirstTagList(tags)`: every tag, parent before children, with its
+ * depth from the top of the tree. A subtree is the named tag's row plus the rows after it
+ * that are deeper than it.
+ */
+function tagAxisOptions(
+  namedIds: string[],
+  tags: Tag[],
+  tree: Array<Tag & { depth: number }>,
+): FilterAxisOption[] {
+  const roots = namedIds.filter(
+    (id) =>
+      !namedIds.some(
+        (other) =>
+          other !== id && getTagAndDescendantIds(other, tags).includes(id),
+      ),
+  )
+  const options: FilterAxisOption[] = []
+  for (const rootId of roots) {
+    const start = tree.findIndex((t) => t.id === rootId)
+    const rootRow = tree[start]
+    if (!rootRow) {
+      // Not reachable from the top of the tree (a broken parent chain). Offer the
+      // named tag alone, as before this feature.
+      const tag = tags.find((t) => t.id === rootId)
+      if (tag) options.push({ id: tag.id, name: tag.name, depth: 0 })
+      continue
+    }
+    options.push({ id: rootRow.id, name: rootRow.name, depth: 0 })
+    for (let i = start + 1; i < tree.length; i++) {
+      const row = tree[i]
+      if (!row || row.depth <= rootRow.depth) break
+      options.push({
+        id: row.id,
+        name: row.name,
+        depth: row.depth - rootRow.depth,
+      })
+    }
+  }
+  return options
 }
 
 export interface FilterPicks {
@@ -237,7 +296,9 @@ export interface FilterPicks {
 }
 
 /**
- * The picks that need no user input: every UNMET axis offering exactly one option.
+ * The picks that need no user input: every UNMET axis whose rule names exactly one id
+ * (one depth-0 option). On a tag axis that named tag is picked even when its children
+ * are offered below it (owner decision, 2026-11-25).
  *
  * The design's rule is "an axis offering exactly one option needs no interaction —
  * pre-select it" — `ShelfFilterPicksDialog` seeds its initial state with this, so a
@@ -259,8 +320,13 @@ export function defaultPicksFor(axes: FilterAxis[]): FilterPicks {
 
   for (const axis of axes) {
     if (axis.metBy !== undefined) continue
-    if (axis.options.length !== 1) continue
-    const onlyOption = axis.options[0]
+    // Count only the ids the rule NAMES (depth 0). A tag axis naming one tag with
+    // children still has one depth-0 option, and that tag is the default, so pressing
+    // Add gives the same result as before child tags were offered. Vendor and recipe
+    // options are all depth 0, so for them this is "exactly one option", as before.
+    const named = axis.options.filter((o) => o.depth === 0)
+    if (named.length !== 1) continue
+    const onlyOption = named[0]
     if (!onlyOption) continue
 
     if (axis.kind === 'tag') {

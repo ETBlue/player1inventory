@@ -257,15 +257,20 @@ describe.each(people)('$who on a cart', (person) => {
     // The rows and the amount show for both
     const remove = await screen.findByRole('checkbox', { name: 'Remove Milk' })
     expect(remove).toBeChecked()
-    expect(screen.getByText('3')).toBeInTheDocument()
+    // One amount button, not − n + (cart amount dialog, 2026-11-25)
+    const amount = screen.getByRole('button', {
+      name: /^Edit amount of Milk: 3 /,
+    })
+    expect(amount.textContent).toBe('3')
+    expect(
+      screen.queryByRole('button', { name: 'Increase quantity of Milk' }),
+    ).toBeNull()
     const add = screen.getByRole('checkbox', { name: 'Add Eggs' })
 
     if (person.canEdit) {
       expect(remove).toBeEnabled()
       expect(add).toBeEnabled()
-      expect(
-        screen.getByRole('button', { name: 'Increase quantity of Milk' }),
-      ).toBeEnabled()
+      expect(amount).toBeEnabled()
       expect(screen.getByRole('button', { name: /done/i })).toBeInTheDocument()
       expect(
         screen.getByRole('button', { name: /cancel/i }),
@@ -276,12 +281,7 @@ describe.each(people)('$who on a cart', (person) => {
       // Shown, not changeable
       expect(remove).toBeDisabled()
       expect(add).toBeDisabled()
-      expect(
-        screen.getByRole('button', { name: 'Increase quantity of Milk' }),
-      ).toBeDisabled()
-      expect(
-        screen.getByRole('button', { name: 'Decrease quantity of Milk' }),
-      ).toBeDisabled()
+      expect(amount).toBeDisabled()
       // No checkout and no abandon
       expect(screen.queryByRole('button', { name: /done/i })).toBeNull()
       expect(screen.queryByRole('button', { name: /cancel/i })).toBeNull()
@@ -289,12 +289,13 @@ describe.each(people)('$who on a cart', (person) => {
       expect(screen.getByText(VIEW_ONLY_NOTE)).toBeInTheDocument()
       expect(remove).toHaveAccessibleDescription(VIEW_ONLY_NOTE)
       expect(add).toHaveAccessibleDescription(VIEW_ONLY_NOTE)
-      expect(
-        screen.getByRole('button', { name: 'Increase quantity of Milk' }),
-      ).toHaveAccessibleDescription(VIEW_ONLY_NOTE)
-      // A press on the disabled box writes nothing
+      expect(amount).toHaveAccessibleDescription(VIEW_ONLY_NOTE)
+      // A press on the disabled box or the disabled amount opens nothing and
+      // writes nothing
       await userEvent.setup().click(add)
+      await userEvent.setup().click(amount)
       await new Promise((resolve) => setTimeout(resolve, 50))
+      expect(screen.queryByRole('dialog')).toBeNull()
       expect(
         (await db.cartItems.toArray()).map((row) => row.itemId),
       ).not.toContain(eggs.id)

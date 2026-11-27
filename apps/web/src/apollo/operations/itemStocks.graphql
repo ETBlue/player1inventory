@@ -15,6 +15,7 @@ query PantryData($locationId: ID!) {
     amountPerPackage
     targetUnit
     consumeAmount
+    consumable
     expirationMode
     estimatedDueDays
     expirationThreshold
@@ -104,6 +105,7 @@ mutation ApplyUnitSwitch($input: ApplyUnitSwitchInput!) {
     amountPerPackage
     targetUnit
     consumeAmount
+    consumable
     expirationMode
     estimatedDueDays
     expirationThreshold

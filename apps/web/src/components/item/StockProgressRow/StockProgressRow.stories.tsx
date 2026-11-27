@@ -9,6 +9,8 @@ const meta: Meta<typeof StockProgressRow> = {
     onFill: () => {},
     clearLabel: 'Clear',
     fillLabel: 'Fill to Full',
+    // Every story is a consumable item unless it says otherwise.
+    consumable: true,
   },
   parameters: {
     layout: 'centered',
@@ -103,6 +105,25 @@ export const MeasurementUnit: Story = {
     measurementUnit: 'L',
     amountPerPackage: 1,
     refillThreshold: 0.75,
+    clearDisabled: false,
+    fillDisabled: false,
+  },
+}
+
+// A non-consumable item (cups): one square per piece instead of the bar.
+export const NotConsumable: Story = {
+  name: 'Not consumable — one square per piece',
+  args: {
+    quantityLabel: '3 / 5',
+    unitLabel: 'cup',
+    current: 3,
+    target: 5,
+    status: 'ok',
+    consumable: false,
+    targetUnit: 'package',
+    packed: 3,
+    unpacked: 0,
+    refillThreshold: 2,
     clearDisabled: false,
     fillDisabled: false,
   },

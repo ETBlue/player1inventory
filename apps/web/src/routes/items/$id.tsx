@@ -5,24 +5,18 @@ import {
   useNavigate,
   useRouter,
 } from '@tanstack/react-router'
-import { Calculator, History, Info, Settings2 } from 'lucide-react'
+import { Calculator, ChefHat, History, Info, Store, Tags } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LayoutInnerPages } from '@/components/shared/LayoutInnerPages'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+import { UnsavedChangesDialog } from '@/components/shared/UnsavedChangesDialog'
 import { useItem } from '@/hooks'
 import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { ItemLayoutProvider, useItemLayout } from '@/hooks/useItemLayout'
+
+const tabClassName =
+  'flex-1 flex items-center justify-center gap-2 px-2 py-3 -mb-[2px] border-b-2 border-accessory-default text-sm hover:bg-background-base transition-colors'
 
 export const Route = createFileRoute('/items/$id')({
   component: ItemLayout,
@@ -34,7 +28,7 @@ function ItemLayoutInner() {
   const navigate = useNavigate()
   const router = useRouter()
   const { data: item, isLoading } = useItem(id)
-  const { isDirty } = useItemLayout()
+  const { isDirty, saveControl, setSaveSlot } = useItemLayout()
   const { goBack } = useAppNavigation('/')
   // Both the Info tab (index, exact `/items/$id`) and the Stock tab
   // (`/items/$id/stock`) render an editable ItemForm that registers dirty
@@ -87,6 +81,54 @@ function ItemLayoutInner() {
     setPendingNavigation(null)
   }
 
+  // Info · Stock · Tags · Vendors · Recipes · Log. Tags, Vendors and Recipes
+  // were under a "Relation" tab until 2026-11-24; their old addresses redirect
+  // (`$id/relation/index.tsx`, `$id/relation/$.tsx`).
+  const tabs = [
+    {
+      to: '/items/$id',
+      path: `/items/${id}`,
+      label: t('items.detail.tabs.info'),
+      icon: Info,
+      exact: true,
+    },
+    {
+      to: '/items/$id/stock',
+      path: `/items/${id}/stock`,
+      label: t('items.detail.tabs.stock'),
+      icon: Calculator,
+      exact: false,
+    },
+    {
+      to: '/items/$id/tags',
+      path: `/items/${id}/tags`,
+      label: t('items.detail.tabs.tags'),
+      icon: Tags,
+      exact: false,
+    },
+    {
+      to: '/items/$id/vendors',
+      path: `/items/${id}/vendors`,
+      label: t('items.detail.tabs.vendors'),
+      icon: Store,
+      exact: false,
+    },
+    {
+      to: '/items/$id/recipes',
+      path: `/items/${id}/recipes`,
+      label: t('items.detail.tabs.recipes'),
+      icon: ChefHat,
+      exact: false,
+    },
+    {
+      to: '/items/$id/log',
+      path: `/items/${id}/log`,
+      label: t('items.detail.tabs.history'),
+      icon: History,
+      exact: false,
+    },
+  ] as const
+
   if (isLoading) {
     return <LoadingSpinner />
   }
@@ -100,82 +142,49 @@ function ItemLayoutInner() {
       <LayoutInnerPages
         title={item.name}
         onBack={handleBackClick}
-        toolbarEnd={
-          <div className="flex items-center -my-2">
-            <Link
-              to="/items/$id"
-              params={{ id }}
-              activeOptions={{ exact: true }}
-              aria-label={t('items.detail.tabs.info')}
-              className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-base transition-colors"
-              activeProps={{
-                className: 'border-foreground-muted',
-              }}
-              onClick={(e) => handleTabClick(e, `/items/${id}`)}
-            >
-              <Info className="h-4 w-4" />
-            </Link>
-            <Link
-              to="/items/$id/stock"
-              params={{ id }}
-              aria-label={t('items.detail.tabs.stock')}
-              className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-base transition-colors"
-              activeProps={{
-                className: 'border-foreground-muted',
-              }}
-              onClick={(e) => handleTabClick(e, `/items/${id}/stock`)}
-            >
-              <Calculator className="h-4 w-4" />
-            </Link>
-            <Link
-              to="/items/$id/relation"
-              params={{ id }}
-              aria-label={t('items.detail.tabs.relations')}
-              className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-base transition-colors"
-              activeProps={{
-                className: 'border-foreground-muted',
-              }}
-              onClick={(e) => handleTabClick(e, `/items/${id}/relation`)}
-            >
-              <Settings2 className="h-4 w-4" />
-            </Link>
-            <Link
-              to="/items/$id/log"
-              params={{ id }}
-              aria-label={t('items.detail.tabs.history')}
-              className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-base transition-colors"
-              activeProps={{
-                className: 'border-foreground-muted',
-              }}
-              onClick={(e) => handleTabClick(e, `/items/${id}/log`)}
-            >
-              <History className="h-4 w-4" />
-            </Link>
-          </div>
+        // Row 1 ends with the current tab's Save (owner decision 2026-11-25).
+        // The Info and Stock tabs portal their Save into this element
+        // (`ItemForm`'s `submitSlot`); the other tabs leave it empty.
+        // `contents`, so an empty slot adds no flex gap.
+        toolbarEnd={<div ref={setSaveSlot} className="contents" />}
+        tabs={
+          // Row 2: every tab of the item, one level (design 2026-11-24, part
+          // B). Below `sm` only the icons show; the name stays as visually
+          // hidden text, so it is each link's accessible name at every width.
+          // TanStack Router marks the active link with `aria-current="page"`.
+          <nav
+            aria-label={t('items.detail.tabsLabel')}
+            className="flex w-[100cqw] border-b-2 border-accessory-default bg-background-surface"
+          >
+            {tabs.map(({ to, path, label, icon: Icon, exact }) => (
+              <Link
+                key={to}
+                to={to}
+                params={{ id }}
+                activeOptions={{ exact }}
+                className={tabClassName}
+                activeProps={{ className: 'border-foreground-muted' }}
+                onClick={(e) => handleTabClick(e, path)}
+              >
+                <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span className="sr-only sm:not-sr-only">{label}</span>
+              </Link>
+            ))}
+          </nav>
         }
       >
         <Outlet key={router.state.location.pathname} />
       </LayoutInnerPages>
 
-      {/* Discard Confirmation Dialog */}
-      <AlertDialog open={showDiscardDialog} onOpenChange={setShowDiscardDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('common.unsavedTitle')}</AlertDialogTitle>
-          </AlertDialogHeader>
-          <AlertDialogDescription>
-            {t('common.unsavedDescription')}
-          </AlertDialogDescription>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={cancelDiscard}>
-              {t('common.cancel')}
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDiscard}>
-              {t('common.discard')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Cancel · Discard · Save (design 2026-11-25). Save runs the Info
+          form's own save and goes where the user pressed only when it
+          worked. */}
+      <UnsavedChangesDialog
+        open={showDiscardDialog}
+        onCancel={cancelDiscard}
+        onLeave={confirmDiscard}
+        saveControl={saveControl}
+      />
     </>
   )
 }

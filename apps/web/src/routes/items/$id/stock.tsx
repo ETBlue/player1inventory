@@ -11,16 +11,7 @@ import { DeleteButton } from '@/components/shared/DeleteButton'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { ReadOnlyNote } from '@/components/shared/ReadOnlyNote'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+import { UnsavedChangesDialog } from '@/components/shared/UnsavedChangesDialog'
 import { Button } from '@/components/ui/button'
 import { joinItemStock, stripStockFields } from '@/db/operations'
 import {
@@ -32,7 +23,6 @@ import {
   useUpdateItem,
 } from '@/hooks'
 import { useActiveLocation } from '@/hooks/useActiveLocation'
-import { useAppNavigation } from '@/hooks/useAppNavigation'
 import { useItemLayout } from '@/hooks/useItemLayout'
 import { useItemStocks } from '@/hooks/useItemStocks'
 import { useLocations } from '@/hooks/useLocations'
@@ -40,6 +30,7 @@ import { usePermissions } from '@/hooks/usePermissions'
 import { hasGraphQLErrorCode } from '@/lib/graphqlErrorCode'
 import { showSaveError } from '@/lib/saveError'
 import type { ItemStock, Location, PantryItem, StockFields } from '@/types'
+import { isConsumable } from '@/types'
 
 export const Route = createFileRoute('/items/$id/stock')({
   component: ItemStockTab,
@@ -76,6 +67,8 @@ function itemToFormValues(item: PantryItem): ItemFormValues {
           ? 'date'
           : 'disabled'),
     expirationThreshold: item.expirationThreshold ?? '',
+    // A missing value means consumable (`isConsumable`).
+    consumable: isConsumable(item),
   }
 }
 
@@ -129,10 +122,15 @@ type ItemUpdatePayload = Omit<Partial<StockFields>, 'dueDate'> & {
 function buildStockUpdates(values: ItemFormValues): ItemUpdatePayload {
   return {
     packedQuantity: values.packedQuantity,
-    unpackedQuantity: values.unpackedQuantity,
+    // A non-consumable item has no opened stock: its one "Amount" field is
+    // `packedQuantity`, and `unpackedQuantity` is always saved as 0. This also
+    // clears opened stock an old row still held (owner decision 2026-11-26).
+    unpackedQuantity: values.consumable ? values.unpackedQuantity : 0,
     targetQuantity: values.targetQuantity,
     refillThreshold: values.refillThreshold,
-    ...(values.expirationMode === 'date'
+    // A non-consumable item hides the field too (`ItemForm`), so it sends no
+    // key and the stored date is kept.
+    ...(values.expirationMode === 'date' && values.consumable
       ? { dueDate: values.dueDate ? new Date(values.dueDate) : undefined }
       : {}),
   }
@@ -156,14 +154,16 @@ function StockFormPanel({
   /** A location `viewer` of this page's location (households H5 task F.6). */
   readOnly: boolean
 }) {
+  const { t } = useTranslation()
   const updateItem = useUpdateItem()
-  const { registerDirtyState } = useItemLayout()
-  const { goBack } = useAppNavigation()
+  const { registerDirtyState, registerSaveControl, saveSlot } = useItemLayout()
   const [savedAt, setSavedAt] = useState(0)
 
   const id = item.id
 
-  const handleSubmit = async (values: ItemFormValues) => {
+  // Answers whether the save worked: the unsaved-changes dialog's Save
+  // (tabs, Back and the location pager) leaves only on `true`.
+  const handleSubmit = async (values: ItemFormValues): Promise<boolean> => {
     // Cast to Partial<StockFields> — the wider ItemUpdatePayload type is
     // compatible at runtime; the cast is needed because exactOptionalPropertyTypes
     // disallows undefined on Partial<StockFields>. updateItem routes these stock
@@ -181,10 +181,14 @@ function StockFormPanel({
       })
     } catch (err) {
       showSaveError(err)
-      return
+      return false
     }
+    // The page stays, on the same location page (design 2026-11-24, part A).
+    // Bumping `savedAt` makes `ItemForm` take the saved values as its new
+    // clean state, so Save is disabled again and the dirty guard is not armed.
     setSavedAt((n) => n + 1)
-    goBack()
+    toast.success(t('items.detail.saved'))
+    return true
   }
 
   return (
@@ -193,9 +197,11 @@ function StockFormPanel({
       sections={['stock']}
       onSubmit={handleSubmit}
       onDirtyChange={registerDirtyState}
+      onSaveControlChange={registerSaveControl}
       savedAt={savedAt}
       isPending={updateItem.isPending}
       readOnly={readOnly}
+      submitSlot={saveSlot}
     />
   )
 }
@@ -279,7 +285,7 @@ function StockTab({ itemId }: { itemId: string }) {
   const { data: locations } = useLocations()
   const { data: stocks } = useItemStocks(itemId)
   const { activeLocationId } = useActiveLocation()
-  const { isDirty, registerDirtyState } = useItemLayout()
+  const { isDirty, registerDirtyState, saveControl } = useItemLayout()
   const addItemToLocation = useAddItemToLocation()
   const removeItemFromLocation = useRemoveItemFromLocation()
   // Each page follows the caller's role at THAT page's location, not at the
@@ -433,7 +439,11 @@ function StockTab({ itemId }: { itemId: string }) {
                 <Button
                   type="button"
                   onClick={handleAdd}
-                  disabled={addItemToLocation.isPending}
+                  // `isLoading` shows the spinner and disables the button, so a
+                  // second click cannot send a second write. `isPending` stays
+                  // true until the stock lists have refetched (both modes), so
+                  // the button is replaced by the stock form with no idle frame.
+                  isLoading={addItemToLocation.isPending}
                 >
                   {t('items.detail.locationPager.addToLocation')}
                 </Button>
@@ -454,29 +464,14 @@ function StockTab({ itemId }: { itemId: string }) {
         )}
       </div>
 
-      <AlertDialog
+      {/* Save keeps the edits on this location's page, then turns the page.
+          Discard turns it without saving. */}
+      <UnsavedChangesDialog
         open={pendingPageIndex !== null}
-        onOpenChange={(open) => {
-          if (!open) setPendingPageIndex(null)
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('common.unsavedTitle')}</AlertDialogTitle>
-          </AlertDialogHeader>
-          <AlertDialogDescription>
-            {t('common.unsavedDescription')}
-          </AlertDialogDescription>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setPendingPageIndex(null)}>
-              {t('common.cancel')}
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={confirmPageChange}>
-              {t('common.discard')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        onCancel={() => setPendingPageIndex(null)}
+        onLeave={confirmPageChange}
+        saveControl={saveControl}
+      />
     </div>
   )
 }

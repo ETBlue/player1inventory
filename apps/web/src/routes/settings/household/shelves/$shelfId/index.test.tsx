@@ -230,7 +230,8 @@ describe('Shelf Settings - Info Tab', () => {
     it('user is not navigated back when mutation never resolves (regression guard for goBack-before-onSuccess bug)', async () => {
       // Given: mutation fires but never resolves
       vi.spyOn(useShelvesModule, 'useUpdateShelfMutation').mockReturnValue({
-        mutate: vi.fn(), // never calls onSuccess — navigation must NOT happen
+        // never resolves — navigation must NOT happen
+        mutateAsync: vi.fn(() => new Promise(() => {})),
         isPending: false,
       } as unknown as ReturnType<
         typeof useShelvesModule.useUpdateShelfMutation
@@ -258,17 +259,15 @@ describe('Shelf Settings - Info Tab', () => {
       await user.click(screen.getByRole('button', { name: /save/i }))
 
       // Then navigation does NOT happen — the form stays visible
-      // (if goBack() is called immediately after mutate(), the form would be gone)
+      // (if goBack() were called before the save resolved, the form would be gone)
       expect(screen.getByLabelText('Shelf name')).toBeInTheDocument()
     })
 
-    it('user is navigated back after saving when mutation resolves (fix: goBack in onSuccess)', async () => {
+    it('user is navigated back after saving when mutation resolves', async () => {
       // Given: mutation resolves (the fix: goBack is called in onSuccess)
       vi.spyOn(useShelvesModule, 'useUpdateShelfMutation').mockReturnValue({
-        mutate: vi.fn((_vars, options?: { onSuccess?: () => void }) => {
-          // Simulate mutation succeeding — call onSuccess immediately
-          options?.onSuccess?.()
-        }),
+        // Simulate the mutation succeeding at once
+        mutateAsync: vi.fn(async () => {}),
         isPending: false,
       } as unknown as ReturnType<
         typeof useShelvesModule.useUpdateShelfMutation

@@ -104,6 +104,18 @@ export type FixtureItem = {
    * written here, with the item.
    */
   amountPerPackage?: number
+  /**
+   * `false` for an item that is not used up (cups). Omitting it gives a
+   * consumable item in both modes, the product default (`createItem` writes
+   * `consumable ?? true`, Prisma declares `@default(true)`).
+   */
+  consumable?: boolean
+  /**
+   * The measurement unit name ("g", "ml"). Omitting it leaves the field unset
+   * in both modes. A `targetUnit: 'measurement'` item needs it, or its Info
+   * tab opens with the "measurement unit" error.
+   */
+  measurementUnit?: string
 }
 
 export type FixtureFilterConfig = {

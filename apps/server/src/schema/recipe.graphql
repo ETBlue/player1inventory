@@ -36,22 +36,6 @@ input ConsumeRecipesItemInput {
   note: String
   logKey: String
   logParams: JSON
-
-  # OLD-BUNDLE SHIM. Remove in the release after households.
-  #
-  # `main`'s web bundle (before the households release) still sends these
-  # three final numbers beside `delta`. Its `delta` is already the amount used,
-  # negated (`-totalAmount` in its `routes/cooking.tsx`), the same value a new
-  # bundle sends. So the server accepts the three fields for ONE release and
-  # IGNORES them: the cook is computed from `delta` alone. This lets the server
-  # be deployed before the web (owner decision 2026-11-17, option 4 in section
-  # 8.3 of docs/global/backend/2026-11-17-deploy-runbook-households-h4.md).
-  packedQuantity: Float
-    @deprecated(reason: "Old web bundles only. Ignored. Remove in the release after households.")
-  unpackedQuantity: Float
-    @deprecated(reason: "Old web bundles only. Ignored. Remove in the release after households.")
-  quantity: Float
-    @deprecated(reason: "Old web bundles only. Ignored. Remove in the release after households.")
 }
 
 input ConsumeRecipesInput {

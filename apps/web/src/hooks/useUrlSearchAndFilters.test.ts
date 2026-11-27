@@ -400,4 +400,62 @@ describe('useUrlSearchAndFilters', () => {
     expect(callArg).toContain('q=apple')
     expect(callArg).toContain('filters=1')
   })
+
+  describe('the Consumable filter', () => {
+    it('is All when the URL has no param, or an unknown value', () => {
+      const { result, rerender } = renderHook(() => useUrlSearchAndFilters())
+      expect(result.current.consumableFilter).toBe('all')
+
+      mockRouterState.location.search = '?f_consumable=maybe'
+      rerender()
+      expect(result.current.consumableFilter).toBe('all')
+    })
+
+    it('reads yes and no from the URL', () => {
+      mockRouterState.location.search = '?f_consumable=yes'
+      const { result, rerender } = renderHook(() => useUrlSearchAndFilters())
+      expect(result.current.consumableFilter).toBe('consumable')
+
+      mockRouterState.location.search = '?f_consumable=no'
+      rerender()
+      expect(result.current.consumableFilter).toBe('notConsumable')
+    })
+
+    it('is not read as a tag type filter', () => {
+      mockRouterState.location.search = '?f_consumable=no&f_type-1=tag-a'
+      const { result } = renderHook(() => useUrlSearchAndFilters())
+      expect(result.current.filterState).toEqual({ 'type-1': ['tag-a'] })
+    })
+
+    it('setConsumableFilter writes the param and All removes it', () => {
+      mockRouterState.location.search = '?q=apple'
+      const { result } = renderHook(() => useUrlSearchAndFilters())
+
+      act(() => {
+        result.current.setConsumableFilter('notConsumable')
+      })
+      expect(callArgs(mockHistoryReplace.mock, 0)[0]).toBe(
+        '/?q=apple&f_consumable=no',
+      )
+
+      mockRouterState.location.search = '?q=apple&f_consumable=no'
+      const { result: second } = renderHook(() => useUrlSearchAndFilters())
+      act(() => {
+        second.current.setConsumableFilter('all')
+      })
+      expect(callArgs(mockHistoryReplace.mock, 1)[0]).toBe('/?q=apple')
+    })
+
+    it('a tag filter change keeps the Consumable param', () => {
+      mockRouterState.location.search = '?f_consumable=yes&f_type-1=tag-a'
+      const { result } = renderHook(() => useUrlSearchAndFilters())
+
+      act(() => {
+        result.current.setFilterState({ 'type-2': ['tag-b'] })
+      })
+      const url = callArgs(mockHistoryReplace.mock, 0)[0]
+      expect(url).toContain('f_consumable=yes')
+      expect(url).not.toContain('f_type-1')
+    })
+  })
 })

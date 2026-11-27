@@ -2,11 +2,11 @@
 
 The local-mode data source. `index.ts` declares the Dexie schema, `operations.ts` holds every read/write. Components never touch Dexie directly — they go through the Query hooks in `src/hooks/` (see `src/hooks/CLAUDE.md`).
 
-**Files:** `index.ts` (schema + migrations), `operations.ts` (+ `operations.test.ts`), `migrations.test.ts`, `upgradeV15.test.ts`, `upgradeV16.test.ts`, `upgradeV17.test.ts`, `upgradeV18.test.ts`, `upgradeV19V20.test.ts`.
+**Files:** `index.ts` (schema + migrations), `operations.ts` (+ `operations.test.ts`), `migrations.test.ts`, `upgradeV15.test.ts`, `upgradeV16.test.ts`, `upgradeV17.test.ts`, `upgradeV18.test.ts`, `upgradeV19V20.test.ts`, `upgradeV21.test.ts`.
 
 ## Schema versioning
 
-One `db.version(n).stores({...})` per migration in `index.ts`. Migrations are **forward-only** and **idempotent within a bump**. Current version: **20**.
+One `db.version(n).stores({...})` per migration in `index.ts`. Migrations are **forward-only** and **idempotent within a bump**. Current version: **21**.
 
 Rules:
 - **Add a new version; never edit a shipped one.** An upgrade function must be valid on a database built only from committed history.
@@ -122,6 +122,23 @@ row for a pair:
   `replace` SETS the pair's amount; no write moves a row. Before task B.8 it used `bulkAdd` and
   `bulkPut`, so `replace` moved a row whose id the backup named under another pair.
 
+### v21 — `Item.consumable`
+
+Consumable items PR 2 (`docs/features/items/2026-11-25-item-consumable-design.md`). Same
+stores as 20 (`consumable` is not indexed). The upgrade sets `consumable: true` on every
+item whose value is not a boolean; a stored `false` or `true` stays. `createItem` writes
+`consumable ?? true`.
+
+**Readers do not rely on the backfill.** `Item.consumable` is optional, and every reader
+uses `isConsumable(item)` (`@p1i/types`), which reads a missing or `null` value as `true`.
+A backup file from before the field can still bring an item with no value; the local
+import writes `isConsumable(raw)` for it (`deserializeItem` in `lib/importData.ts`).
+
+**`on('populate')` needed no change.** A fresh database has no items at populate time.
+`upgradeV21.test.ts` checks a version-20 database with three items (no value, `false`,
+`true`, so "set where missing" differs from "set everywhere") and a fresh database.
+`upgradeV19V20.test.ts` now checks `verno` is at least 20, not exactly 20.
+
 ## The Item/ItemStock join
 
 An item is **"stocked at" a location iff an `ItemStock` row exists for the pair.** Reads join the two: `useItems`/`useItem` return a `PantryItem` (global `Item` + the active location's stock) via `joinItemStock` / `stripStockFields`, both exported from `operations.ts` so the Stock-tab pager re-joins against a different location with the same implementation.
@@ -148,10 +165,24 @@ Cascades run as sequential awaits rather than one Dexie transaction, consistentl
 
 ## Transactional batches
 
-Three operations wrap their writes in a single `db.transaction('rw', …)`. (Since households H3b task B.8, `addToCart` and the import's `importLocalCartItems` also run in one `rw` transaction on `cartItems` alone; see v19 and v20 above.) All three must declare **every** table they touch (touching an undeclared one throws at runtime, not compile time) and none may `await` a non-Dexie promise inside the body — a Dexie transaction is zone-scoped, and awaiting a foreign promise can detach the zone so later writes commit *outside* the transaction. **This does not force a caller to compute everything up front**: a plain Dexie read (`db.items.get`, `db.recipes.get`, …) is itself a Dexie promise, so it stays inside the zone and is safe to await mid-transaction — the hazard is specifically a *non*-Dexie await (a network call, a timer, another library's promise), and only `applyShelfFilterPicksBatch` below actually needs the distinction; the other two do compute their rows first, but that is a property of what they happen to need, not a rule the transaction imposes.
+Four operations wrap their writes in a single `db.transaction('rw', …)`. (Since households H3b task B.8, `addToCart` and the import's `importLocalCartItems` also run in one `rw` transaction on `cartItems` alone; see v19 and v20 above.) All of them must declare **every** table they touch (touching an undeclared one throws at runtime, not compile time) and none may `await` a non-Dexie promise inside the body — a Dexie transaction is zone-scoped, and awaiting a foreign promise can detach the zone so later writes commit *outside* the transaction. **This does not force a caller to compute everything up front**: a plain Dexie read (`db.items.get`, `db.recipes.get`, …) is itself a Dexie promise, so it stays inside the zone and is safe to await mid-transaction — the hazard is specifically a *non*-Dexie await (a network call, a timer, another library's promise), and only `applyShelfFilterPicksBatch` below actually needs the distinction; `consumeRecipesBatch` and `applyUnitSwitchBatch` do compute their rows first, but that is a property of what they happen to need, not a rule the transaction imposes.
 
 - **`consumeRecipesBatch`** — cooking's "done": quantities, logs and `lastCookedAt` over `items`, `itemStocks`, `inventoryLogs`, `recipes`. Callers compute the finished rows first and hand them over.
 - **`applyUnitSwitchBatch`** — the Info tab's unit switch over `items`, `itemStocks`, `recipes`: the `Item`'s configuration, one `ItemStock` per location whose tracked quantities the switch moves, and one recipe per `defaultAmount` expressed in the old unit. As separate writes a failure partway left the item on the **new** unit while some locations and recipes still held **old**-unit numbers — mixed units, silently. It shares `updateItem`'s field routing via the internal `writeItemUpdate` rather than re-deriving the rule. Callers compute the finished rows first and hand them over.
-- **`applyShelfFilterPicksBatch`** (PR D, unified item search) — a filter shelf's per-axis picks over `items`, `recipes`: unions the picked tag/vendor ids onto the item and, when a recipe axis was picked, appends `{ itemId, defaultAmount: consumeAmount || 1 }` to that recipe's `items`. Unlike the two above, it deliberately does **NOT** take finished rows from the caller — it re-reads `db.items.get(itemId)` and (when a recipe pick is present) `db.recipes.get(recipeId)` *inside* the transaction and unions against those fresh rows, so a stale React render closure that captured the item/recipe before some other write landed cannot double-append an id. Both reads are ordinary Dexie promises, so this does not violate the zone-detachment hazard above — it is a deliberate departure from the other two operations' *habit*, not their *rule*.
+- **`updateItem`** (since 2026-11-25, inventory log layout) — the write behind the Stock tab Save and Quick update, over `items`, `itemStocks`, `inventoryLogs`, and `recipes` since 2026-11-26: an update with `consumable: false` removes the item from every recipe in the same transaction (see *Only consumable items in a recipe* below). It reads the stock row before and after `writeItemUpdate`, and when the on-hand total changed (`stockCountChange` from `@p1i/types`, the same rule as the server's `upsertItemStock`) it adds ONE `stockCount` log row: `delta` and `quantity` in packs, no `note`, no `logParams`. Both totals use the item's `amountPerPackage` AFTER the write. The log is here, NOT in `upsertItemStock` or `writeItemUpdate`: `checkout`, `createItem`, `addItemToLocation` and `applyUnitSwitchBatch` write stock through those too, and none of them is a stock count. A failing log write rolls the stock write back (pinned in `operations.test.ts`, *stock count log rows*). `getLastPurchaseDate` counts a `stockCount` row with `delta > 0` like any other row that added stock (since 2026-11-26, reversing option A; `docs/features/items/2026-11-26-expiry-from-last-restock-design.md`).
+- **`applyShelfFilterPicksBatch`** (PR D, unified item search) — a filter shelf's per-axis picks over `items`, `recipes`: unions the picked tag/vendor ids onto the item and, when a recipe axis was picked, appends `{ itemId, defaultAmount: consumeAmount || 1 }` to that recipe's `items`. Unlike `consumeRecipesBatch` and `applyUnitSwitchBatch`, it deliberately does **NOT** take finished rows from the caller — it re-reads `db.items.get(itemId)` and (when a recipe pick is present) `db.recipes.get(recipeId)` *inside* the transaction and unions against those fresh rows, so a stale React render closure that captured the item/recipe before some other write landed cannot double-append an id. Both reads are ordinary Dexie promises, so this does not violate the zone-detachment hazard above — it is a deliberate departure from the other two operations' *habit*, not their *rule*.
+
+## Only consumable items in a recipe
+
+Owner decision 2026-11-26, the same rules as the server (`apps/server/src/lib/consumable.ts`):
+`createRecipe`, `updateRecipe`, `applyShelfFilterPicksBatch` and the recipe lists of
+`applyUnitSwitchBatch` refuse a NEW link to a non-consumable item with `NotConsumableError`
+(`lib/recipeConsumables.ts`), and `consumeRecipesBatch` refuses one; nothing is written. A link
+the recipe already holds is not refused. `updateItem` and `applyUnitSwitchBatch` that set
+`consumable: false` remove the item from every recipe in the same transaction (after the
+recipe updates, so a list that still names it cannot bring it back). `importLocalData` ends
+every strategy with `removeNonConsumableRecipeLinks()`, so a backup's link to a non-consumable
+item is dropped, not refused. `createRecipe` and `updateRecipe` became `rw` transactions over
+`items` and `recipes` for the check. Tests: `operations.consumable.test.ts`.
 
 > Details of the location-scoped behaviour live with their features: `src/routes/settings/household/locations/CLAUDE.md` (locations, delete cascade, orphans), `src/routes/items/CLAUDE.md` (the Stock pager and what removal destroys), `src/routes/CLAUDE.md` (active-location scoping).

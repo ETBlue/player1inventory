@@ -137,6 +137,11 @@ export async function seedLocalFixture(
         ...(item.amountPerPackage === undefined
           ? {}
           : { amountPerPackage: item.amountPerPackage }),
+        // The product default, the same as `createItem` and Dexie v21.
+        consumable: item.consumable ?? true,
+        ...(item.measurementUnit === undefined
+          ? {}
+          : { measurementUnit: item.measurementUnit }),
         createdAt: now,
         updatedAt: now,
       })),

@@ -1,3 +1,4 @@
+import type { MockedResponse } from '@apollo/client/testing'
 import {
   MockedProvider,
   type MockedProviderProps,
@@ -376,5 +377,243 @@ describe('Item info tab unit switch — cloud mode', () => {
         items: [{ itemId: 'item-flour', defaultAmount: 0.4 }],
       },
     ])
+  })
+
+  it('user turning Consumable off on an item tracked in grams drops opened stock and saves whole packs in every location in ONE call', async () => {
+    const user = userEvent.setup()
+
+    // Given the flour item, tracked in grams in two locations, with opened
+    // stock in both (250 g and 750 g)
+    renderInfoTab()
+    await screen.findByDisplayValue('Flour')
+
+    // When the user turns Consumable off and saves
+    await user.click(screen.getByRole('switch', { name: /^consumable$/i }))
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    // Then the converted amounts dialog says opened stock is removed, and
+    // lists it going to 0 in BOTH locations
+    const dialog = await screen.findByRole('alertdialog')
+    expect(
+      within(dialog).getByText(/opened packs are removed/i),
+    ).toBeInTheDocument()
+    expect(within(dialog).getByText(/250\D+0$/)).toBeInTheDocument()
+    expect(within(dialog).getByText(/750\D+0$/)).toBeInTheDocument()
+
+    // When the user confirms
+    await user.click(
+      within(dialog).getByRole('button', { name: /update & save/i }),
+    )
+
+    // Then ONE applyUnitSwitch carries the switch to packages, the
+    // consumable flag, and the kept measurement settings
+    await waitFor(() => expect(sentSwitches).toHaveLength(1))
+    const sent = sentSwitches[0] as {
+      updates: Record<string, unknown>
+      stockConversions: {
+        locationId: string
+        quantities: Record<string, number>
+      }[]
+    }
+    expect(sent.updates).toMatchObject({
+      consumable: false,
+      targetUnit: 'package',
+      measurementUnit: 'g',
+      amountPerPackage: 500,
+    })
+    // And every location: no opened stock, target and refill in whole packs
+    // (1000 g -> 2, 200 g -> 0.4 -> 1; 3000 g -> 6, 500 g -> 1)
+    const byLocation = new Map(
+      sent.stockConversions.map((c) => [c.locationId, c.quantities]),
+    )
+    expect(byLocation.get(LOC_A)).toMatchObject({
+      unpackedQuantity: 0,
+      targetQuantity: 2,
+      refillThreshold: 1,
+    })
+    expect(byLocation.get(LOC_B)).toMatchObject({
+      unpackedQuantity: 0,
+      targetQuantity: 6,
+      refillThreshold: 1,
+    })
+    // Packed packages are kept
+    expect(stocks.find((s) => s.locationId === LOC_A)?.packedQuantity).toBe(2)
+    expect(stocks.find((s) => s.locationId === LOC_B)?.packedQuantity).toBe(1)
+  })
+
+  it('user turning Consumable off on an item tracked in packages drops opened stock in every location', async () => {
+    const user = userEvent.setup()
+
+    // Given flour already tracked in packages, with half a pack open in one
+    // location and nothing open in the other. No unit change happens here,
+    // so before 2026-11-26 no conversion ran at all.
+    item = { ...FLOUR, targetUnit: 'package', consumeAmount: 0.5 }
+    stocks = [
+      {
+        ...FLOUR_A,
+        targetQuantity: 4,
+        refillThreshold: 1,
+        unpackedQuantity: 0.5,
+      },
+      {
+        ...FLOUR_B,
+        targetQuantity: 3,
+        refillThreshold: 1,
+        unpackedQuantity: 0,
+      },
+    ]
+    renderInfoTab()
+    await screen.findByDisplayValue('Flour')
+
+    // When the user turns Consumable off, saves and confirms
+    await user.click(screen.getByRole('switch', { name: /^consumable$/i }))
+    await user.click(screen.getByRole('button', { name: /save/i }))
+    const dialog = await screen.findByRole('alertdialog')
+    await user.click(
+      within(dialog).getByRole('button', { name: /update & save/i }),
+    )
+
+    // Then the one call writes 0 opened stock where there was some, and
+    // leaves the row that needs no change alone
+    await waitFor(() => expect(sentSwitches).toHaveLength(1))
+    const sent = sentSwitches[0] as {
+      stockConversions: {
+        locationId: string
+        quantities: Record<string, number>
+      }[]
+    }
+    expect(sent.stockConversions).toEqual([
+      {
+        locationId: LOC_A,
+        quantities: {
+          unpackedQuantity: 0,
+          targetQuantity: 4,
+          refillThreshold: 1,
+        },
+      },
+    ])
+    expect(stocks.find((s) => s.locationId === LOC_A)?.unpackedQuantity).toBe(0)
+  })
+})
+
+// Save must wait for the reads that decide whether the converted amounts
+// dialog opens (bug 2026-11-26, `docs/features/items/2026-11-26-bug-save-before-recipes-load.md`).
+// `handleSubmit` counts the recipes that hold the item and the locations to
+// convert. While `GetRecipes` or `ItemStocksForItem` has not answered, it
+// counted none, skipped the dialog and saved: the recipe warning was lost,
+// and a unit switch left recipe amounts and stock in the old unit. Found on
+// Neon by `e2e/tests/consumable-items.spec.ts`.
+//
+// `delay: Infinity` holds a read for good, so the test looks at the screen
+// while it is still loading. The item itself is NOT held: the form must be
+// on screen, or the test would prove nothing about Save.
+describe('Item info tab Save waits for recipes and stock — cloud mode', () => {
+  beforeEach(() => {
+    localStorage.setItem('data-mode', 'cloud')
+    localStorage.setItem(activeLocationStorageKey('cloud'), LOC_A)
+    sessionStorage.clear()
+    item = FLOUR
+    stocks = [FLOUR_A, FLOUR_B]
+    recipes = [BREAD]
+    sentSwitches = []
+  })
+
+  afterEach(() => {
+    localStorage.removeItem('data-mode')
+  })
+
+  const withMock = (
+    replaced: typeof getRecipesMock | typeof stocksMock,
+    replacement: MockedResponse,
+  ): MockedResponse[] =>
+    MOCKS.map((m) => (m === replaced ? replacement : (m as MockedResponse)))
+
+  it('user cannot save the Info tab while the recipes are still loading', async () => {
+    const user = userEvent.setup()
+
+    // Given the recipes read never answers
+    renderInfoTab(
+      withMock(getRecipesMock, {
+        request: { query: GetRecipesDocument },
+        maxUsageCount: Number.POSITIVE_INFINITY,
+        delay: Number.POSITIVE_INFINITY,
+      }),
+    )
+    await screen.findByDisplayValue('Flour')
+
+    // When the user turns Consumable off (the form is now dirty)
+    await user.click(screen.getByRole('switch', { name: /^consumable$/i }))
+
+    // Then Save stays off, so the recipe warning cannot be skipped
+    expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
+    // And a press sends nothing and opens no dialog
+    await user.click(screen.getByRole('button', { name: /save/i }))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(sentSwitches).toHaveLength(0)
+    // And no error text shows while the read is only loading
+    expect(screen.queryByText(/could not load/i)).not.toBeInTheDocument()
+  })
+
+  // In cloud the stock rows can only be missing after a FAILED read: `useItem`
+  // reads the same `ItemStocksForItem` query, and the item layout shows a
+  // spinner, not the form, while it loads. The loading case is tested in local
+  // mode, in `saveWaitsForReads.test.tsx`.
+  it('user sees why the Info tab cannot be saved when the stock read failed', async () => {
+    const user = userEvent.setup()
+
+    // Given the per-location stock read fails and nothing is cached
+    renderInfoTab(
+      withMock(stocksMock, {
+        request: {
+          query: ItemStocksForItemDocument,
+          variables: { itemId: 'item-flour' },
+        },
+        maxUsageCount: Number.POSITIVE_INFINITY,
+        error: new Error('network down'),
+      }),
+    )
+    await screen.findByDisplayValue('Flour')
+
+    // Then the message shows
+    expect(
+      await screen.findByText(
+        /could not load this item's recipes or stock, so it cannot be saved/i,
+      ),
+    ).toBeInTheDocument()
+
+    // And after a unit switch Save stays off, so no location is left in the
+    // old unit
+    await user.click(
+      screen.getByRole('switch', { name: /track in measurement/i }),
+    )
+    expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: /save/i }))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(sentSwitches).toHaveLength(0)
+  })
+
+  it('user sees why the Info tab cannot be saved when the recipes read failed', async () => {
+    const user = userEvent.setup()
+
+    // Given the recipes read fails and nothing is cached
+    renderInfoTab(
+      withMock(getRecipesMock, {
+        request: { query: GetRecipesDocument },
+        maxUsageCount: Number.POSITIVE_INFINITY,
+        error: new Error('network down'),
+      }),
+    )
+    await screen.findByDisplayValue('Flour')
+
+    // Then a message says the item cannot be saved and what to do
+    expect(
+      await screen.findByText(
+        /could not load this item's recipes or stock, so it cannot be saved/i,
+      ),
+    ).toBeInTheDocument()
+
+    // And Save stays off after an edit
+    await user.click(screen.getByRole('switch', { name: /^consumable$/i }))
+    expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
   })
 })

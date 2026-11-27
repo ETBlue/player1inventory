@@ -82,7 +82,7 @@ import { useUpdateRecipe } from './useRecipes'
 // households H6 task J.5 the three purge hooks, and since households H6b
 // task K.5 the five ownership offer hooks, `apollo/refetchAfterWrite.ts`). Callers read `isPending` as "the write AND
 // the reads after it are done": the search tail re-enables a row after it, and
-// the recipe relation tab keeps a badge busy on it. So for each hook:
+// the item Recipes tab keeps a badge busy on it. So for each hook:
 //
 // 1. `isPending` is true while the write is in flight,
 // 2. it is STILL true after the write has been answered, while the read after

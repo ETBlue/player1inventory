@@ -50,11 +50,17 @@ vi.mock('../lib/prisma.js', async () => {
   const { filterCartItems } = await import('../test/cartItemFake.js')
   const { createOwnedRowFake } = await import('../test/ownedRowFake.js')
   const world = createHouseholdWorld()
-  const items = createOwnedRowFake<{ id: string; householdId: string; userId: string }>({
+  const items = createOwnedRowFake<{
+    id: string
+    householdId: string
+    userId: string
+    amountPerPackage?: number | null
+  }>({
     model: 'Item',
     scope: 'householdId',
   })
   const logs = createInventoryLogFake()
+  const logHooks = { failCreate: false }
   const carts = {
     // `Cart` rows, because `CartItem` has NO locationId column of its own. The
     // location lives on the cart, in `Cart.locationId` (PR 3a), which is what
@@ -80,11 +86,31 @@ vi.mock('../lib/prisma.js', async () => {
   }
   // The log and cart stores roll back with the world's own, so one
   // `$transaction` covers all three deletes of `removeItemFromLocation`.
-  world.extend({ inventoryLog: logs.client, cartItem, item: { findMany: items.client.findMany } }, [
+  world.extend(
+    {
+      // `create` can be made to throw, to prove the stock count log and the
+      // stock write are one transaction (design 2026-11-25).
+      inventoryLog: {
+        ...logs.client,
+        create: async (args: Parameters<typeof logs.client.create>[0]) => {
+          if (logHooks.failCreate) throw new Error('inventoryLog.create failed on purpose')
+          return logs.client.create(args)
+        },
+      },
+      cartItem,
+      // `findUnique` reads `amountPerPackage` for the stock count log
+      // (design 2026-11-25). Still no write method: see above.
+      item: { findMany: items.client.findMany, findUnique: items.client.findUnique },
+      // `upsertItemStock` locks the stock row first. One request at a time
+      // here, so the lock has nothing to do.
+      $queryRaw: async () => [],
+    },
+    [
     logs.state as unknown as Record<string, unknown>,
     carts as unknown as Record<string, unknown>,
-  ])
-  return { prisma: { ...world.client, $world: world, $logs: logs, $carts: carts, $items: items } }
+    ],
+  )
+  return { prisma: { ...world.client, $world: world, $logs: logs, $carts: carts, $items: items, $logHooks: logHooks } }
 })
 
 import { prisma } from '../lib/prisma.js'
@@ -100,12 +126,18 @@ const handles = prisma as unknown as {
     cartItems: FakeCartItem[]
     failCartItemDeleteMany: boolean
   }
-  $items: { reset: (rows: { id: string; householdId: string; userId: string }[]) => void }
+  $logHooks: { failCreate: boolean }
+  $items: {
+    reset: (
+      rows: { id: string; householdId: string; userId: string; amountPerPackage?: number | null }[],
+    ) => void
+  }
 }
 const world = handles.$world
 const logs = handles.$logs
 const carts = handles.$carts
 const items = handles.$items
+const logHooks = handles.$logHooks
 const stockState = world.stock.state
 
 const server = new ApolloServer<Context>({ typeDefs, resolvers })
@@ -686,6 +718,124 @@ function seedStocks() {
     stock({ id: 'st-theirs', itemId: 'item-rice', locationId: 'loc-b', targetQuantity: 1 }),
   ]
 }
+
+// ── The stock count log (design 2026-11-25, inventory log layout) ──
+//
+// A manual save that changes the on-hand total writes ONE `stockCount` row,
+// in the same transaction as the stock write. Both numbers in PACKAGES.
+
+const UPSERT = `mutation M($itemId: ID!, $locationId: ID!, $input: ItemStockInput!) {
+  upsertItemStock(itemId: $itemId, locationId: $locationId, input: $input) { packedQuantity unpackedQuantity targetQuantity }
+}`
+
+describe('upsertItemStock writes a stock count log when the amount changes', () => {
+  beforeEach(() => {
+    seed()
+    logHooks.failCreate = false
+    // item-milk tracks in packages (no amountPerPackage). item-flour is
+    // 500 g per pack, so the unpacked grams are a fraction of a pack.
+    items.reset([
+      { id: 'item-milk', householdId: 'hh-a', userId: 'user-a' },
+      { id: 'item-flour', householdId: 'hh-a', userId: 'user-a', amountPerPackage: 500 },
+      { id: 'item-bread', householdId: 'hh-a', userId: 'user-a' },
+    ])
+    stockState.itemStocks = [
+      stock({ id: 'st-milk', itemId: 'item-milk', locationId: 'loc-a', targetQuantity: 3, packedQuantity: 2 }),
+      // 2 packs and 0 g: 2 packs in all.
+      stock({ id: 'st-flour', itemId: 'item-flour', locationId: 'loc-a', targetQuantity: 4, packedQuantity: 2, unpackedQuantity: 0 }),
+    ]
+    logs.reset([])
+  })
+
+  function stockCountRows() {
+    return logs.state.logs.filter((l) => l.logKey === 'stockCount')
+  }
+
+  it('user changing the amount writes one stock count row with the delta and the new total', async () => {
+    // When user-a saves 5 packs of milk at loc-a (it was 2)
+    const res = await run(UPSERT, { itemId: 'item-milk', locationId: 'loc-a', input: { packedQuantity: 5 } })
+
+    // Then one stock count row says +3, 5 left, by user-a, at loc-a
+    expect(res.errors).toBeUndefined()
+    expect(logs.state.logs).toHaveLength(1)
+    const row = logs.state.logs[0]
+    expect(row).toMatchObject({
+      itemId: 'item-milk',
+      locationId: 'loc-a',
+      userId: 'user-a',
+      delta: 3,
+      quantity: 5,
+      logKey: 'stockCount',
+      note: null,
+      logParams: null,
+    })
+    expect(row?.occurredAt).toBeInstanceOf(Date)
+  })
+
+  it('user lowering a measured item writes the change in packs, read from amountPerPackage', async () => {
+    // When user-a saves 1 pack and 470 g of flour (it was 2 packs, 0 g)
+    const res = await run(UPSERT, {
+      itemId: 'item-flour',
+      locationId: 'loc-a',
+      input: { packedQuantity: 1, unpackedQuantity: 470 },
+    })
+
+    // Then the row says -0.06 packs (30 g of 500) and 1.94 packs left.
+    // Without `amountPerPackage` the total would read 471, not 1.94.
+    expect(res.errors).toBeUndefined()
+    const [row] = stockCountRows()
+    expect(row?.delta).toBeCloseTo(-0.06, 9)
+    expect(row?.quantity).toBeCloseTo(1.94, 9)
+  })
+
+  it('user stocking an item for the first time counts the missing row as 0', async () => {
+    // When user-a saves 2 packs of bread at loc-a, where it has no row
+    await run(UPSERT, { itemId: 'item-bread', locationId: 'loc-a', input: { packedQuantity: 2 } })
+
+    // Then the row says +2
+    expect(stockCountRows()).toMatchObject([{ itemId: 'item-bread', delta: 2, quantity: 2 }])
+  })
+
+  it('a save that changes only the target writes no log row', async () => {
+    // When user-a changes only the target of milk
+    const res = await run(UPSERT, { itemId: 'item-milk', locationId: 'loc-a', input: { targetQuantity: 6 } })
+
+    // Then the stock changed and no log was written
+    expect(res.errors).toBeUndefined()
+    expect(stockState.itemStocks.find((s) => s.id === 'st-milk')?.targetQuantity).toBe(6)
+    expect(logs.state.logs).toHaveLength(0)
+  })
+
+  it('a save that moves a pack into unpacked, with the same total, writes no log row', async () => {
+    // When user-a opens one pack of flour: 1 pack + 500 g is still 2 packs
+    await run(UPSERT, { itemId: 'item-flour', locationId: 'loc-a', input: { packedQuantity: 1, unpackedQuantity: 500 } })
+
+    // Then no row, because the on-hand total did not change
+    expect(logs.state.logs).toHaveLength(0)
+  })
+
+  it('a failing log write leaves no stock change: the two are one transaction', async () => {
+    // Given the log write fails
+    logHooks.failCreate = true
+
+    // When user-a saves 5 packs of milk
+    const res = await run(UPSERT, { itemId: 'item-milk', locationId: 'loc-a', input: { packedQuantity: 5 } })
+
+    // Then the save is refused and the stock is still 2
+    expect(res.errors).toBeDefined()
+    expect(stockState.itemStocks.find((s) => s.id === 'st-milk')?.packedQuantity).toBe(2)
+    expect(logs.state.logs).toHaveLength(0)
+  })
+
+  it('a refused save writes no log row', async () => {
+    // When user-b saves stock at user-a's location
+    const res = await run(UPSERT, { itemId: 'item-milk', locationId: 'loc-a', input: { packedQuantity: 9 } }, 'user-b')
+
+    // Then nothing is written
+    expect(res.errors?.[0]?.extensions?.code).toBe('FORBIDDEN')
+    expect(logs.state.logs).toHaveLength(0)
+  })
+})
 
 describe('itemStock reads use the location memberships', () => {
   beforeEach(() => {

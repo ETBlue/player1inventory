@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import * as stories from './items.stories'
 
-const { Default, WithItems } = composeStories(stories)
+const { Default, WithItems, NonConsumableItems } = composeStories(stories)
 
 describe('Settings recipe detail items tab stories smoke tests', () => {
   it('Default renders the items tab with unassigned items visible', async () => {
@@ -25,5 +25,17 @@ describe('Settings recipe detail items tab stories smoke tests', () => {
         screen.getByRole('checkbox', { name: 'Remove Chicken Breast' }),
       ).toBeChecked(),
     )
+  })
+
+  it('NonConsumableItems marks the linked and the blocked non-consumable items', async () => {
+    render(<NonConsumableItems />)
+    expect(
+      await screen.findByText(
+        'Not used in cooking: this item is not consumable.',
+        {},
+        { timeout: 3000 },
+      ),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: 'Add Plate' })).toBeDisabled()
   })
 })

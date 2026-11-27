@@ -15,13 +15,14 @@ import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import { useVendors } from '@/hooks/useVendors'
 import {
   filterItems,
+  filterItemsByConsumable,
   filterItemsByRecipes,
   filterItemsByVendors,
 } from '@/lib/filterUtils'
 import { roundToStep } from '@/lib/quantityUtils'
 import { showSaveError } from '@/lib/saveError'
 import { sortItems } from '@/lib/sortUtils'
-import type { Recipe, Vendor } from '@/types'
+import { isConsumable, type Recipe, type Vendor } from '@/types'
 
 export const Route = createFileRoute('/settings/household/recipes/$id/items')({
   component: RecipeItemsTab,
@@ -94,6 +95,7 @@ function RecipeItemsTab() {
     setFilterState,
     selectedVendorIds,
     selectedRecipeIds,
+    consumableFilter,
     toggleVendorId,
     toggleRecipeId,
   } = useUrlSearchAndFilters()
@@ -129,10 +131,9 @@ function RecipeItemsTab() {
   // Pass tags to enable descendant expansion (selecting a parent tag matches its children too)
   const tagFiltered = filterItems(items, filterState, tags)
   const vendorFiltered = filterItemsByVendors(tagFiltered, selectedVendorIds)
-  const recipeFiltered = filterItemsByRecipes(
-    vendorFiltered,
-    selectedRecipeIds,
-    allRecipes,
+  const recipeFiltered = filterItemsByConsumable(
+    filterItemsByRecipes(vendorFiltered, selectedRecipeIds, allRecipes),
+    consumableFilter,
   )
 
   const displayItems = search.trim() ? searchedItems : recipeFiltered // trim guards whitespace-only input
@@ -232,6 +233,11 @@ function RecipeItemsTab() {
   const handleToggle = async (itemId: string, consumeAmount: number) => {
     if (savingItemIds.has(itemId)) return // guard against re-entrancy
     const assigned = isAssigned(itemId)
+    // A non-consumable item cannot be ADDED: cooking is only for consumable
+    // items (owner decision 2026-11-26). Its checkbox is disabled too; this
+    // guard covers a press that gets past it. Removing an old link is allowed.
+    const item = items.find((i) => i.id === itemId)
+    if (!assigned && item && !isConsumable(item)) return
 
     const newRecipeItems = assigned
       ? recipeItems.filter((ri) => ri.itemId !== itemId)
@@ -332,6 +338,13 @@ function RecipeItemsTab() {
           <div className="space-y-px">
             {items.map((item) => {
               const assigned = isAssigned(item.id)
+              // A non-consumable item shows a note under its row: why it
+              // cannot be added, or, for a link made before the rule, that
+              // cooking does not use it. The checkbox names the note.
+              const consumable = isConsumable(item)
+              const noteId = consumable
+                ? undefined
+                : `recipe-item-note-${item.id}`
               const itemTags = (item.tagIds ?? [])
                 .map((tid) => tagMap[tid])
                 .filter((t): t is NonNullable<typeof t> => t != null)
@@ -373,9 +386,24 @@ function RecipeItemsTab() {
                     onAmountChange={(delta) =>
                       handleAdjustDefaultAmount(item.id, delta)
                     }
-                    disabled={!canEditCatalog || savingItemIds.has(item.id)}
+                    disabled={
+                      !canEditCatalog ||
+                      savingItemIds.has(item.id) ||
+                      (!consumable && !assigned)
+                    }
                     isPending={savingItemIds.has(item.id)}
+                    controlsDescribedBy={noteId}
                   />
+                  {noteId && (
+                    <p
+                      id={noteId}
+                      className="ml-10 px-3 pb-1 text-xs text-foreground-muted"
+                    >
+                      {assigned
+                        ? t('settings.recipes.items.notUsedInCooking')
+                        : t('settings.recipes.items.notConsumable')}
+                    </p>
+                  )}
                 </div>
               )
             })}
@@ -385,7 +413,8 @@ function RecipeItemsTab() {
       {filteredItems.length === 0 &&
         (Object.values(filterState).some((ids) => ids.length > 0) ||
           selectedVendorIds.length > 0 ||
-          selectedRecipeIds.length > 0) &&
+          selectedRecipeIds.length > 0 ||
+          consumableFilter !== 'all') &&
         !search.trim() && (
           <p className="text-sm text-foreground-muted py-4 px-1">
             No items match the current filters.

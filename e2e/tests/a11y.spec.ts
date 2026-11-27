@@ -917,15 +917,15 @@ test.describe('detail page a11y', () => {
     await checkA11yAllowingKnownConfirmContrast(page)
   })
 
-  // Item detail relation > tags subtab (/items/:id/relation/tags)
-  test('user can view item detail relation tags subtab without accessibility violations', async ({
+  // Item detail tags tab (/items/:id/tags)
+  test('user can view item detail tags tab without accessibility violations', async ({
     page,
   }) => {
     // Given a seeded item
     const itemId = await seedItem(page)
 
-    // When the user navigates to the item relation tags subtab
-    await page.goto(`/items/${itemId}/relation/tags`)
+    // When the user navigates to the item tags tab
+    await page.goto(`/items/${itemId}/tags`)
     await page.waitForLoadState('networkidle')
     await injectAxe(page)
 
@@ -933,15 +933,15 @@ test.describe('detail page a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  // Item detail relation > vendors subtab (/items/:id/relation/vendors)
-  test('user can view item detail relation vendors subtab without accessibility violations', async ({
+  // Item detail vendors tab (/items/:id/vendors)
+  test('user can view item detail vendors tab without accessibility violations', async ({
     page,
   }) => {
     // Given a seeded item
     const itemId = await seedItem(page)
 
-    // When the user navigates to the item relation vendors subtab (direct nav)
-    await page.goto(`/items/${itemId}/relation/vendors`)
+    // When the user navigates to the item vendors tab (direct nav)
+    await page.goto(`/items/${itemId}/vendors`)
     await page.waitForLoadState('networkidle')
     await injectAxe(page)
 
@@ -949,15 +949,15 @@ test.describe('detail page a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  // Item detail relation > recipes subtab (/items/:id/relation/recipes)
-  test('user can view item detail relation recipes subtab without accessibility violations', async ({
+  // Item detail recipes tab (/items/:id/recipes)
+  test('user can view item detail recipes tab without accessibility violations', async ({
     page,
   }) => {
     // Given a seeded item
     const itemId = await seedItem(page)
 
-    // When the user navigates to the item relation recipes subtab
-    await page.goto(`/items/${itemId}/relation/recipes`)
+    // When the user navigates to the item recipes tab
+    await page.goto(`/items/${itemId}/recipes`)
     await page.waitForLoadState('networkidle')
     await injectAxe(page)
 
@@ -1445,15 +1445,15 @@ test.describe('dark mode a11y', () => {
     await checkA11yAllowingKnownConfirmContrast(page)
   })
 
-  // Item detail relation > tags subtab (/items/:id/relation/tags) in dark mode
-  test('user can view item detail relation tags subtab without accessibility violations in dark mode', async ({
+  // Item detail tags tab (/items/:id/tags) in dark mode
+  test('user can view item detail tags tab without accessibility violations in dark mode', async ({
     page,
   }) => {
     // Given a seeded item
     const itemId = await seedItem(page)
 
-    // When the user navigates to the item relation tags subtab
-    await page.goto(`/items/${itemId}/relation/tags`)
+    // When the user navigates to the item tags tab
+    await page.goto(`/items/${itemId}/tags`)
     await page.waitForLoadState('networkidle')
     await injectAxe(page)
 
@@ -1461,15 +1461,15 @@ test.describe('dark mode a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  // Item detail relation > vendors subtab (/items/:id/relation/vendors) in dark mode
-  test('user can view item detail relation vendors subtab without accessibility violations in dark mode', async ({
+  // Item detail vendors tab (/items/:id/vendors) in dark mode
+  test('user can view item detail vendors tab without accessibility violations in dark mode', async ({
     page,
   }) => {
     // Given a seeded item
     const itemId = await seedItem(page)
 
-    // When the user navigates to the item relation vendors subtab (direct nav)
-    await page.goto(`/items/${itemId}/relation/vendors`)
+    // When the user navigates to the item vendors tab (direct nav)
+    await page.goto(`/items/${itemId}/vendors`)
     await page.waitForLoadState('networkidle')
     await injectAxe(page)
 
@@ -1477,15 +1477,15 @@ test.describe('dark mode a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 
-  // Item detail relation > recipes subtab (/items/:id/relation/recipes) in dark mode
-  test('user can view item detail relation recipes subtab without accessibility violations in dark mode', async ({
+  // Item detail recipes tab (/items/:id/recipes) in dark mode
+  test('user can view item detail recipes tab without accessibility violations in dark mode', async ({
     page,
   }) => {
     // Given a seeded item
     const itemId = await seedItem(page)
 
-    // When the user navigates to the item relation recipes subtab
-    await page.goto(`/items/${itemId}/relation/recipes`)
+    // When the user navigates to the item recipes tab
+    await page.goto(`/items/${itemId}/recipes`)
     await page.waitForLoadState('networkidle')
     await injectAxe(page)
 
@@ -1774,6 +1774,106 @@ test.describe('mobile viewport a11y', () => {
     await checkA11y(page, undefined, AXE_OPTIONS)
   })
 })
+
+// The item page's tab row (Info · Stock · Tags · Vendors · Recipes · Log,
+// design docs/features/items/2026-11-24-item-tabs-flat-design.md, part B).
+// Below `sm` the tabs show icons only and keep their names as visually hidden
+// text; from `sm` up they show icon and text. So the row is scanned at both
+// widths, in light and dark mode. Each test first checks the six tabs are
+// there by name, so a scan of a page without the row cannot pass.
+//
+// Since 2026-11-25 row 1 (the top bar) also holds the Info and Stock tabs'
+// Save (owner decision). So each test also checks that Save is in the top
+// bar, fits the width with the item name, and is scanned twice: disabled
+// (a clean form) and enabled (after an edit). A disabled button is exempt
+// from the contrast rule, so only the second scan checks Save's contrast.
+const ITEM_TAB_NAMES = ['Info', 'Stock', 'Tags', 'Vendors', 'Recipes', 'Log']
+
+for (const { label, viewport } of [
+  { label: 'on a phone', viewport: { width: 390, height: 844 } },
+  { label: 'on a desktop', viewport: { width: 1280, height: 800 } },
+]) {
+  for (const theme of ['light', 'dark'] as const) {
+    test.describe(`item tab row a11y ${label}, ${theme} mode`, () => {
+      test.use({ viewport })
+
+      test(`user can use the item tab row ${label} in ${theme} mode without accessibility violations`, async ({
+        page,
+      }) => {
+        if (theme === 'dark') {
+          await page.addInitScript(() => {
+            localStorage.setItem('theme-preference', 'dark')
+          })
+        }
+        // Given a seeded item, opened on its Info tab
+        const itemId = await seedItem(page)
+        await page.goto(`/items/${itemId}`)
+        await page.waitForLoadState('networkidle')
+
+        // Then the tab row lists the six tabs by name, with Info marked
+        const row = page.getByRole('navigation', { name: 'Item sections' })
+        await expect(row.getByRole('link')).toHaveCount(ITEM_TAB_NAMES.length)
+        for (const name of ITEM_TAB_NAMES) {
+          await expect(
+            row.getByRole('link', { name, exact: true }),
+          ).toBeVisible()
+        }
+        await expect(
+          row.getByRole('link', { name: 'Info', exact: true }),
+        ).toHaveAttribute('aria-current', 'page')
+
+        // And Save is in the top bar, beside the item name, disabled while
+        // the form is clean (routes/items/$id.tsx, ItemForm's submitSlot)
+        const heading = page.getByRole('heading', { level: 1 })
+        const save = page.getByRole('button', { name: 'Save', exact: true })
+        await expect(save).toBeVisible()
+        await expect(save).toBeDisabled()
+        await expect(
+          page.locator('form').getByRole('button', { name: 'Save' }),
+        ).toHaveCount(0)
+        // It fits: inside the window, to the right of the name, on the same
+        // row, and the page does not scroll sideways
+        const saveBox = await save.boundingBox()
+        const headingBox = await heading.boundingBox()
+        expect(saveBox).not.toBeNull()
+        expect(headingBox).not.toBeNull()
+        if (saveBox && headingBox) {
+          expect(saveBox.x + saveBox.width).toBeLessThanOrEqual(viewport.width)
+          expect(saveBox.x).toBeGreaterThanOrEqual(
+            headingBox.x + headingBox.width,
+          )
+          expect(
+            Math.abs(
+              saveBox.y +
+                saveBox.height / 2 -
+                (headingBox.y + headingBox.height / 2),
+            ),
+          ).toBeLessThan(8)
+        }
+        const overflow = await page.evaluate(
+          () =>
+            document.documentElement.scrollWidth -
+            document.documentElement.clientWidth,
+        )
+        expect(overflow).toBeLessThanOrEqual(0)
+
+        // And axe finds no violations on the page
+        await injectAxe(page)
+        await checkA11y(page, undefined, AXE_OPTIONS)
+
+        // When the user edits the name, Save is enabled. The seeded row has
+        // no consume amount, which the form shows as 0 and refuses ("Must be
+        // greater than 0."), so it is set too, or Save would stay disabled.
+        await page.locator('#name').fill('Renamed item')
+        await page.locator('#consumeAmount').fill('1')
+        await expect(save).toBeEnabled()
+
+        // Then axe still finds no violations, Save's contrast included
+        await checkA11y(page, undefined, AXE_OPTIONS)
+      })
+    })
+  }
+}
 
 test.describe('offline banner a11y', () => {
   // These two tests need a real service worker, so they point at the PWA preview

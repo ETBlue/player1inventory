@@ -1,7 +1,7 @@
 import type { ApolloClient } from '@apollo/client'
 import { CombinedGraphQLErrors } from '@apollo/client/errors'
 import { db, ensureDefaultLocationRow } from '@/db'
-import { bootstrapCarts } from '@/db/operations'
+import { bootstrapCarts, removeNonConsumableRecipeLinks } from '@/db/operations'
 import {
   AllCartItemsDocument,
   type AllCartItemsQuery,
@@ -76,7 +76,12 @@ import type {
   TagType,
   Vendor,
 } from '@/types'
-import { cartIdFor, DEFAULT_LOCATION_ID, parseCartId } from '@/types'
+import {
+  cartIdFor,
+  DEFAULT_LOCATION_ID,
+  isConsumable,
+  parseCartId,
+} from '@/types'
 import { deserializeRecipe, parseWireDate } from './deserialization'
 import type { ExportPayload } from './exportData'
 import { expectLocationLoss } from './seenLocations'
@@ -143,6 +148,10 @@ function deserializeItem(rawItem: Item): Item {
     ...rawItem,
     createdAt: toDate(rawItem.createdAt),
     updatedAt: toDate(rawItem.updatedAt),
+    // A backup from before consumable items has no value: it imports as
+    // consumable. A `null` from a cloud file is the same. Written as a
+    // boolean, so the stored row agrees with the Dexie v21 backfill.
+    consumable: isConsumable(rawItem),
   }
   for (const key of NULLABLE_ITEM_CONFIG_KEYS) {
     if (item[key] === null) delete item[key]
@@ -1331,6 +1340,12 @@ export function toItemInput(item: Record<string, unknown>): ItemInputShape {
     estimatedDueDays: item.estimatedDueDays as number | undefined,
     expirationThreshold: item.expirationThreshold as number | undefined,
     expirationMode: item.expirationMode as string | undefined,
+    // Optional on `ItemInput`, so nothing but a unit test keeps it here. A
+    // file from before the field existed has no value; `undefined` is
+    // dropped from the JSON, and the server then writes `true`. Anything but
+    // a boolean is treated the same way.
+    consumable:
+      typeof item.consumable === 'boolean' ? item.consumable : undefined,
     createdAt,
     updatedAt,
   }
@@ -2348,6 +2363,9 @@ export async function importLocalData(
       })),
     )
 
+    // Only consumable items can be in a recipe: a link the file holds to a
+    // non-consumable item is dropped, not refused (the server skips it too).
+    await removeNonConsumableRecipeLinks()
     await bootstrapCartsForAllLocations()
     return
   }
@@ -2462,6 +2480,9 @@ export async function importLocalData(
       await db.recipes.update(conflictEntry.id, { items: mergedItems })
     }
 
+    // Only consumable items can be in a recipe: a link the file holds to a
+    // non-consumable item is dropped, not refused (the server skips it too).
+    await removeNonConsumableRecipeLinks()
     await bootstrapCartsForAllLocations()
     return
   }
@@ -2559,6 +2580,9 @@ export async function importLocalData(
     })),
   )
 
+  // Only consumable items can be in a recipe: a link the file holds to a
+  // non-consumable item is dropped, not refused (the server skips it too).
+  await removeNonConsumableRecipeLinks()
   await bootstrapCartsForAllLocations()
 }
 

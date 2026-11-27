@@ -32,6 +32,7 @@ import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import { useVendors } from '@/hooks/useVendors'
 import {
   filterItems,
+  filterItemsByConsumable,
   filterItemsByRecipes,
   filterItemsByVendors,
 } from '@/lib/filterUtils'
@@ -44,7 +45,7 @@ import {
   matchesFilterConfig,
 } from '@/lib/shelfUtils'
 import { type SortDirection, type SortField, sortItems } from '@/lib/sortUtils'
-import type { PantryItem, StockFields } from '@/types'
+import { isConsumable, type PantryItem, type StockFields } from '@/types'
 
 interface ShelfDetailViewProps {
   shelfId: string
@@ -93,6 +94,7 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
     filterState,
     selectedVendorIds,
     selectedRecipeIds,
+    consumableFilter,
   } = useUrlSearchAndFilters()
 
   const [pendingItemIds, setPendingItemIds] = useState<Set<string>>(new Set())
@@ -177,7 +179,10 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
     if (!isUnsorted) return sortedInShelfItems
     const tagFiltered = filterItems(sortedInShelfItems, filterState, tags)
     const vendorFiltered = filterItemsByVendors(tagFiltered, selectedVendorIds)
-    return filterItemsByRecipes(vendorFiltered, selectedRecipeIds, recipes)
+    return filterItemsByConsumable(
+      filterItemsByRecipes(vendorFiltered, selectedRecipeIds, recipes),
+      consumableFilter,
+    )
   }, [
     isUnsorted,
     sortedInShelfItems,
@@ -185,6 +190,7 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
     filterState,
     selectedVendorIds,
     selectedRecipeIds,
+    consumableFilter,
     recipes,
     tags,
   ])
@@ -349,6 +355,16 @@ export function ShelfDetailView({ shelfId }: ShelfDetailViewProps) {
           groupAction: {
             label: t('items.searchTail.addToShelf'),
             icon: <ArrowUpFromLine />,
+            // Joining a shelf with an unmet recipe axis adds the item to a
+            // recipe. A non-consumable item cannot be in a recipe (owner
+            // decision 2026-11-26), so that row shows why instead of a button.
+            blockedNote: (item: PantryItem) =>
+              !isConsumable(item) &&
+              axesFor(item).some(
+                (axis) => axis.kind === 'recipe' && axis.metBy === undefined,
+              )
+                ? t('items.searchTail.notConsumable')
+                : null,
             onAction: async (item: PantryItem) => {
               // Always open the dialog — never apply directly, regardless
               // of how many options each axis offers (designer ruling,

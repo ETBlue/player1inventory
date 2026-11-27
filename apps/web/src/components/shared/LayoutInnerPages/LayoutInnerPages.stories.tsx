@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react'
-import { Tags } from 'lucide-react'
+import { Info, Store, Tags } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { LayoutInnerPages } from '.'
 
@@ -41,33 +41,37 @@ export const WithToolbarEnd: Story = {
   },
 }
 
+// The `tabs` prop: a second row under the toolbar, as the item page uses it
+// (routes/items/$id.tsx). Below `sm` only the icons show; the names stay as
+// visually hidden text.
+const storyTab =
+  'flex-1 flex items-center justify-center gap-2 px-2 py-3 -mb-[2px] border-b-2 text-sm hover:bg-background-base transition-colors'
+
 export const WithTabs: Story = {
   args: {
     title: 'Item Name',
-    toolbarEnd: (
-      <div className="flex items-center">
+    tabs: (
+      <nav
+        aria-label="Sections"
+        className="flex w-[100cqw] border-b-2 border-accessory-default bg-background-surface"
+      >
         <a
           href="#info"
-          className="px-3 py-4 -mb-[2px] border-b-2 border-foreground-muted hover:bg-background-surface transition-colors"
-          aria-label="Info tab"
+          aria-current="page"
+          className={`${storyTab} border-foreground-muted`}
         >
-          Info
+          <Info className="h-4 w-4" aria-hidden="true" />
+          <span className="sr-only sm:not-sr-only">Info</span>
         </a>
-        <a
-          href="#tags"
-          className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
-          aria-label="Tags tab"
-        >
-          Tags
+        <a href="#tags" className={`${storyTab} border-accessory-default`}>
+          <Tags className="h-4 w-4" aria-hidden="true" />
+          <span className="sr-only sm:not-sr-only">Tags</span>
         </a>
-        <a
-          href="#vendors"
-          className="px-3 py-4 -mb-[2px] border-b-2 border-accessory-default hover:bg-background-surface transition-colors"
-          aria-label="Vendors tab"
-        >
-          Vendors
+        <a href="#vendors" className={`${storyTab} border-accessory-default`}>
+          <Store className="h-4 w-4" aria-hidden="true" />
+          <span className="sr-only sm:not-sr-only">Vendors</span>
         </a>
-      </div>
+      </nav>
     ),
     children: <div className="p-4">Tab content area</div>,
   },

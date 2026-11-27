@@ -6,6 +6,7 @@ import {
 } from '@/lib/itemStock'
 import type { Language } from '@/lib/language'
 import { getPackedTotal } from '@/lib/quantityUtils'
+import { NotConsumableError } from '@/lib/recipeConsumables'
 import type {
   CartItem,
   InventoryLog,
@@ -22,8 +23,96 @@ import type {
   TagType,
   Vendor,
 } from '@/types'
-import { cartIdFor, DEFAULT_LOCATION_ID, parseCartId, TagColor } from '@/types'
+import {
+  cartIdFor,
+  DEFAULT_LOCATION_ID,
+  isConsumable,
+  parseCartId,
+  STOCK_COUNT_LOG_KEY,
+  stockCountChange,
+  TagColor,
+} from '@/types'
 import { db } from './index'
+
+// ── Only consumable items can be in a recipe (owner decision 2026-11-26) ──
+//
+// The same rule as the server (`apps/server/src/lib/consumable.ts`):
+//
+// | Write | A non-consumable item |
+// |---|---|
+// | `createRecipe`, `updateRecipe`, `applyShelfFilterPicksBatch`, the recipe lists of `applyUnitSwitchBatch` | refused with `NotConsumableError`, nothing written |
+// | `consumeRecipesBatch` | refused the same way |
+// | import (`importLocalData`) | its recipe links are dropped (`removeNonConsumableRecipeLinks`) |
+// | `updateItem`, `applyUnitSwitchBatch` turning an item off | its recipe links are deleted, in the same transaction |
+//
+// A NEW link is refused. A link the recipe already holds (made before this
+// rule) is not, so such a recipe can still be edited.
+//
+// Every helper here awaits only Dexie promises, so it is safe inside a
+// transaction that names `db.items` and `db.recipes`.
+
+/** The ids among `itemIds` whose item is not consumable. A missing item is not listed. */
+async function nonConsumableIdsIn(
+  itemIds: readonly string[],
+): Promise<Set<string>> {
+  if (itemIds.length === 0) return new Set()
+  const unique = [...new Set(itemIds)]
+  const items = await db.items.bulkGet(unique)
+  return new Set(
+    items
+      .filter((item): item is Item => !!item && !isConsumable(item))
+      .map((item) => item.id),
+  )
+}
+
+/** Throw when `items` attaches a non-consumable item that `linked` does not already hold. */
+function refuseAttached(
+  items: readonly RecipeItem[],
+  blocked: ReadonlySet<string>,
+  linked: ReadonlySet<string>,
+): void {
+  const attached = items
+    .map((ri) => ri.itemId)
+    .filter((id) => blocked.has(id) && !linked.has(id))
+  if (attached.length > 0) throw new NotConsumableError(attached)
+}
+
+/** Remove `itemId` from every recipe that holds it. */
+async function removeItemFromRecipes(itemId: string, now: Date): Promise<void> {
+  const recipes = await db.recipes
+    .filter((recipe) => recipe.items.some((ri) => ri.itemId === itemId))
+    .toArray()
+  for (const recipe of recipes) {
+    await db.recipes.update(recipe.id, {
+      items: recipe.items.filter((ri) => ri.itemId !== itemId),
+      updatedAt: now,
+    })
+  }
+}
+
+/**
+ * Remove every non-consumable item from every recipe. The import's last
+ * step: a backup can name a non-consumable item in a recipe, and an import
+ * SKIPS such a link rather than refusing the file (the server does the same).
+ * Exported for that and for its test.
+ */
+export async function removeNonConsumableRecipeLinks(): Promise<void> {
+  await db.transaction('rw', [db.items, db.recipes], async () => {
+    const recipes = await db.recipes.toArray()
+    const blocked = await nonConsumableIdsIn(
+      recipes.flatMap((r) => r.items.map((ri) => ri.itemId)),
+    )
+    if (blocked.size === 0) return
+    const now = new Date()
+    for (const recipe of recipes) {
+      if (!recipe.items.some((ri) => blocked.has(ri.itemId))) continue
+      await db.recipes.update(recipe.id, {
+        items: recipe.items.filter((ri) => !blocked.has(ri.itemId)),
+        updatedAt: now,
+      })
+    }
+  })
+}
 
 // ── ItemStock helpers ──────────────────────────────────────────────────────
 //
@@ -216,6 +305,7 @@ export async function createItem(
     estimatedDueDays,
     expirationThreshold,
     expirationMode,
+    consumable,
     // Per-location stock state (written to the ItemStock below)
     targetQuantity: _tq,
     refillThreshold: _rt,
@@ -248,6 +338,9 @@ export async function createItem(
     ...(estimatedDueDays !== undefined ? { estimatedDueDays } : {}),
     ...(expirationThreshold !== undefined ? { expirationThreshold } : {}),
     ...(expirationMode !== undefined ? { expirationMode } : {}),
+    // Written out, not left missing: a new item is consumable unless the
+    // caller says otherwise. Mirrors the cloud `createItem` resolver.
+    consumable: consumable ?? true,
     createdAt: now,
     updatedAt: now,
   }
@@ -311,12 +404,55 @@ export async function getStockedItems(
 // wikidataUrl, note) AND stock configuration (units, packaging, expiration
 // mode/threshold/days, consume amount) — stays on the Item, where it applies to
 // every location at once.
+//
+// The stock count log (design 2026-11-25, inventory log layout). This is the
+// local write behind the Stock tab Save and Quick update (`useUpdateItem`),
+// the two manual paths. When the save changes the on-hand total at
+// `locationId`, ONE `stockCount` log row is written in the SAME Dexie
+// transaction as the stock write, the same rule the server's
+// `upsertItemStock` applies (`stockCountChange` from `@p1i/types`).
+//
+// It is HERE and not in `upsertItemStock` or `writeItemUpdate`, on purpose:
+// local `checkout`, `createItem`, `addItemToLocation` and the unit switch
+// (`applyUnitSwitchBatch`) write stock through those two as well, and none of
+// them is a stock count.
 export async function updateItem(
   id: string,
   updates: Partial<Omit<Item, 'id' | 'createdAt'>> & Partial<StockFields>,
   locationId: string = DEFAULT_LOCATION_ID,
 ): Promise<void> {
-  await writeItemUpdate(id, updates, locationId, new Date())
+  const now = new Date()
+  await db.transaction(
+    'rw',
+    [db.items, db.itemStocks, db.inventoryLogs, db.recipes],
+    async () => {
+      const before = await getItemStock(id, locationId)
+      await writeItemUpdate(id, updates, locationId, now)
+      // Only consumable items can be in a recipe: turning Consumable off
+      // removes the item from every recipe, in this same transaction.
+      if (updates.consumable === false) await removeItemFromRecipes(id, now)
+      const after = await getItemStock(id, locationId)
+      // No row after the write: the update named no stock field and the item
+      // is not stocked here, so nothing changed at this location.
+      if (!after) return
+      // Read after the write, so a save that also changes `amountPerPackage`
+      // uses the new value for BOTH totals, as the server does.
+      const item = await db.items.get(id)
+      const change = stockCountChange(before, after, item?.amountPerPackage)
+      if (!change) return
+      await db.inventoryLogs.add({
+        id: crypto.randomUUID(),
+        itemId: id,
+        locationId,
+        // Both in PACKAGES, like a checkout row.
+        delta: change.delta,
+        quantity: change.quantity,
+        occurredAt: now,
+        createdAt: now,
+        logKey: STOCK_COUNT_LOG_KEY,
+      })
+    },
+  )
 }
 
 // The field-routing half of `updateItem`, factored out so the transactional
@@ -400,6 +536,23 @@ export async function applyUnitSwitchBatch(
     'rw',
     [db.items, db.itemStocks, db.recipes],
     async () => {
+      // No recipe list may attach a non-consumable item. The switched item
+      // counts as it will be AFTER this switch, the others as stored.
+      const switchedTo = input.updates.consumable
+      const blocked = await nonConsumableIdsIn(
+        input.recipeUpdates.flatMap((u) => u.items.map((ri) => ri.itemId)),
+      )
+      if (switchedTo === true) blocked.delete(input.itemId)
+      if (switchedTo === false) blocked.add(input.itemId)
+      for (const update of input.recipeUpdates) {
+        const recipe = await db.recipes.get(update.recipeId)
+        refuseAttached(
+          update.items,
+          blocked,
+          new Set(recipe?.items.map((ri) => ri.itemId) ?? []),
+        )
+      }
+
       await writeItemUpdate(input.itemId, input.updates, locationId, now)
       for (const conversion of input.stockConversions) {
         await upsertItemStock(
@@ -414,6 +567,9 @@ export async function applyUnitSwitchBatch(
           updatedAt: now,
         })
       }
+      // Turning Consumable off removes the item from every recipe. After the
+      // recipe updates, so a list that still named it cannot bring it back.
+      if (switchedTo === false) await removeItemFromRecipes(input.itemId, now)
     },
   )
 }
@@ -467,6 +623,10 @@ export async function applyShelfFilterPicksBatch(
     )
 
     if (input.addRecipeId) {
+      // Refused, not skipped: the same rule and the same reason as the
+      // server's `applyShelfFilterPicks`. It throws inside the transaction,
+      // so the tag and vendor write above rolls back with it.
+      if (!isConsumable(item)) throw new NotConsumableError([input.itemId])
       const recipe = await db.recipes.get(input.addRecipeId)
       if (!recipe) throw new Error(`Recipe not found: ${input.addRecipeId}`)
       if (!recipe.items.some((ri) => ri.itemId === input.itemId)) {
@@ -555,7 +715,7 @@ type CreateLogInput = {
   occurredAt: Date
   note?: string
   logKey?: string
-  logParams?: Record<string, string>
+  logParams?: Record<string, unknown>
 }
 
 export async function addInventoryLog(
@@ -607,6 +767,14 @@ export async function getLastPurchaseDate(
   itemId: string,
   locationId: string = DEFAULT_LOCATION_ID,
 ): Promise<Date | null> {
+  // The newest row at this location that ADDED stock, of any kind: a
+  // checkout, a stock count that raised the amount, or an old row with no
+  // `logKey`. A row that lowered or kept the amount never counts. So "last
+  // purchased" really means "last restocked": it drives the "days from
+  // purchase" expiry and the Purchased sort. Owner decision 2026-11-26
+  // (`docs/features/items/2026-11-26-expiry-from-last-restock-design.md`),
+  // which reverses option A of the 2026-11-25 design (stock counts skipped).
+  // The server's `lastPurchaseDates` applies the same rule.
   const logs = (await getItemLogs(itemId, locationId)).filter(
     (log) => log.delta > 0,
   )
@@ -815,7 +983,7 @@ export async function getCartItems(cartId: string): Promise<CartItem[]> {
 
 export async function checkout(
   cartId: string,
-  logDescriptor?: { logKey?: string; logParams?: Record<string, string> },
+  logDescriptor?: { logKey?: string; logParams?: Record<string, unknown> },
 ): Promise<void> {
   // The cart id encodes the location; stock writes + logs target that location.
   const { locationId } = parseCartId(cartId)
@@ -1051,7 +1219,15 @@ export async function createRecipe(input: {
     createdAt: now,
     updatedAt: now,
   }
-  await db.recipes.add(recipe)
+  await db.transaction('rw', [db.items, db.recipes], async () => {
+    // A new recipe holds no link yet, so every non-consumable item is refused.
+    refuseAttached(
+      recipe.items,
+      await nonConsumableIdsIn(recipe.items.map((ri) => ri.itemId)),
+      new Set(),
+    )
+    await db.recipes.add(recipe)
+  })
   return recipe
 }
 
@@ -1059,7 +1235,17 @@ export async function updateRecipe(
   id: string,
   updates: Partial<Omit<Recipe, 'id' | 'createdAt'>>,
 ): Promise<void> {
-  await db.recipes.update(id, { ...updates, updatedAt: new Date() })
+  await db.transaction('rw', [db.items, db.recipes], async () => {
+    if (updates.items) {
+      const current = await db.recipes.get(id)
+      refuseAttached(
+        updates.items,
+        await nonConsumableIdsIn(updates.items.map((ri) => ri.itemId)),
+        new Set(current?.items.map((ri) => ri.itemId) ?? []),
+      )
+    }
+    await db.recipes.update(id, { ...updates, updatedAt: new Date() })
+  })
 }
 
 export async function updateRecipeLastCookedAt(id: string): Promise<void> {
@@ -1082,7 +1268,7 @@ type ConsumeRecipesBatchInput = {
     quantity: number
     note?: string
     logKey?: string
-    logParams?: Record<string, string>
+    logParams?: Record<string, unknown>
   }>
 }
 
@@ -1094,6 +1280,10 @@ export async function consumeRecipesBatch(
     'rw',
     [db.items, db.itemStocks, db.inventoryLogs, db.recipes],
     async () => {
+      // Cooking is only for consumable items. Checked before the first
+      // write, so a refused cook writes nothing.
+      const blocked = await nonConsumableIdsIn(input.items.map((i) => i.itemId))
+      if (blocked.size > 0) throw new NotConsumableError([...blocked])
       for (const item of input.items) {
         // Write the consumed quantities to the item's stock in this location.
         const existing = await db.itemStocks

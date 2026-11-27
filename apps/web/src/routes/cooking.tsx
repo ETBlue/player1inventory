@@ -41,6 +41,12 @@ import {
   isStockedHere,
   roundToStep,
 } from '@/lib/quantityUtils'
+import {
+  cookingRecipe,
+  isNotConsumableError,
+  nonConsumableItemIds,
+} from '@/lib/recipeConsumables'
+import { COOKING_LOG_KEY, type CookingLogParams } from '@/types'
 
 function highlight(text: string, query: string): React.ReactNode {
   if (!query.trim()) return text
@@ -92,8 +98,18 @@ function CookingPage() {
   const viewOnlyNoteId = useId()
   const navigate = useNavigate()
   const { sort, dir, q, expanded } = Route.useSearch()
-  const { data: recipes = [] } = useRecipes()
+  const { data: allRecipes = [] } = useRecipes()
   const { data: items = [] } = useItems()
+  // Cooking is only for consumable items (owner decision 2026-11-26). Every
+  // recipe on this page is the recipe WITHOUT its non-consumable items, so
+  // the list, the counts, the sort by item count, the search and the consume
+  // write all read one filtered list. A recipe still keeps its stored link;
+  // only this page leaves it out. This is the only place that applies the
+  // rule here: do not add a second filter further down.
+  const recipes = useMemo(() => {
+    const nonConsumableIds = nonConsumableItemIds(items)
+    return allRecipes.map((recipe) => cookingRecipe(recipe, nonConsumableIds))
+  }, [allRecipes, items])
   const consumeRecipes = useConsumeRecipes()
   // tags and tagTypes are passed to ItemCard for API consistency;
   // tag badges are suppressed in cooking mode by ItemCard itself
@@ -371,11 +387,19 @@ function CookingPage() {
     for (const [recipeId, recipeAmounts] of sessionAmounts) {
       const servings = sessionServings.get(recipeId) ?? 1
       const included = checkedItemIds.get(recipeId) ?? new Set()
+      // Only items the recipe still lists on THIS page. The session maps were
+      // filled from an earlier render, so an item that turned non-consumable
+      // since then (a live update) would otherwise still be consumed. This
+      // reads the same filtered `recipes` list; it is not a second rule.
+      const listed = new Set(
+        recipes.find((r) => r.id === recipeId)?.items.map((ri) => ri.itemId),
+      )
       for (const [itemId, amount] of recipeAmounts) {
         // Skip items not stocked in the active location — they can't be consumed.
         if (
           amount > 0 &&
           included.has(itemId) &&
+          listed.has(itemId) &&
           availableItemIds.has(itemId)
         ) {
           totals.set(itemId, (totals.get(itemId) ?? 0) + servings * amount)
@@ -383,7 +407,13 @@ function CookingPage() {
       }
     }
     return totals
-  }, [sessionAmounts, sessionServings, checkedItemIds, availableItemIds])
+  }, [
+    sessionAmounts,
+    sessionServings,
+    checkedItemIds,
+    availableItemIds,
+    recipes,
+  ])
 
   // Items that would go below 0 after consumption
   const insufficientItems = useMemo(() => {
@@ -405,15 +435,17 @@ function CookingPage() {
   const handleConfirmDone = async () => {
     const now = new Date()
 
-    // Build item → contributing recipe names for log notes
-    const recipeNamesByItemId = new Map<string, string[]>()
+    // Build item → the recipes that used it, for the log. Ids plus a name
+    // snapshot (design 2026-11-25, inventory log layout): the Log tab shows a
+    // recipe's CURRENT name while it still exists.
+    const recipesByItemId = new Map<string, CookingLogParams['recipes']>()
     for (const [recipeId, itemSet] of checkedItemIds) {
       const recipe = recipes.find((r) => r.id === recipeId)
       if (!recipe) continue
       for (const itemId of itemSet) {
-        const names = recipeNamesByItemId.get(itemId) ?? []
-        names.push(recipe.name)
-        recipeNamesByItemId.set(itemId, names)
+        const list = recipesByItemId.get(itemId) ?? []
+        list.push({ id: recipe.id, name: recipe.name })
+        recipesByItemId.set(itemId, list)
       }
     }
 
@@ -430,23 +462,17 @@ function CookingPage() {
       ([itemId, totalAmount]) => {
         const item = items.find((i) => i.id === itemId)
         if (!item) return []
-        const recipeNames = recipeNamesByItemId.get(itemId) ?? []
-        const logKey =
-          recipeNames.length > 0
-            ? 'cooking.log.consumedVia'
-            : 'cooking.log.consumedViaRecipe'
-        const logParams =
-          recipeNames.length > 0
-            ? { recipes: recipeNames.join(', ') }
-            : undefined
-        const note = logParams ? t(logKey, logParams) : t(logKey)
+        // Data only, no `note`. `recipes` may be empty; the Log tab then
+        // says "Used in cooking".
+        const logParams: CookingLogParams = {
+          recipes: recipesByItemId.get(itemId) ?? [],
+        }
         return [
           {
             itemId,
             delta: -totalAmount,
-            note,
-            logKey,
-            ...(logParams ? { logParams } : {}),
+            logKey: COOKING_LOG_KEY,
+            logParams,
           },
         ]
       },
@@ -889,12 +915,18 @@ function CookingPage() {
                 try {
                   await handleConfirmDone()
                   setShowDoneDialog(false)
-                } catch {
+                } catch (err) {
                   // The cook failed. In cloud mode nothing was written: the
                   // server runs the whole cook in one transaction (households
-                  // H3b task B.6). One message for every cause; the dialog
-                  // stays open so the user can retry.
-                  toast.error(t('cooking.consumeFailed'))
+                  // H3b task B.6). The dialog stays open so the user can
+                  // retry. One message for every cause, except an item that
+                  // is no longer consumable (another tab turned it off): that
+                  // one says why.
+                  toast.error(
+                    isNotConsumableError(err)
+                      ? t('common.notConsumable')
+                      : t('cooking.consumeFailed'),
+                  )
                 } finally {
                   setIsConfirmingDone(false)
                 }

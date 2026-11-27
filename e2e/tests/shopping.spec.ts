@@ -1,7 +1,16 @@
-import { expect, test } from '@playwright/test'
+import {
+  type APIRequestContext,
+  expect,
+  type Page,
+  test,
+} from '@playwright/test'
+import { injectAxe } from 'axe-playwright'
 import { CLOUD_WEB_URL } from '../constants'
-import { ensureCloudHomeLocation } from '../helpers/cloudSeed'
+import { checkDialogA11y } from '../helpers/axe'
+import { ensureCloudHomeLocation, seedCloudFixture } from '../helpers/cloudSeed'
 import { cleanupCloudData } from '../helpers/cloudTeardown'
+import type { Fixture } from '../helpers/fixture'
+import { seedLocalFixture } from '../helpers/localSeed'
 import { relocateCarts, splitInlineStock } from '../helpers/locationSeed'
 import { PantryPage } from '../pages/PantryPage'
 import { ShoppingPage } from '../pages/ShoppingPage'
@@ -714,4 +723,153 @@ test.describe('cloud mode vendor carts', () => {
 
     await page.waitForURL(/\/shopping(\?|$)/)
   })
+})
+
+// ── The cart amount dialog (2026-11-25) ─────────────────────────────────────
+//
+// docs/features/shopping/2026-11-25-cart-amount-dialog-design.md. A cart row
+// has ONE amount button that opens `CartAmountDialog`; ticking an item not in
+// the cart opens the same dialog. Each Save is one request, so these tests
+// read the amount back after a RELOAD: that is the stored amount, in IndexedDB
+// (local) or Postgres (cloud), not the dialog's own state.
+//
+// Milk: target 4, 1 pack here, so the suggested amount is 3.
+// Eggs: target 2, nothing here.
+const AMOUNT_VENDOR = 'vendor-amount-shop'
+const AMOUNT_FIXTURE: Fixture = {
+  locations: [{ key: 'HOME', name: 'My Home', isDefault: true }],
+  vendors: [{ id: AMOUNT_VENDOR, name: 'Amount Shop' }],
+  items: [
+    { id: 'item-amount-milk', name: 'Amount Milk', vendorIds: [AMOUNT_VENDOR] },
+    { id: 'item-amount-eggs', name: 'Amount Eggs', vendorIds: [AMOUNT_VENDOR] },
+  ],
+  stocks: [
+    {
+      itemId: 'item-amount-milk',
+      location: 'HOME',
+      targetQuantity: 4,
+      refillThreshold: 1,
+      packedQuantity: 1,
+    },
+    {
+      itemId: 'item-amount-eggs',
+      location: 'HOME',
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 0,
+    },
+  ],
+  shelves: [],
+  recipes: [],
+}
+
+async function seedAmountFixture(
+  page: Page,
+  request: APIRequestContext,
+  baseURL: string | undefined,
+) {
+  if (baseURL === CLOUD_WEB_URL) await seedCloudFixture(request, AMOUNT_FIXTURE)
+  else await seedLocalFixture(page, AMOUNT_FIXTURE)
+}
+
+test.describe('cart amount dialog', () => {
+  test('user can add an item with 10 through the amount dialog', async ({
+    page,
+    request,
+    baseURL,
+  }) => {
+    // Given Amount Milk is not in the cart
+    await seedAmountFixture(page, request, baseURL)
+    const shopping = new ShoppingPage(page)
+    await shopping.navigateToVendorCart(AMOUNT_VENDOR)
+
+    // When the user ticks it, the dialog suggests 3 (target 4, 1 here)
+    await shopping.getItemCheckbox('Amount Milk').click()
+    await expect(shopping.getAmountField()).toHaveValue('3')
+
+    // And the user types 10 and saves
+    await shopping.fillAmount(10)
+    await shopping.saveAmount()
+
+    // Then the row is in the cart with 10 pack, also after a reload. The
+    // button shows only "10"; the unit is in its name
+    await expect(shopping.getAmountButton('Amount Milk')).toHaveText('10')
+    await expect(shopping.getAmountButton('Amount Milk')).toHaveAccessibleName(
+      'Edit amount of Amount Milk: 10 pack',
+    )
+    await page.reload({ waitUntil: 'networkidle' })
+    await expect(shopping.getAmountButton('Amount Milk')).toHaveText('10')
+    await expect(
+      page.getByRole('main').getByText('10 packs', { exact: true }),
+    ).toBeVisible()
+  })
+
+  test('user can set an amount to 0, check out, and the 0 row stays in the cart', async ({
+    page,
+    request,
+    baseURL,
+  }) => {
+    // Given Amount Milk and Amount Eggs are in the cart
+    await seedAmountFixture(page, request, baseURL)
+    const shopping = new ShoppingPage(page)
+    await shopping.navigateToVendorCart(AMOUNT_VENDOR)
+    await shopping.addItemToCart('Amount Milk')
+    await shopping.addItemToCart('Amount Eggs')
+
+    // When the user sets Milk to 0, the dialog says what 0 means
+    await shopping.getAmountButton('Amount Milk').click()
+    await shopping.fillAmount(0)
+    await expect(
+      shopping
+        .getAmountDialog()
+        .getByText(/Amount 0 keeps the item in the cart/),
+    ).toBeVisible()
+    await shopping.saveAmount()
+    await expect(shopping.getAmountButton('Amount Milk')).toHaveText('0')
+
+    // And checks out
+    await shopping.clickDone()
+    await shopping.confirmCheckout()
+    await page.waitForURL(/\/shopping(\?|$)/)
+
+    // Then, back in the cart, Milk is still in it with 0, and Eggs was bought
+    await shopping.navigateToVendorCart(AMOUNT_VENDOR)
+    await expect(page.getByLabel('Add Amount Eggs')).toBeVisible()
+    await expect(page.getByLabel('Remove Amount Milk')).toBeChecked()
+    await expect(shopping.getAmountButton('Amount Milk')).toHaveText('0')
+  })
+
+  for (const dark of [false, true]) {
+    test(`user can use the amount dialog without accessibility violations${dark ? ' in dark mode' : ''}`, async ({
+      page,
+      request,
+      baseURL,
+    }) => {
+      if (dark) {
+        await page.addInitScript(() => {
+          localStorage.setItem('theme-preference', 'dark')
+        })
+      }
+      // Given Amount Milk is in the cart
+      await seedAmountFixture(page, request, baseURL)
+      const shopping = new ShoppingPage(page)
+      await shopping.navigateToVendorCart(AMOUNT_VENDOR)
+      await shopping.addItemToCart('Amount Milk')
+      if (dark)
+        await expect(page.locator('html')).toHaveClass(/(^|\s)dark(\s|$)/)
+
+      // When the user opens the amount dialog and sets 0, so the note shows
+      await shopping.getAmountButton('Amount Milk').click()
+      await shopping.fillAmount(0)
+      await expect(
+        shopping
+          .getAmountDialog()
+          .getByText(/Amount 0 keeps the item in the cart/),
+      ).toBeVisible()
+
+      // Then the dialog passes the WCAG AA scan
+      await injectAxe(page)
+      await checkDialogA11y(page, '[role="dialog"]')
+    })
+  }
 })

@@ -107,15 +107,6 @@ export interface RequestCache {
    */
   organizedLocations?: Map<string, Promise<Set<string>>>
   /**
-   * OLD-BUNDLE SHIM. Remove with `Location.isDefault`, in the release after
-   * households. The id of the caller's first location, by `order` then `id`,
-   * one entry per household asked for (`null` when the caller has none). Set
-   * by `firstLocationIdOf` (resolvers/location.resolver.ts), so a list of N
-   * locations reads it once, not N times. Cleared by `forgetLocationRoles`,
-   * because a create, delete or reorder changes which location is first.
-   */
-  firstLocationIds?: Map<string, Promise<string | null>>
-  /**
    * The caller's own `LocationPreference` rows, by location id (households
    * H7b, decision T77). Set by `locationPreferencesOf`
    * (lib/locationPreferences.ts), so a list of N locations reads them once.

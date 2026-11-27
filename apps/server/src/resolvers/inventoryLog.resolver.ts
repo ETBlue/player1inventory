@@ -96,8 +96,20 @@ export const inventoryLogResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Inve
       const scopedLocationId = await requireLocation(ctx, locationId, 'viewer')
       const results = await Promise.all(
         itemIds.map(async (itemId) => {
+          // The newest row at this location that ADDED stock, of any kind:
+          // a checkout, a stock count that raised the amount, or an old row
+          // with a NULL `logKey`. A row that lowered or kept the amount never
+          // counts. Owner decision 2026-11-26
+          // (`docs/features/items/2026-11-26-expiry-from-last-restock-design.md`),
+          // which reverses option A of the 2026-11-25 design: stock counts
+          // were skipped until then. The web's local `getLastPurchaseDate`
+          // applies the same rule.
           const log = await prisma.inventoryLog.findFirst({
-            where: { itemId, locationId: scopedLocationId, delta: { gt: 0 } },
+            where: {
+              itemId,
+              locationId: scopedLocationId,
+              delta: { gt: 0 },
+            },
             orderBy: { occurredAt: 'desc' },
           })
           return { itemId, date: log?.occurredAt?.toISOString() ?? null }

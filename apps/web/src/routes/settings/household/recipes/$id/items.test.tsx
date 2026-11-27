@@ -16,6 +16,7 @@ import {
   createVendor,
 } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
+import { addRecipeWithOldLinks } from '@/test/oldRecipeLinks'
 import { watchUnhandledRejections } from '@/test/unhandledRejections'
 import { TagColor } from '@/types'
 
@@ -985,5 +986,83 @@ describe('Recipe Detail - Items Tab', () => {
       rejections.stop()
       vi.restoreAllMocks()
     }
+  })
+
+  // Owner decision 2026-11-26: cooking is only for consumable items, so a
+  // non-consumable item cannot be added to a recipe. A link made before the
+  // rule stays, says it is not used in cooking, and can be removed.
+  describe('non-consumable items', () => {
+    const makeCup = () =>
+      createItem({
+        name: 'Cup',
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        consumable: false,
+        tagIds: [],
+        vendorIds: [],
+      })
+
+    it('user cannot add a non-consumable item to a recipe and sees why', async () => {
+      // Given a recipe, a consumable item and a non-consumable item
+      const recipe = await makeRecipe('Tea')
+      await makeItem('Tea Leaves')
+      const cup = await makeCup()
+
+      renderItemsTab(recipe.id)
+      const user = userEvent.setup()
+
+      // Then the non-consumable item is listed, disabled, with the reason
+      const cupBox = await screen.findByLabelText('Add Cup')
+      expect(cupBox).toBeDisabled()
+      const noteId = cupBox.getAttribute('aria-describedby')
+      expect(noteId).toBeTruthy()
+      expect(document.getElementById(noteId as string)).toHaveTextContent(
+        /not consumable/i,
+      )
+      // And the consumable item can still be added
+      expect(screen.getByLabelText('Add Tea Leaves')).toBeEnabled()
+
+      // When the user presses the disabled box anyway
+      await user.click(cupBox)
+
+      // Then the recipe stays without it
+      const stored = await db.recipes.get(recipe.id)
+      expect(stored?.items.map((ri) => ri.itemId)).not.toContain(cup.id)
+    })
+
+    it('user sees a linked non-consumable item marked as not used in cooking and can remove it', async () => {
+      // Given a recipe that already links a non-consumable item (old data,
+      // from before the rule: no write can make one any more)
+      const cup = await makeCup()
+      const recipe = await addRecipeWithOldLinks({
+        name: 'Tea',
+        items: [{ itemId: cup.id, defaultAmount: 1 }],
+      })
+
+      renderItemsTab(recipe.id)
+      const user = userEvent.setup()
+
+      // Then the row says it is not used in cooking
+      const cupBox = await screen.findByLabelText('Remove Cup')
+      expect(cupBox).toBeChecked()
+      expect(cupBox).toBeEnabled()
+      const noteId = cupBox.getAttribute('aria-describedby')
+      expect(document.getElementById(noteId as string)).toHaveTextContent(
+        /not used in cooking/i,
+      )
+
+      // When the user removes it
+      await user.click(cupBox)
+
+      // Then the link is gone
+      await waitFor(async () => {
+        const stored = await db.recipes.get(recipe.id)
+        expect(stored?.items).toHaveLength(0)
+      })
+    })
   })
 })

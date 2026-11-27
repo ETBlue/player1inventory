@@ -10,7 +10,7 @@ import { ListSectionDivider } from '@/components/shared/ListSectionDivider'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
 import { LocationSwitcher } from '@/components/shared/LocationSwitcher'
 import { Button } from '@/components/ui/button'
-import { useStockedItems, useUpdateItem } from '@/hooks'
+import { useItems, useStockedItems, useUpdateItem } from '@/hooks'
 import { useActiveLocationRights } from '@/hooks/useActiveLocationRights'
 import { useItemSearchTailWiring } from '@/hooks/useItemSearchTailWiring'
 import { useItemSortData } from '@/hooks/useItemSortData'
@@ -21,8 +21,9 @@ import { useTags, useTagTypes } from '@/hooks/useTags'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import { useVendors } from '@/hooks/useVendors'
 import { isInactive } from '@/lib/quantityUtils'
+import { cookingRecipe, nonConsumableItemIds } from '@/lib/recipeConsumables'
 import { type SortDirection, type SortField, sortItems } from '@/lib/sortUtils'
-import type { PantryItem, StockFields } from '@/types'
+import { isConsumable, type PantryItem, type StockFields } from '@/types'
 
 interface RecipeDetailViewProps {
   recipeId: string
@@ -34,7 +35,17 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
   const isUnsorted = recipeId === 'unsorted'
 
   const { data: allItems = [], isLoading: isItemsLoading } = useStockedItems()
-  const { data: recipes = [], isLoading: isRecipesLoading } = useRecipes()
+  const { data: storedRecipes = [], isLoading: isRecipesLoading } = useRecipes()
+  // Every item, stocked here or not, only to know which are not consumable.
+  const { data: everyItem = [] } = useItems()
+  // Only consumable items can be in a recipe (owner decision 2026-11-26).
+  // Each recipe is read without its non-consumable items, like the cooking
+  // page and the recipe group view, so an old link made before the rule
+  // shows nowhere here: not in the list, not as a badge.
+  const recipes = useMemo(() => {
+    const nonConsumable = nonConsumableItemIds(everyItem)
+    return storedRecipes.map((r) => cookingRecipe(r, nonConsumable))
+  }, [storedRecipes, everyItem])
   const { data: vendors = [] } = useVendors()
   const { data: tags = [] } = useTags()
   const { data: tagTypes = [] } = useTagTypes()
@@ -174,11 +185,14 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
   // (a failed read does not reject the save). What the guard
   // still covers is every path that does NOT await that refetch — `mutate`
   // call sites, whose continuation runs without awaiting the returned promise
-  // (e.g. `items/$id/relation/recipes.tsx:45`) — and any concurrent write
+  // (e.g. `items/$id/recipes.tsx:45`) — and any concurrent write
   // (another surface, another tab) landing between this render and the press.
   async function handleAddToRecipe(item: PantryItem) {
     if (isUnsorted || !recipe) return
     if (recipe.items.some((ri) => ri.itemId === item.id)) return
+    // Only consumable items can be in a recipe (owner decision 2026-11-26).
+    // The row shows a note instead of the button; this covers the press.
+    if (!isConsumable(item)) return
     await updateRecipe.mutateAsync({
       id: recipe.id,
       updates: {
@@ -243,6 +257,8 @@ export function RecipeDetailView({ recipeId }: RecipeDetailViewProps) {
             label: t('items.searchTail.addToRecipe'),
             onAction: handleAddToRecipe,
             icon: <ArrowUpFromLine />,
+            blockedNote: (item: PantryItem) =>
+              isConsumable(item) ? null : t('items.searchTail.notConsumable'),
           },
         }
       : {}),

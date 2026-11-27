@@ -19,7 +19,7 @@
     "goBack": "回上一頁",
     "edit": "編輯",
     "unsavedTitle": "未存檔的變更",
-    "unsavedDescription": "您還沒存檔喔。要丟掉改到一半的東西嗎？",
+    "unsavedDescription": "您還沒存檔喔。離開前要存檔，還是丟掉改到一半的東西？",
     "done": "完成",
     "back": "先不用",
     "confirm": "確定",
@@ -40,7 +40,8 @@
     "notInThisList_other": "不在此清單的 {{count}} 項",
     "expiresOn": "到期日",
     "expiresOnHint": "這個據點的庫存到期時間",
-    "refillWhenBelow": "低於 {{value}} 時補貨"
+    "refillWhenBelow": "低於 {{value}} 時補貨",
+    "notConsumable": "這裡有品項已不是消耗品，不能放進食譜或用於烹飪。沒有儲存任何變更。"
   },
   "shopping": {
     "title": "購物",
@@ -76,6 +77,15 @@
       "description": "放棄購物後，會清空購物車。"
     },
     "cartChanged": "購物車已有變動，請確認後再試一次。",
+    "amountDialog": {
+      "titleEdit": "購物車中的品項",
+      "titleAdd": "加入購物車",
+      "buy": "購買",
+      "amountLabel": "購買（{{unit}}）",
+      "decrease": "減少數量",
+      "increase": "增加數量",
+      "zeroNote": "數量為 0 時，品項會留在購物車，這次不買，下次再買。"
+    },
     "checkoutDialog": {
       "title": "完成購物？",
       "description": "完成購物後，會更新各品項的庫存數量。"
@@ -209,6 +219,10 @@
       "packedField": "未開封（{{unit}}）",
       "decreasePacked": "減少未開封數量",
       "increasePacked": "增加未開封數量",
+      "amountLabel": "數量",
+      "amountField": "數量（{{unit}}）",
+      "decreaseAmount": "減少數量",
+      "increaseAmount": "增加數量",
       "unpack": "開封",
       "unpackedLabel": "已開封",
       "unpackedField": "已開封（{{unit}}）",
@@ -268,7 +282,8 @@
         "error": "無法加入此層架，請再試一次。",
         "confirm": "加入",
         "cancel": "取消"
-      }
+      },
+      "notConsumable": "非消耗品，不能加入食譜。"
     },
     "tags": {
       "empty": {
@@ -312,7 +327,8 @@
         "dialogTitle": "新增食譜",
         "submitLabel": "新增食譜",
         "placeholder": "例如：義大利麵、奶茶"
-      }
+      },
+      "notConsumable": "這不是消耗品，所以不能加入食譜。已加入的食譜在烹飪時不會用到它。"
     },
     "info": {
       "wikidataUrl": {
@@ -388,6 +404,12 @@
         "decrease": "減少未開封數量",
         "increase": "增加未開封數量"
       },
+      "amount": {
+        "label": "數量",
+        "hint": "庫存中完整物品的件數",
+        "decrease": "減少數量",
+        "increase": "增加數量"
+      },
       "unpackedQuantity": {
         "label": "已開封",
         "hint": "已開封包裝中的散裝量",
@@ -395,14 +417,20 @@
         "increase": "增加已開封數量"
       },
       "unpack": "開封",
-      "pack": "打包"
+      "pack": "打包",
+      "consumable": {
+        "label": "消耗品",
+        "hint": "會逐漸用完的物品，例如衛生紙。像杯子這種會留著用的物品請關閉：此時只計算完整的件數，並隱藏計量單位、已開封數量和到期設定。"
+      }
     },
     "detail": {
       "notFound": "查無此品項",
+      "saved": "已儲存",
+      "readsFailed": "無法載入這個品項的食譜或庫存，所以無法儲存。請重新載入頁面再試一次。",
+      "tabsLabel": "品項分頁",
       "tabs": {
         "info": "基本資訊",
         "stock": "庫存",
-        "relations": "關聯",
         "tags": "標籤",
         "vendors": "供應商",
         "recipes": "食譜",
@@ -415,10 +443,14 @@
       "unitSwitchDialog": {
         "title": "更新庫存數字？",
         "description": "改為以 {{unit}} 計算。所有據點的已開封數量、目標數量與補貨門檻都會換算；未開封包數不變。",
+        "nonConsumableDescription": "改為以整數 {{unit}} 計算。所有據點的已開封數量都會移除，目標數量與補貨門檻會無條件進位到整數 {{unit}}；未開封包數不變。",
         "locationHeader": "據點",
         "unpackedHeader": "已開封",
         "targetHeader": "目標數量",
-        "refillHeader": "低於此數補貨"
+        "refillHeader": "低於此數補貨",
+        "removedFromRecipes_one": "它會從 {{count}} 個食譜中移除，因為只有消耗品可以放進食譜。",
+        "removedFromRecipes_other": "它會從 {{count}} 個食譜中移除，因為只有消耗品可以放進食譜。",
+        "nonConsumableTitle": "標記為非消耗品？"
       },
       "recipeAdjustDialog": {
         "title": "更新食譜用量？",
@@ -452,11 +484,27 @@
       }
     },
     "history": {
-      "empty": "尚無歷史紀錄"
+      "empty": "尚無歷史紀錄",
+      "kind": {
+        "purchaseAt": "在 {{vendor}} 購買",
+        "purchase": "購買",
+        "cookingIn": "用於 {{recipes}}",
+        "cooking": "烹飪使用",
+        "stockCount": "盤點"
+      },
+      "listSeparator": "、",
+      "when": "{{date}}（{{weekday}}）{{time}}",
+      "afterLabel": "變動後："
     }
   },
   "itemFilters": {
-    "editTags": "編輯標籤"
+    "editTags": "編輯標籤",
+    "consumable": {
+      "label": "消耗品",
+      "all": "全部",
+      "consumable": "消耗品",
+      "notConsumable": "非消耗品"
+    }
   },
   "filterStatus": {
     "showing": "顯示 {{filtered}} / {{total}} 項",
@@ -780,7 +828,9 @@
         "empty": {
           "title": "尚未建立物資清單",
           "description": "可以透過搜尋功能新增可套用此食譜的品項喔"
-        }
+        },
+        "notConsumable": "非消耗品，不能加入食譜。",
+        "notUsedInCooking": "不用於烹飪：這不是消耗品。"
       }
     },
     "language": {
@@ -1142,5 +1192,8 @@
     "gone": "這個邀請已經失效。",
     "failed": "無法送出你的回覆，請再試一次。",
     "close": "關閉"
+  },
+  "itemCountBar": {
+    "more": "+{{count}}"
   }
 }

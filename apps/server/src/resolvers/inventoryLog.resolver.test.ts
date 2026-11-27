@@ -399,6 +399,97 @@ describe('lastPurchaseDates', () => {
   })
 })
 
+// ─── lastPurchaseDates counts every row that added stock ──────────────────────
+//
+// Owner decision 2026-11-26 (design `docs/features/items/
+// 2026-11-26-expiry-from-last-restock-design.md`), which reverses option A of
+// the 2026-11-25 inventory log layout design: the newest row at the location
+// with `delta > 0`, of ANY kind. A stock count that raised the amount counts;
+// one that lowered it does not. Old rows with a NULL `logKey` still count.
+
+describe('lastPurchaseDates counts every row that added stock', () => {
+  function addLogs(...rows: Parameters<typeof makeInventoryLog>[0][]) {
+    const current = mockPrisma.$logFake.state.logs
+    mockPrisma.$logFake.reset([...current, ...rows.map((r) => makeInventoryLog(r))])
+  }
+  const at = (day: string) => new Date(`2026-03-${day}T00:00:00.000Z`)
+
+  it('user sees a checkout row as the last purchase date', async () => {
+    // Given item_3 at LOC_DEFAULT has one checkout row
+    addLogs({ id: 'log_p3', itemId: 'item_3', userId: USER, locationId: LOC_DEFAULT, delta: 2, quantity: 2, occurredAt: at('01'), logKey: 'purchase' })
+
+    const result = await execOp(LAST_PURCHASE, { itemIds: ['item_3'], locationId: LOC_DEFAULT })
+
+    expect(result?.errors).toBeUndefined()
+    const rows = result?.data?.lastPurchaseDates as DateRow[]
+    expect(rows[0]?.date).toBe('2026-03-01T00:00:00.000Z')
+  })
+
+  it('user sees a newer stock count that raised the amount as the last purchase date', async () => {
+    // Given an old purchase with NO logKey, then a NEWER stock count that
+    // added stock
+    addLogs(
+      { id: 'log_p3', itemId: 'item_3', userId: USER, locationId: LOC_DEFAULT, delta: 2, quantity: 2, occurredAt: at('01'), logKey: null },
+      { id: 'log_c3', itemId: 'item_3', userId: USER, locationId: LOC_DEFAULT, delta: 5, quantity: 7, occurredAt: at('05'), logKey: 'stockCount' },
+    )
+
+    const result = await execOp(LAST_PURCHASE, { itemIds: ['item_3'], locationId: LOC_DEFAULT })
+
+    // Then the stock count's date counts
+    const rows = result?.data?.lastPurchaseDates as DateRow[]
+    expect(rows[0]?.date).toBe('2026-03-05T00:00:00.000Z')
+  })
+
+  it('user sees an old row with no logKey counted', async () => {
+    addLogs({ id: 'log_p4', itemId: 'item_4', userId: USER, locationId: LOC_DEFAULT, delta: 2, quantity: 2, occurredAt: at('01'), logKey: null })
+
+    const result = await execOp(LAST_PURCHASE, { itemIds: ['item_4'], locationId: LOC_DEFAULT })
+
+    const rows = result?.data?.lastPurchaseDates as DateRow[]
+    expect(rows[0]?.date).toBe('2026-03-01T00:00:00.000Z')
+  })
+
+  it('a newer stock count that lowered or kept the amount does not move the date', async () => {
+    // Given a positive stock count, then a newer negative one, then a newer
+    // row with a zero delta
+    addLogs(
+      { id: 'log_c5', itemId: 'item_5', userId: USER, locationId: LOC_DEFAULT, delta: 3, quantity: 3, occurredAt: at('01'), logKey: 'stockCount' },
+      { id: 'log_d5', itemId: 'item_5', userId: USER, locationId: LOC_DEFAULT, delta: -1, quantity: 2, occurredAt: at('05'), logKey: 'stockCount' },
+      { id: 'log_z5', itemId: 'item_5', userId: USER, locationId: LOC_DEFAULT, delta: 0, quantity: 2, occurredAt: at('08'), logKey: null },
+    )
+
+    const result = await execOp(LAST_PURCHASE, { itemIds: ['item_5'], locationId: LOC_DEFAULT })
+
+    const rows = result?.data?.lastPurchaseDates as DateRow[]
+    expect(rows[0]?.date).toBe('2026-03-01T00:00:00.000Z')
+  })
+
+  it('a stock count that raised the amount at another location does not count here', async () => {
+    // Given a checkout at LOC_DEFAULT and a NEWER positive stock count at
+    // LOC_OTHER
+    addLogs(
+      { id: 'log_p6', itemId: 'item_6', userId: USER, locationId: LOC_DEFAULT, delta: 2, quantity: 2, occurredAt: at('01'), logKey: 'purchase' },
+      { id: 'log_c6', itemId: 'item_6', userId: USER, locationId: LOC_OTHER, delta: 4, quantity: 4, occurredAt: at('05'), logKey: 'stockCount' },
+    )
+
+    const here = await execOp(LAST_PURCHASE, { itemIds: ['item_6'], locationId: LOC_DEFAULT })
+    const there = await execOp(LAST_PURCHASE, { itemIds: ['item_6'], locationId: LOC_OTHER })
+
+    // Then each location sees only its own row
+    expect((here?.data?.lastPurchaseDates as DateRow[])[0]?.date).toBe('2026-03-01T00:00:00.000Z')
+    expect((there?.data?.lastPurchaseDates as DateRow[])[0]?.date).toBe('2026-03-05T00:00:00.000Z')
+  })
+
+  it('an item whose only row took stock away has no last purchase date', async () => {
+    addLogs({ id: 'log_d7', itemId: 'item_7', userId: USER, locationId: LOC_DEFAULT, delta: -1, quantity: -1, occurredAt: at('05'), logKey: 'stockCount' })
+
+    const result = await execOp(LAST_PURCHASE, { itemIds: ['item_7'], locationId: LOC_DEFAULT })
+
+    const rows = result?.data?.lastPurchaseDates as DateRow[]
+    expect(rows[0]?.date).toBeNull()
+  })
+})
+
 // ─── inventoryLogs (the export path) ──────────────────────────────────────────
 
 describe('inventoryLogs', () => {

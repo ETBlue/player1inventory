@@ -62,6 +62,18 @@ describe('Vendor cart page', () => {
     )
   }
 
+  // The toolbar's "N packs" count. The progress text of a card can also
+  // hold "1 pack", so a bare `findByText(/1 pack/)` can find more than one.
+  const findCartCount = (text: string | RegExp) =>
+    screen.findByText(text, { selector: 'span[aria-live]' })
+
+  // The cart amount dialog, its amount field, and its Save button
+  const amountDialog = () => screen.findByRole('dialog')
+  const amountField = (dialog: HTMLElement) =>
+    within(dialog).getByRole('spinbutton', { name: /^Buy/ })
+  const saveButton = (dialog: HTMLElement) =>
+    within(dialog).getByRole('button', { name: 'Save' })
+
   it('user can see vendor name in toolbar', async () => {
     // Given a vendor exists
     const vendor = await createVendor('Costco')
@@ -126,8 +138,14 @@ describe('Vendor cart page', () => {
     await waitFor(() => expect(checkbox).not.toBeDisabled())
     await userEvent.click(checkbox)
 
+    // Then the amount dialog asks first, with the packs missing to reach
+    // the target (4 − 1 = 3); Save adds them
+    const dialog = await amountDialog()
+    expect(amountField(dialog)).toHaveValue(3)
+    await userEvent.click(saveButton(dialog))
+
     // Then the cart count updates (item is in cart)
-    expect(await screen.findByText(/1 pack/i)).toBeInTheDocument()
+    expect(await findCartCount('3 packs')).toBeInTheDocument()
   })
 
   it('user can checkout from the vendor cart', async () => {
@@ -333,11 +351,12 @@ describe('Vendor cart page', () => {
     const checkbox = await screen.findByRole('checkbox', { name: /test item/i })
     await waitFor(() => expect(checkbox).not.toBeDisabled())
 
-    // When user clicks the checkbox
+    // When user clicks the checkbox, and saves the suggested amount
     await userEvent.click(checkbox)
+    await userEvent.click(saveButton(await amountDialog()))
 
     // Then the cart count updates — addToCart was called (not silently dropped)
-    expect(await screen.findByText(/1 pack/i)).toBeInTheDocument()
+    expect(await findCartCount('2 packs')).toBeInTheDocument()
   })
 
   it('item checkbox is disabled while cart is not yet available', async () => {
@@ -364,7 +383,7 @@ describe('Vendor cart page', () => {
     renderVendorCart(vendor.id)
 
     // Wait for cart data to load (toolbar shows "1 pack in cart" once cartItems loads)
-    await screen.findByText(/1 pack/i)
+    await findCartCount('1 pack')
 
     // Then the item checkbox is visible and checked (item is in the cart)
     const checkbox = screen.getByRole('checkbox', { name: /guard item/i })
@@ -374,7 +393,7 @@ describe('Vendor cart page', () => {
     await userEvent.click(checkbox)
 
     // Then the cart count drops to 0 packs
-    expect(await screen.findByText(/0 packs/i)).toBeInTheDocument()
+    expect(await findCartCount('0 packs')).toBeInTheDocument()
   })
 
   it('after checkout, revisiting the vendor cart page shows a fresh empty cart (not the completed one)', async () => {
@@ -579,6 +598,77 @@ describe('Vendor cart page', () => {
     // page — not in the active section, not in the inactive section, not
     // counted among the "N inactive" pending items
     expect(screen.queryByText('Firewood')).not.toBeInTheDocument()
+  })
+
+  describe('default sort', () => {
+    // Three items whose name order (Apple, Banana, Cherry) is the REVERSE of
+    // their stock order, so a name sort and a stock sort give different lists.
+    async function seedThreeItems() {
+      const vendor = await createVendor('Costco')
+      const base = {
+        tagIds: [],
+        vendorIds: [vendor.id],
+        targetUnit: 'package' as const,
+        targetQuantity: 4,
+        refillThreshold: 2,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      }
+      await createItem({ ...base, name: 'Apple', packedQuantity: 4 }) // ok
+      await createItem({ ...base, name: 'Banana', packedQuantity: 2 }) // at refill
+      await createItem({ ...base, name: 'Cherry', packedQuantity: 0 }) // below refill
+      return vendor
+    }
+
+    function namesInPageOrder(names: string[]) {
+      const nodes = names.map((name) => screen.getByText(name))
+      return [...nodes]
+        .sort((a, b) =>
+          a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING
+            ? -1
+            : 1,
+        )
+        .map((node) => node.textContent)
+    }
+
+    it('user sees cart items sorted by stock, low stock on top, by default', async () => {
+      // Given no saved sort choice for the cart page (earlier tests in this
+      // file save one, because the page writes its prefs on mount)
+      localStorage.removeItem('shopping-sort-prefs')
+      const vendor = await seedThreeItems()
+
+      // When user opens the vendor cart
+      renderVendorCart(vendor.id)
+      await screen.findByText('Cherry')
+
+      // Then the item below its refill level comes first, the item at its
+      // refill level next, and the well-stocked item last
+      expect(namesInPageOrder(['Apple', 'Banana', 'Cherry'])).toEqual([
+        'Cherry',
+        'Banana',
+        'Apple',
+      ])
+    })
+
+    it('user keeps a saved sort choice on the cart page', async () => {
+      // Given the user picked "Name, ascending" before
+      localStorage.setItem(
+        'shopping-sort-prefs',
+        JSON.stringify({ sortBy: 'name', sortDirection: 'asc' }),
+      )
+      const vendor = await seedThreeItems()
+
+      // When user opens the vendor cart
+      renderVendorCart(vendor.id)
+      await screen.findByText('Cherry')
+
+      // Then the saved choice wins over the stock default
+      expect(namesInPageOrder(['Apple', 'Banana', 'Cherry'])).toEqual([
+        'Apple',
+        'Banana',
+        'Cherry',
+      ])
+    })
   })
 
   describe('search tail (unified item search)', () => {
@@ -801,6 +891,205 @@ describe('Vendor cart page', () => {
   // Before the fix each of these writes either caught the error and showed
   // nothing, or used `mutate` with an `onError` that only cleared the
   // pending row. Each test makes the local Dexie write fail.
+  describe('cart amount dialog', () => {
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    // Milk: target 4, 1 pack here, so 3 packs are missing
+    const makeMilk = (vendorId: string) =>
+      createItem({
+        name: 'Milk',
+        tagIds: [],
+        vendorIds: [vendorId],
+        targetUnit: 'package',
+        targetQuantity: 4,
+        refillThreshold: 2,
+        packedQuantity: 1,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      })
+
+    it('user can set a cart amount to 10 with one save, not one request per step', async () => {
+      // Given Milk in the cart with 1 pack
+      const vendor = await createVendor('Costco')
+      const item = await makeMilk(vendor.id)
+      await addToCart(cartIdFor(DEFAULT_LOCATION_ID, vendor.id), item.id, 1)
+      renderVendorCart(vendor.id)
+      const amount = await screen.findByRole('button', {
+        name: 'Edit amount of Milk: 1 pack',
+      })
+      await waitFor(() => expect(amount).toBeEnabled())
+      const update = vi.spyOn(db.cartItems, 'update')
+
+      // When the user opens the dialog, steps up 4 times, types 10, and saves
+      await userEvent.click(amount)
+      const dialog = await amountDialog()
+      for (let i = 0; i < 4; i++) {
+        await userEvent.click(
+          within(dialog).getByRole('button', { name: 'Increase amount' }),
+        )
+      }
+      expect(amountField(dialog)).toHaveValue(5)
+      expect(update).not.toHaveBeenCalled()
+      await userEvent.clear(amountField(dialog))
+      await userEvent.type(amountField(dialog), '10')
+      await userEvent.click(saveButton(dialog))
+
+      // Then ONE write sets 10, the dialog closes, and the row shows 10 pack
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+      expect(update).toHaveBeenCalledTimes(1)
+      expect((await db.cartItems.toArray()).map((r) => r.quantity)).toEqual([
+        10,
+      ])
+      expect(
+        await screen.findByRole('button', {
+          name: 'Edit amount of Milk: 10 pack',
+        }),
+      ).toBeInTheDocument()
+    })
+
+    it('user sees the stock and target of this location in the dialog', async () => {
+      // Given Milk in the cart
+      const vendor = await createVendor('Costco')
+      const item = await makeMilk(vendor.id)
+      await addToCart(cartIdFor(DEFAULT_LOCATION_ID, vendor.id), item.id, 2)
+      renderVendorCart(vendor.id)
+
+      // When the user opens the amount dialog
+      const amount = await screen.findByRole('button', {
+        name: /^Edit amount of Milk/,
+      })
+      await waitFor(() => expect(amount).toBeEnabled())
+      await userEvent.click(amount)
+
+      // Then it is titled "Item in cart", shows the item with its stock and
+      // target, and Save is off until the amount changes
+      const dialog = await amountDialog()
+      expect(
+        within(dialog).getByRole('heading', { name: 'Item in cart' }),
+      ).toBeInTheDocument()
+      expect(within(dialog).getByText('Milk')).toBeInTheDocument()
+      expect(within(dialog).getByText('1 / 4 pack')).toBeInTheDocument()
+      expect(amountField(dialog)).toHaveValue(2)
+      expect(saveButton(dialog)).toBeDisabled()
+    })
+
+    it('user can tick an item into the cart with the suggested amount, in one add', async () => {
+      // Given Milk not in the cart
+      const vendor = await createVendor('Costco')
+      await makeMilk(vendor.id)
+      renderVendorCart(vendor.id)
+      const checkbox = await screen.findByRole('checkbox', { name: 'Add Milk' })
+      await waitFor(() => expect(checkbox).toBeEnabled())
+      const add = vi.spyOn(db.cartItems, 'add')
+
+      // When the user ticks it
+      await userEvent.click(checkbox)
+
+      // Then nothing is added yet, and the dialog suggests 3 (target 4,
+      // 1 in stock), with Save on
+      const dialog = await amountDialog()
+      expect(await db.cartItems.count()).toBe(0)
+      expect(amountField(dialog)).toHaveValue(3)
+      expect(saveButton(dialog)).toBeEnabled()
+
+      // When the user saves
+      await userEvent.click(saveButton(dialog))
+
+      // Then ONE add writes 3 packs, and the row is ticked
+      await waitFor(() =>
+        expect(
+          screen.getByRole('checkbox', { name: 'Remove Milk' }),
+        ).toBeChecked(),
+      )
+      expect(add).toHaveBeenCalledTimes(1)
+      expect((await db.cartItems.toArray()).map((r) => r.quantity)).toEqual([3])
+    })
+
+    it('user can cancel ticking an item, and nothing is added', async () => {
+      // Given Milk not in the cart
+      const vendor = await createVendor('Costco')
+      await makeMilk(vendor.id)
+      renderVendorCart(vendor.id)
+      const checkbox = await screen.findByRole('checkbox', { name: 'Add Milk' })
+      await waitFor(() => expect(checkbox).toBeEnabled())
+
+      // When the user ticks it and presses Cancel
+      await userEvent.click(checkbox)
+      const dialog = await amountDialog()
+      await userEvent.click(
+        within(dialog).getByRole('button', { name: 'Cancel' }),
+      )
+
+      // Then the dialog closes, the row stays unticked, and the cart is empty
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+      expect(
+        screen.getByRole('checkbox', { name: 'Add Milk' }),
+      ).not.toBeChecked()
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      expect(await db.cartItems.count()).toBe(0)
+    })
+
+    it('user can set an amount to 0, and the row stays in the cart after checkout', async () => {
+      // Given Milk and Eggs in the cart
+      const vendor = await createVendor('Costco')
+      const milk = await makeMilk(vendor.id)
+      const eggs = await createItem({
+        name: 'Eggs',
+        tagIds: [],
+        vendorIds: [vendor.id],
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 0,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      })
+      const cartId = cartIdFor(DEFAULT_LOCATION_ID, vendor.id)
+      await addToCart(cartId, milk.id, 2)
+      await addToCart(cartId, eggs.id, 1)
+      renderVendorCart(vendor.id)
+      const amount = await screen.findByRole('button', {
+        name: /^Edit amount of Milk/,
+      })
+      await waitFor(() => expect(amount).toBeEnabled())
+
+      // When the user sets Milk to 0
+      await userEvent.click(amount)
+      const dialog = await amountDialog()
+      expect(within(dialog).queryByText(/Amount 0 keeps/)).toBeNull()
+      await userEvent.clear(amountField(dialog))
+      await userEvent.type(amountField(dialog), '0')
+
+      // Then the dialog says what 0 means, and the field points at it
+      const note = within(dialog).getByText(
+        /Amount 0 keeps the item in the cart/,
+      )
+      expect(amountField(dialog)).toHaveAccessibleDescription(note.textContent)
+      await userEvent.click(saveButton(dialog))
+      expect(
+        await screen.findByRole('button', {
+          name: 'Edit amount of Milk: 0 pack',
+        }),
+      ).toBeInTheDocument()
+
+      // When the user checks out
+      await userEvent.click(screen.getByRole('button', { name: /done/i }))
+      const confirm = await screen.findByRole('alertdialog')
+      await userEvent.click(
+        within(confirm).getByRole('button', { name: /confirm/i }),
+      )
+
+      // Then Milk's 0 row is still in the cart, and Eggs' row is gone
+      await waitFor(async () =>
+        expect(
+          (await db.cartItems.toArray()).map((r) => [r.itemId, r.quantity]),
+        ).toEqual([[milk.id, 0]]),
+      )
+    })
+  })
+
   describe('a failed save', () => {
     const SAVE_FAILED = 'Could not save the change. Please try again.'
     let rejections: ReturnType<typeof watchUnhandledRejections>
@@ -861,16 +1150,28 @@ describe('Vendor cart page', () => {
         new Error('disk full'),
       )
 
-      // When the user checks the item
+      // When the user checks the item and saves the amount
       await userEvent.click(checkbox)
+      const dialog = await amountDialog()
+      await userEvent.click(saveButton(dialog))
 
-      // Then a message says so, and the row is unchanged and usable again
-      await expectMessageAndNoRejection()
-      await waitFor(() =>
-        expect(screen.getByRole('checkbox', { name: /milk/i })).toBeEnabled(),
+      // Then a message says so INSIDE the dialog, which stays open with the
+      // number kept, and nothing is in the cart
+      expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+        SAVE_FAILED,
       )
-      expect(screen.getByRole('checkbox', { name: /milk/i })).not.toBeChecked()
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+      expect(amountField(dialog)).toHaveValue(3)
       expect(await db.cartItems.count()).toBe(0)
+
+      // And when the user cancels, the row is unchanged and usable again
+      await userEvent.click(
+        within(dialog).getByRole('button', { name: 'Cancel' }),
+      )
+      expect(screen.getByRole('checkbox', { name: /milk/i })).toBeEnabled()
+      expect(screen.getByRole('checkbox', { name: /milk/i })).not.toBeChecked()
     })
 
     it('user sees a message when removing an item from the cart fails', async () => {
@@ -905,19 +1206,29 @@ describe('Vendor cart page', () => {
       const item = await makeMilk(vendor.id)
       await addToCart(cartIdFor(DEFAULT_LOCATION_ID, vendor.id), item.id, 1)
       renderVendorCart(vendor.id)
-      const plus = await screen.findByRole('button', {
-        name: 'Increase quantity of Milk',
+      const amount = await screen.findByRole('button', {
+        name: /^Edit amount of Milk/,
       })
-      await waitFor(() => expect(plus).toBeEnabled())
+      await waitFor(() => expect(amount).toBeEnabled())
       vi.spyOn(db.cartItems, 'update').mockRejectedValueOnce(
         new Error('disk full'),
       )
 
-      // When the user presses +
-      await userEvent.click(plus)
+      // When the user sets the amount to 5 and saves
+      await userEvent.click(amount)
+      const dialog = await amountDialog()
+      await userEvent.clear(amountField(dialog))
+      await userEvent.type(amountField(dialog), '5')
+      await userEvent.click(saveButton(dialog))
 
-      // Then a message says so, and the amount is unchanged
-      await expectMessageAndNoRejection()
+      // Then a message says so in the dialog, which keeps the 5, and the
+      // stored amount is unchanged
+      expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+        SAVE_FAILED,
+      )
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+      expect(amountField(dialog)).toHaveValue(5)
       const rows = await db.cartItems.toArray()
       expect(rows.map((r) => r.quantity)).toEqual([1])
     })

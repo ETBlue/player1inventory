@@ -26,7 +26,9 @@ database hostname or a secret into a chat, a commit, a document or a screenshot.
 **Who does what:** "Owner" is ETBlue. "Main session" is the Claude session in the worktree.
 The main session runs the SQL in section 3 only with the owner's consent, and only on a
 branch of production made for the rehearsal. **Nobody runs SQL while writing this file.**
-The results below are `TBD`.
+The results below were filled on 2026-11-24 (release plan step A.3). The households release
+is deployed: release #403, merge `16929909`, 2026-11-23. A value the session record does not
+hold says "not recorded".
 
 ---
 
@@ -154,13 +156,13 @@ as a LOCAL backup. It asks "Import into which location?" and moves that location
 the location the user picks. So a household that has a cloud location with the id `'local'`
 cannot restore that location under its own id, and the server refuses the id anyway.
 
-Results (`TBD after rehearsal`):
+Results (rehearsal of the households release):
 
 | Query | Count | Date | Run by |
 |---|---|---|---|
-| H4-A | TBD | TBD | TBD |
-| H4-B | TBD | TBD | TBD |
-| H4-C | TBD | TBD | TBD |
+| H4-A | 0 | 2026-11-23 | main session |
+| H4-B | 0 | 2026-11-23 | main session |
+| H4-C | no rows | 2026-11-23 | main session |
 
 ---
 
@@ -195,7 +197,7 @@ PWA with `registerType: 'prompt'`: a device keeps its old bundle until the perso
 4. **Read-only SQL, optional.** Run H4-A and H4-B again on production, read-only, only with
    the owner's consent. Both must still be 0.
 
-Results: `TBD on deploy day`.
+Results: Not recorded. D.11 of the release plan (`2026-11-23-households-release-plan.md`) was done by the owner on 2026-11-23 and 2026-11-24, but the result of this check was not written down.
 
 ---
 
@@ -337,6 +339,12 @@ its `delete` in `forgetLocationRoles` (`lib/authz.ts`); `CheckoutItemInput.itemI
 `main-web-operations/`, the schema copy `main-server-schema.graphql`, and
 `oldBundleCompat.test.ts`. Only after every device has the households bundle.
 
+**Done on 2026-11-25** (branch `chore/remove-old-bundle-shim`, into `develop`). Everything in
+the paragraph above is deleted, and `cartItemId` is `ID!` again. The release that ships it
+needs no special deploy order: the server change only removes fields that no households
+bundle uses. A device still on a bundle from before households then fails every location
+query, checkout and cook until it accepts the update prompt.
+
 ### 8.4 Checks after the deploy
 
 1. As the owner, open **Settings → Household → Locations**. Every location shows a role
@@ -353,7 +361,8 @@ Added 2026-11-18 by H5b task G.11. **H5b is merged into `develop` (#385, merge
 [`../permissions/2026-11-18-households-plan-h5b.md`](../permissions/2026-11-18-households-plan-h5b.md),
 *Deploy notes* and *Known gaps*.
 
-**Nobody runs SQL while writing this section.** Every result below is `TBD`.
+**Nobody runs SQL while writing this section.** The results below were filled after the
+rehearsal of the households release, 2026-11-23 and the deploy (release #403).
 
 ### 9.1 What changes
 
@@ -438,10 +447,10 @@ ORDER BY indexname;
 
 | Check | Expected | Result |
 |---|---|---|
-| H5b-1 | `with_active_household` = 0 | `TBD after rehearsal` |
-| H5b-2 | 0 | `TBD after rehearsal` |
-| H5b-3 | four rows, delete rules `n`, `c`, `r`, `n` as listed | `TBD after rehearsal` |
-| H5b-4 | three rows, only `HouseholdInvite_token_key` unique | `TBD after rehearsal` |
+| H5b-1 | `with_active_household` = 0 | 0 (`users` 2, `with_active_household` 0), rehearsal of the households release, 2026-11-23 |
+| H5b-2 | 0 | 0, rehearsal of the households release, 2026-11-23 |
+| H5b-3 | four rows, delete rules `n`, `c`, `r`, `n` as listed | four rows, `r`, `c`, `n`, `n` for `createdById`, `householdId`, `usedById`, `User_activeHouseholdId`, rehearsal of the households release, 2026-11-23 |
+| H5b-4 | three rows, only `HouseholdInvite_token_key` unique | three rows, only `HouseholdInvite_token_key` unique, rehearsal of the households release, 2026-11-23 |
 
 **Stop rule:** any other answer means the migration did not apply as written. Do not
 deploy. Find out why with the main session.
@@ -487,7 +496,9 @@ showed our own `/sign-up?redirect=…` and it still lands on `/`, check the Cler
 setting in step 1. If the **Sign up** link left our origin, the web bundle is older than the
 2026-11-23 fix.
 
-Result: `TBD on deploy day` (sign-in: back on the link yes/no; sign-up: yes/no).
+Result: sign-in and sign-up both not recorded. Before the release the sign-up path was
+fixed in code (#401) and the owner checked it on the local dev server (2026-11-23, "the
+sign-up flow is good now"). Step 1 (the Clerk dashboard) is not recorded.
 
 ### 9.6 Manual check on two real devices: invite, join, leave
 
@@ -505,7 +516,10 @@ and two accounts. Use a test household, not the real one.
    instead.)
 5. Device A: the new person is gone from the list.
 
-Result: `TBD on deploy day`.
+Result: not recorded as a whole. What is recorded: in production the owner found that the
+join page said "User invited you." (fixed by #406) and asked for a clearer role list (#407).
+After release #409 (2026-11-24) the owner confirmed that the join page cards look right and
+that the inviter's real name is shown.
 
 ### 9.7 Manual check: Copy link where the Clipboard API does not work
 
@@ -525,7 +539,7 @@ Clipboard API first, then a hidden text area with `execCommand('copy')`.
 4. If copying fails, the page must show the link in a read-only field, selected, with the
    text "Could not copy. Select the link and copy it yourself."
 
-Result: `TBD` (dialog: pasted yes/no; row: pasted yes/no; browser and device used).
+Result: Not recorded. D.11 of the release plan (`2026-11-23-households-release-plan.md`) was done by the owner on 2026-11-23 and 2026-11-24, but the result of this check was not written down.
 
 ### 9.8 The old-bundle window
 
@@ -618,7 +632,7 @@ household `member`.
 6. Device A: **Settings › Household › Members**. If B now has no location role, B's row
    shows **No location roles** with a link to the locations.
 
-Result: `TBD on deploy day`.
+Result: Not recorded. D.11 of the release plan (`2026-11-23-households-release-plan.md`) was done by the owner on 2026-11-23 and 2026-11-24, but the result of this check was not written down.
 
 ### 10.4 If something is wrong
 
@@ -716,10 +730,10 @@ WHERE indexname = 'HouseholdActivity_householdId_createdAt_id_idx';
 
 | Check | Expected | Result |
 |---|---|---|
-| H6a-1 | 0 | `TBD after rehearsal` |
-| H6a-2 | 19 | `TBD after rehearsal` |
-| H6a-3 | one row, `c` | `TBD after rehearsal` |
-| H6a-4 | one row, `"createdAt" DESC` | `TBD after rehearsal` |
+| H6a-1 | 0 | 0, rehearsal of the households release, 2026-11-23 |
+| H6a-2 | 19 | 19, rehearsal of the households release, 2026-11-23 |
+| H6a-3 | one row, `c` | one row, `c`, rehearsal of the households release, 2026-11-23 |
+| H6a-4 | one row, `"createdAt" DESC` | one row, `("householdId", "createdAt" DESC, id)`, rehearsal of the households release, 2026-11-23 |
 
 **Stop rule:** any other answer means the migration did not apply as written. Do not
 deploy. Find out why with the main session.
@@ -753,7 +767,7 @@ household, not the real one. Device B's person is a household `member`.
    items**, type the location name, confirm. The pantry of that location is empty. The
    item's log tab still shows its logs. The Activity page shows the row.
 
-Result: `TBD on deploy day`.
+Result: Not recorded. D.11 of the release plan (`2026-11-23-households-release-plan.md`) was done by the owner on 2026-11-23 and 2026-11-24, but the result of this check was not written down.
 
 ### 11.6 Before the release: count accounts that are already deleted
 
@@ -765,7 +779,8 @@ SELECT count(*) FROM "User" WHERE "deletedAt" IS NOT NULL;
 ```
 
 If it is 0, nothing more. If it is not 0, stop: H6b must add a one-off hand-over script
-first. Result: `TBD`.
+first. Result: **0** (rehearsal of the households release, 2026-11-23, on the rehearsal branch, not on production; see
+12.6 for why).
 
 ### 11.7 If something is wrong
 
@@ -866,10 +881,10 @@ ORDER BY indexname;
 
 | Check | Expected | Result |
 |---|---|---|
-| H6b-1 | 0 | `TBD after rehearsal` |
-| H6b-2 | `transfer`, `handover` | `TBD after rehearsal` |
-| H6b-3 | two rows, both `c` | `TBD after rehearsal` |
-| H6b-4 | two rows, one `UNIQUE` | `TBD after rehearsal` |
+| H6b-1 | 0 | 0, rehearsal of the households release, 2026-11-23 |
+| H6b-2 | `transfer`, `handover` | `transfer`, `handover`, rehearsal of the households release, 2026-11-23 |
+| H6b-3 | two rows, both `c` | two rows, both `c`, rehearsal of the households release, 2026-11-23 |
+| H6b-4 | two rows, one `UNIQUE` | two rows, only `OwnershipOffer_householdId_toUserId_key` unique, rehearsal of the households release, 2026-11-23 |
 
 **Stop rule:** any other answer means the migration did not apply as written. Do not
 deploy. Find out why with the main session.
@@ -908,7 +923,7 @@ household, not the real one. Device A is the owner; device B's person is a `mana
    Activity page shows "offered" and "became the owner".
 6. Optional, to undo: device B transfers back to A, and device A accepts.
 
-Result: `TBD on deploy day`.
+Result: Not recorded. D.11 of the release plan (`2026-11-23-households-release-plan.md`) was done by the owner on 2026-11-23 and 2026-11-24, but the result of this check was not written down.
 
 ### 12.6 Before the release: accounts deleted before H6 (owner decisions O36-A and O44)
 
@@ -930,7 +945,7 @@ WHERE u."deletedAt" IS NOT NULL;
 
 | Check | Expected | Result |
 |---|---|---|
-| H6b-O36 | 0 | `TBD before the release` |
+| H6b-O36 | 0 | **0** (rehearsal of the households release, 2026-11-23). **0** again on 2026-11-24 (release plan D.12), run by the owner in the Neon SQL Editor on a fresh branch of production |
 
 **If the count is 0:** nothing more. **If it is not 0** (owner decision O44): a one-off
 script must run `handOverDeletedAccount` (`apps/server/src/lib/handover.ts`) for each such
@@ -1024,7 +1039,7 @@ B), not the real household. Use two tabs in one browser, or two devices.
 5. Optional: delete the test household from step 4 (**Delete household** in its danger
    zone).
 
-Result: `TBD on deploy day`.
+Result: Not recorded. D.11 of the release plan (`2026-11-23-households-release-plan.md`) was done by the owner on 2026-11-23 and 2026-11-24, but the result of this check was not written down.
 
 ### 13.4 If something is wrong
 
@@ -1159,11 +1174,11 @@ SELECT count(*) AS with_sort FROM "User" WHERE "locationSort" IS NOT NULL;
 
 | Check | Expected | Result |
 |---|---|---|
-| H7b-1 | 0 | `TBD after rehearsal` |
-| H7b-2 | `name`, `lastUpdated`, `lastVisited`, `custom` | `TBD after rehearsal` |
-| H7b-3 | two rows, both `c` | `TBD after rehearsal` |
-| H7b-4 | 0 | `TBD after rehearsal` |
-| H7b-5 | 0 | `TBD after rehearsal` |
+| H7b-1 | 0 | 0, rehearsal of the households release, 2026-11-23 |
+| H7b-2 | `name`, `lastUpdated`, `lastVisited`, `custom` | `name`, `lastUpdated`, `lastVisited`, `custom`, rehearsal of the households release, 2026-11-23 |
+| H7b-3 | two rows, both `c` | two rows, both `c`, rehearsal of the households release, 2026-11-23 |
+| H7b-4 | 0 | 0, rehearsal of the households release, 2026-11-23 |
+| H7b-5 | 0 | 0, rehearsal of the households release, 2026-11-23 |
 
 **Stop rule:** any other answer means the migration did not apply as written. Do not
 deploy. Find out why with the main session.
@@ -1212,7 +1227,7 @@ shared order. Not the real household.
    **Last visited**: that location is first.
 6. A: choose **Custom** again to leave the household as it was.
 
-Result: `TBD on deploy day`.
+Result: Not recorded. D.11 of the release plan (`2026-11-23-households-release-plan.md`) was done by the owner on 2026-11-23 and 2026-11-24, but the result of this check was not written down.
 
 ### 14.6 If something is wrong
 
@@ -1262,9 +1277,9 @@ It runs three rows: `local`, `cloud-neon` with the whole cloud list on the Neon 
 
 | Check | Expected | Result |
 |---|---|---|
-| every row | green, 0 failed | `TBD before the release` |
-| `cloud-neon` counts | the same tests as the `cloud` row of the last per-PR gate (220 collected on 2026-11-23) | `TBD before the release` |
-| commit | the `develop` commit that will be released | `TBD before the release` |
+| every row | green, 0 failed | green, exit 0 (2026-11-23): `local` 179 passed / 11 skipped (3m48s), `cloud-neon` 212 passed / 8 skipped (36m13s), `pwa` 73 passed (1m36s) |
+| `cloud-neon` counts | the same tests as the `cloud` row of the last per-PR gate (220 collected on 2026-11-23) | 220 collected, the same |
+| commit | the `develop` commit that will be released | `e05ec1e7`, the commit released in #403 |
 
 **Stop rule:** a failed test is a stop, as in the root `CLAUDE.md`, *Verification Gate*.
 Copy `e2e-results/` (it holds `test-results-cloud-neon/`) aside before any re-run, and tell a

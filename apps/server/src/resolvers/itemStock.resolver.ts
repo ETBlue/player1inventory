@@ -1,4 +1,5 @@
 import { GraphQLError } from 'graphql'
+import { STOCK_COUNT_LOG_KEY, stockCountChange } from '@p1i/types'
 import { requireAuth } from '../context.js'
 import {
   householdOfLocation,
@@ -10,6 +11,7 @@ import {
   requireLocationRole,
 } from '../lib/authz.js'
 import { ensureStockAtLocation, writeStock } from '../lib/itemStockWrite.js'
+import { nonConsumableItemIds, notConsumableError } from '../lib/consumable.js'
 import { prisma } from '../lib/prisma.js'
 import { publishChange, publishHouseholdChange } from '../lib/publishChange.js'
 import { buildItemUpdateData, toGraphQL as itemToGraphQL } from './item.resolver.js'
@@ -132,30 +134,79 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
 
   Mutation: {
     upsertItemStock: async (_, { itemId, locationId, input }, ctx) => {
-      // No `requireAuth` of its own: `requireLocationRole` runs it first, so
-      // an unauthenticated caller still fails before any read.
+      // The author of the stock count log below. `requireLocationRole` would
+      // also refuse a caller with no user, with the same error.
+      const userId = requireAuth(ctx)
       await requireLocationRole(ctx, locationId, 'participant')
       // The item must be an item of the location's household (households
       // H3a, task 3.8). Checked before the write, so a refusal writes nothing.
       await requireLocationItems(ctx, locationId, [itemId])
       const data = toData(input as StockInput)
       // `writeStock` (lib/itemStockWrite.ts) is the one place per-location
-      // stock is written. This resolver used to hold its own
-      // `findUnique`-then-`update`-or-`create` block with the same zero
-      // defaults — a second copy of the same upsert, which is how the two
-      // could have drifted apart on what an omitted field means.
+      // stock is written. Until cloud locations PR 5 this was followed by a
+      // REVERSE mirror onto `Item`'s five legacy state columns; PR 5 dropped
+      // those columns, so there is nothing to mirror onto.
       //
-      // One write, and nothing after it. Until cloud locations PR 5 this was
-      // followed by a REVERSE mirror onto `Item`'s five legacy state columns,
-      // run only when the location written was the caller's default, so a
-      // browser on a pre-PR-2 bundle kept seeing its quantities move. PR 5
-      // drops those columns: `ItemStock` is the only place a quantity lives
-      // and there is nothing to mirror it onto. That is also why this resolver
-      // no longer reads `isDefault` off the authorized row.
-      const saved = await writeStock(itemId, locationId, data)
-      // After the write (households H3c-2 task D.2). `writeStock` always
-      // writes a row, so there is always something to tell other tabs.
-      await publishChange(ctx, ['STOCK'], [{ locationId }])
+      // ── THE STOCK COUNT LOG (design 2026-11-25, inventory log layout) ──
+      //
+      // A manual save (the Stock tab, Quick update) is a stock count, 盤點.
+      // When it changes the on-hand total, ONE `stockCount` log row is written
+      // in the SAME transaction as the stock write, so a failed log write
+      // leaves no stock change and a stock change never misses its log. The
+      // server writes it, not the web, so no client can forget it.
+      //
+      // The web calls this mutation only from `useUpdateItem` and
+      // `useCreateItem` (`apps/web/src/hooks/useItems.ts`), and both are manual
+      // paths. Checkout, cooking, `addItemToLocation` and `applyUnitSwitch`
+      // write stock through `writeStock` directly and log nothing here.
+      //
+      // `SELECT … FOR UPDATE` first, as in `consumeRecipes`: two saves of the
+      // same row at once then read the old row one after the other, so the
+      // second log's `delta` starts from the first save's total. A missing row
+      // locks nothing; two first saves then both start from 0.
+      const { saved, logged } = await prisma.$transaction(
+        async (tx: Prisma.TransactionClient) => {
+          await tx.$queryRaw`SELECT id FROM "ItemStock" WHERE "itemId" = ${itemId} AND "locationId" = ${locationId} FOR UPDATE`
+          const before = await tx.itemStock.findUnique({
+            where: { itemId_locationId: { itemId, locationId } },
+          })
+          const saved = await writeStock(itemId, locationId, data, tx)
+          // Read after the write, through `tx`. `useUpdateItem` saves the
+          // item's configuration first, so this is the new `amountPerPackage`,
+          // and both totals use it (`stockCountChange`).
+          const item = await tx.item.findUnique({
+            where: { id: itemId },
+            select: { amountPerPackage: true },
+          })
+          const change = stockCountChange(before, saved, item?.amountPerPackage)
+          // Set only after the row is written, so `LOG` is published for a
+          // written row and never for a skipped one.
+          let logged = false
+          if (change) {
+            await tx.inventoryLog.create({
+              data: {
+                itemId,
+                locationId,
+                userId,
+                // Both in PACKAGES, like a checkout row. The Log tab converts
+                // to the item's tracking unit when it shows the row.
+                delta: change.delta,
+                quantity: change.quantity,
+                occurredAt: new Date(),
+                // Data only: no `note`, no `logParams`.
+                logKey: STOCK_COUNT_LOG_KEY,
+              },
+            })
+            logged = true
+          }
+          return { saved, logged }
+        },
+      )
+      // After the commit (households H3c-2 task D.2). `writeStock` always
+      // writes a row, so `STOCK` is always sent. `LOG` only when a row was
+      // written: a save that changed only the target or the due date logs
+      // nothing.
+      await publishChange(ctx, logged ? ['STOCK', 'LOG'] : ['STOCK'], [{ locationId }])
       return toGraphQL(saved)
     },
 
@@ -353,6 +404,36 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         }
       }
 
+      // ── ONLY CONSUMABLE ITEMS IN A RECIPE (lib/consumable.ts) ────────────
+      //
+      // Also before the transaction. A recipe list may not ATTACH a
+      // non-consumable item. The switched item counts as it will be AFTER
+      // this switch (`updates.consumable`), the others as they are stored.
+      // A link the recipe already holds is not "attached", so a switch that
+      // turns the item off may still name its own old links: they are
+      // deleted in the transaction below.
+      const switchedTo = updates.consumable
+      const blocked = await nonConsumableItemIds(
+        householdId,
+        recipeUpdates.flatMap((update) => update.items.map((i) => i.itemId)),
+      )
+      if (switchedTo === true) blocked.delete(itemId)
+      if (switchedTo === false) blocked.add(itemId)
+      for (const update of recipeUpdates) {
+        const named = update.items.map((i) => i.itemId).filter((id) => blocked.has(id))
+        if (named.length === 0) continue
+        const linked = new Set(
+          (
+            await prisma.recipeItem.findMany({
+              where: { recipeId: update.recipeId },
+              select: { itemId: true },
+            })
+          ).map((r) => r.itemId),
+        )
+        const attached = named.filter((id) => !linked.has(id))
+        if (attached.length > 0) throw notConsumableError(attached)
+      }
+
       // Whether the switch changed the catalog (the item's own settings, or a
       // recipe's item list). Set inside the callback, read only after
       // `$transaction` has resolved, for the live event below.
@@ -408,6 +489,14 @@ export const itemStockResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
               })),
             })
           }
+        }
+
+        // The switch makes the item non-consumable: its recipe links go, in
+        // this same transaction (lib/consumable.ts). After the recipe updates
+        // above, so a list that still named it cannot bring a link back.
+        if (switchedTo === false) {
+          const { count } = await tx.recipeItem.deleteMany({ where: { itemId } })
+          if (count > 0) catalogChanged = true
         }
       })
 

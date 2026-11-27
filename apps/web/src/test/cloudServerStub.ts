@@ -25,6 +25,9 @@
 //   `cloudServer.failing`, it rejects the way Apollo does when the server
 //   refuses: a `CombinedGraphQLErrors` with the code `FORBIDDEN`. Otherwise it
 //   resolves with `cloudServer.results[hookName]`, or `{}` as `data`.
+// - When `cloudServer.holds[hookName]` is a promise, the mutation waits for it
+//   before it answers (or refuses). Use `holdMutation` to get one, so a test
+//   can look at the screen while the write is still in flight.
 //
 // Check `calls` in every test. It proves the request was really sent. A test
 // that only checks the toast would also pass when the write failed before it
@@ -41,6 +44,19 @@ export const cloudServer = {
   results: {} as Record<string, (variables: Record<string, unknown>) => Data>,
   failing: new Set<string>(),
   calls: {} as Record<string, Record<string, unknown>[]>,
+  holds: {} as Record<string, Promise<void>>,
+}
+
+/**
+ * Makes the next answers of one mutation wait until `release()` is called.
+ * Set `failing` before `release()` to make the held write fail.
+ */
+export function holdMutation(hook: string) {
+  let release = () => {}
+  cloudServer.holds[hook] = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  return { release }
 }
 
 /** Clears every query answer, result, failure and recorded call. */
@@ -49,6 +65,7 @@ export function resetCloudServer() {
   cloudServer.results = {}
   cloudServer.failing = new Set()
   cloudServer.calls = {}
+  cloudServer.holds = {}
   dataCache.clear()
 }
 
@@ -84,6 +101,7 @@ async function runMutation(hook: string, options?: unknown) {
   // A real request is never answered in the same tick. Without this wait a
   // `loading` flag would go true and false again before React rendered it.
   await new Promise((resolve) => setTimeout(resolve, 0))
+  await cloudServer.holds[hook]
   if (cloudServer.failing.has(hook)) throw forbiddenError()
   return { data: cloudServer.results[hook]?.(variables) ?? {} }
 }

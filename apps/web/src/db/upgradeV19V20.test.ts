@@ -97,7 +97,8 @@ describe('v18 → v20 upgrade (one row per item per cart)', () => {
   it('the upgraded database refuses a second row for a pair', async () => {
     // Given the upgraded database
     await db.open()
-    expect(db.verno).toBe(20)
+    // At least 20: later versions (21 adds `Item.consumable`) keep the index.
+    expect(db.verno).toBeGreaterThanOrEqual(20)
 
     // When a second row for milk in cart A is added by hand
     // Then the unique index refuses it
@@ -128,7 +129,8 @@ describe('a fresh database at version 20', () => {
     // Given no database at all (so Dexie opens straight at version 20, runs
     // `on('populate')`, and runs no upgrade)
     await db.open()
-    expect(db.verno).toBe(20)
+    // At least 20: later versions (21 adds `Item.consumable`) keep the index.
+    expect(db.verno).toBeGreaterThanOrEqual(20)
 
     // Then the compound index exists and is unique
     const index = db.cartItems.schema.idxByName['[cartId+itemId]']

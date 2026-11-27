@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import type { ItemFormValues } from '@/components/item/ItemForm'
 import { ItemForm } from '@/components/item/ItemForm'
 import { DeleteButton } from '@/components/shared/DeleteButton'
@@ -28,10 +29,13 @@ import { useLocations } from '@/hooks/useLocations'
 import { usePermissions } from '@/hooks/usePermissions'
 import { useRecipes } from '@/hooks/useRecipes'
 import type { TrackedQuantities } from '@/lib/quantityUtils'
-import { convertTrackedQuantities } from '@/lib/quantityUtils'
+import {
+  convertTrackedQuantities,
+  toNonConsumableQuantities,
+} from '@/lib/quantityUtils'
 import { showSaveError } from '@/lib/saveError'
 import type { Item, PantryItem, StockConfigFields, StockFields } from '@/types'
-import { DEFAULT_PACKAGE_UNIT } from '@/types'
+import { DEFAULT_PACKAGE_UNIT, isConsumable } from '@/types'
 
 export const Route = createFileRoute('/items/$id/')({
   component: ItemInfoTab,
@@ -72,6 +76,8 @@ function itemToFormValues(item: PantryItem): ItemFormValues {
           ? 'date'
           : 'disabled'),
     expirationThreshold: item.expirationThreshold ?? '',
+    // A missing value means consumable (`isConsumable`).
+    consumable: isConsumable(item),
   }
 }
 
@@ -110,6 +116,10 @@ function buildInfoUpdates(values: ItemFormValues): ItemInfoUpdatePayload {
     targetUnit: values.targetUnit,
     consumeAmount: values.consumeAmount,
     expirationMode: values.expirationMode,
+    // The measurement and expiration fields below are sent as they are in
+    // the form, also when the item is not consumable: hidden values are
+    // KEPT, so turning Consumable on again restores them (design, PR 2).
+    consumable: values.consumable,
   }
 
   // Assign undefined (not delete) so toUpdateItemInput() sees the key as
@@ -163,6 +173,14 @@ type PendingSave = {
   values: ItemFormValues
   adjustments: Adjustment[]
   conversions: StockConversion[]
+  // The save turns Consumable off: the dialog says opened stock is removed,
+  // not "now tracking in {unit}".
+  toNonConsumable: boolean
+  // How many recipes the item leaves. Only consumable items can be in a
+  // recipe (owner decision 2026-11-26), so turning Consumable off removes
+  // the item from every recipe that holds it, in both modes. The dialog says
+  // so before the save; 0 says nothing.
+  removedFromRecipes: number
 }
 
 function calcNewDefault(oldDefault: number, newConsumeAmount: number): number {
@@ -204,11 +222,11 @@ function ItemInfoTab() {
   // dialog is reached only through Save, so it cannot open either.
   const { canEditCatalog, roleKnown } = usePermissions()
   const deleteItem = useDeleteItem()
-  const { registerDirtyState } = useItemLayout()
+  const { registerDirtyState, registerSaveControl, saveSlot } = useItemLayout()
   const { goBack } = useAppNavigation()
   const [savedAt, setSavedAt] = useState(0)
 
-  const { data: allRecipes } = useRecipes()
+  const { data: allRecipes, isError: recipesFailed } = useRecipes()
   // The atomic unit switch — the item, every location's stock and every
   // affected recipe in one transaction. Dual-mode since PR 3c.
   const applyUnitSwitch = useApplyUnitSwitch()
@@ -217,10 +235,34 @@ function ItemInfoTab() {
   // order them by. Both hooks are dual-mode since PR 2, and since PR 3c so is
   // `useApplyUnitSwitch` — so `buildStockConversions` runs in BOTH modes and
   // the dialog lists the same conversions either way.
-  const { data: stocks } = useItemStocks(id)
+  const { data: stocks, isError: stocksFailed } = useItemStocks(id)
   const { data: locations } = useLocations()
 
+  // `handleSubmit` decides whether the converted amounts dialog opens from
+  // `allRecipes` and `stocks`. While either has not loaded it would count no
+  // recipe and no location, skip the dialog and save: the recipe warning is
+  // lost, and a unit switch leaves recipe amounts and stock in the old unit
+  // (bug 2026-11-26, `docs/features/items/2026-11-26-bug-save-before-recipes-load.md`).
+  // So Save stays off until both are here. Keyed on `data`, not `isLoading`:
+  // a read that failed with nothing cached has no data and is not loading.
+  // `locations` is left out on purpose: it only names and orders the rows
+  // of the dialog, and a missing name falls back to the location id.
+  const readsMissing = allRecipes === undefined || stocks === undefined
+  // A failed read never fills in by itself, so say why Save is off. While
+  // the reads are only loading, say nothing.
+  const readsFailed = readsMissing && (recipesFailed || stocksFailed)
+
   const [pending, setPending] = useState<PendingSave | null>(null)
+  // While the converted amounts dialog is open, the answer to the save that
+  // opened it: `true` once Confirm's write worked, `false` on Cancel or a
+  // failed write. The unsaved-changes dialog's Save waits on it (owner's flow,
+  // design 2026-11-25): that dialog stays open under this one.
+  const pendingAnswerRef = useRef<((saved: boolean) => void) | null>(null)
+  const answerPending = (saved: boolean) => {
+    const answer = pendingAnswerRef.current
+    pendingAnswerRef.current = null
+    answer?.(saved)
+  }
 
   if (!item) return null
 
@@ -235,22 +277,26 @@ function ItemInfoTab() {
     })
   }
 
+  // A save stays on the page (design 2026-11-24, part A). Bumping `savedAt`
+  // makes `ItemForm` take the saved values as its new clean state, so Save is
+  // disabled again and the tab's dirty guard is not armed. Only Delete leaves.
   const finishSave = () => {
     setSavedAt((n) => n + 1)
-    goBack()
+    toast.success(t('items.detail.saved'))
   }
 
   // Caught here because `ItemForm` does not await `onSubmit`: a failed save
   // would otherwise be an unhandled rejection with nothing on screen. The form
   // keeps the typed values and stays dirty, so Save can be pressed again.
-  const doSave = async (values: ItemFormValues) => {
+  const doSave = async (values: ItemFormValues): Promise<boolean> => {
     try {
       await persistInfo(values)
     } catch (err) {
       showSaveError(err)
-      return
+      return false
     }
     finishSave()
+    return true
   }
 
   // A recipe's `defaultAmount` is stored in the item's own unit and snapped to
@@ -267,13 +313,32 @@ function ItemInfoTab() {
   // arbitrary, and why this shipped only once the field move had landed.
   // `packedQuantity` is deliberately never converted: it counts sealed
   // packages, which are packages in either mode.
-  const handleSubmit = async (values: ItemFormValues) => {
+  //
+  // It answers whether the save worked. The top bar Save ignores the answer;
+  // the unsaved-changes dialog's Save leaves the page only on `true`. When the
+  // converted amounts dialog opens, the answer waits for it.
+  const handleSubmit = async (values: ItemFormValues): Promise<boolean> => {
+    // A second line of defense: Save is already off (`submitBlocked`).
+    if (readsMissing) return false
     const oldConsumeAmount = item.consumeAmount ?? 0
     const newConsumeAmount = values.consumeAmount
     const targetUnitChanged = item.targetUnit !== values.targetUnit
+    // Turning Consumable off (owner decision 2026-11-26): at EVERY location
+    // opened stock is dropped, and the target and the refill threshold become
+    // whole packs. Turning it on again changes no stock.
+    const toNonConsumable = isConsumable(item) && !values.consumable
+
+    // Recipes the item leaves. The write deletes the links itself (local
+    // `applyUnitSwitchBatch` / `updateItem`, the server's `applyUnitSwitch` /
+    // `updateItem`); this count is only for the warning.
+    const removedFromRecipes = toNonConsumable
+      ? (allRecipes ?? []).filter((r) => r.items.some((ri) => ri.itemId === id))
+          .length
+      : 0
 
     const buildAdjustments = (): Adjustment[] => {
-      if (!allRecipes) return []
+      // The item leaves every recipe, so no recipe amount is adjusted.
+      if (!allRecipes || toNonConsumable) return []
       const affectedRecipes = allRecipes.filter((r) =>
         r.items.some((ri) => ri.itemId === id),
       )
@@ -326,7 +391,7 @@ function ItemInfoTab() {
     // holds the ACTIVE location's quantities (already rescaled in its local
     // state by the toggle), which are the wrong numbers for every other row.
     const buildStockConversions = (): StockConversion[] => {
-      if (!targetUnitChanged || !stocks) return []
+      if ((!targetUnitChanged && !toNonConsumable) || !stocks) return []
       const amountPerPackage = Number(values.amountPerPackage)
       const order = new Map(locations?.map((l, i) => [l.id, i]))
       return stocks
@@ -336,11 +401,21 @@ function ItemInfoTab() {
             targetQuantity: stock.targetQuantity,
             refillThreshold: stock.refillThreshold,
           }
-          const after = convertTrackedQuantities(
-            before,
-            amountPerPackage,
-            values.targetUnit,
-          )
+          // To non-consumable: the stored numbers are in the item's OLD unit
+          // (`item.targetUnit`), and the switch to packages (the form turns
+          // "Track in measurement" off with it) is folded into the same
+          // divide-by-amountPerPackage rule. Even an item already tracked in
+          // packages gets a row when it holds opened stock or a fraction.
+          const after = toNonConsumable
+            ? toNonConsumableQuantities(before, {
+                targetUnit: item.targetUnit,
+                ...(amountPerPackage > 0 ? { amountPerPackage } : {}),
+              })
+            : convertTrackedQuantities(
+                before,
+                amountPerPackage,
+                values.targetUnit,
+              )
           // No usable factor (missing / zero / negative amountPerPackage), or
           // nothing actually moves (all-zero row, 1:1 package size): leave the
           // row alone rather than list a no-op for the user to reason about.
@@ -365,12 +440,30 @@ function ItemInfoTab() {
 
     const adjustments = buildAdjustments()
     const conversions = buildStockConversions()
-    if (adjustments.length > 0 || conversions.length > 0) {
-      setPending({ values, adjustments, conversions })
-      return
+    // The dialog also opens when only the recipe warning has something to
+    // say: an item with no stock to convert must still warn before it leaves
+    // its recipes.
+    if (
+      adjustments.length > 0 ||
+      conversions.length > 0 ||
+      removedFromRecipes > 0
+    ) {
+      // A save already waiting (not reachable today: the dialog is modal)
+      // is answered "not saved" before a new one starts.
+      answerPending(false)
+      setPending({
+        values,
+        adjustments,
+        conversions,
+        toNonConsumable,
+        removedFromRecipes,
+      })
+      return new Promise<boolean>((resolve) => {
+        pendingAnswerRef.current = resolve
+      })
     }
 
-    await doSave(values)
+    return doSave(values)
   }
 
   // Writes the item's own configuration, the per-location rows and the recipe
@@ -384,6 +477,11 @@ function ItemInfoTab() {
   // mixed units, silently, with nothing surfaced to the user.
   const handleConfirmAdjustments = async () => {
     if (!pending) return
+    // Taken now, before the first `await`: `AlertDialogAction` closes the
+    // dialog right after this handler starts, and that close runs
+    // `handleCancelAdjustments`, which would answer `false` first.
+    const answer = pendingAnswerRef.current
+    pendingAnswerRef.current = null
 
     // Resolved up front, outside any transaction: the Dexie batch must be
     // handed finished rows (see applyUnitSwitchBatch on why it may not await
@@ -417,15 +515,18 @@ function ItemInfoTab() {
       })
     } catch (err) {
       showSaveError(err)
+      answer?.(false)
       return
     }
 
     setPending(null)
     finishSave()
+    answer?.(true)
   }
 
   const handleCancelAdjustments = () => {
     setPending(null)
+    answerPending(false)
   }
 
   const handleDelete = async () => {
@@ -439,6 +540,7 @@ function ItemInfoTab() {
 
   const hasConversions = (pending?.conversions.length ?? 0) > 0
   const hasAdjustments = (pending?.adjustments.length ?? 0) > 0
+  const removedFromRecipes = pending?.removedFromRecipes ?? 0
   const switchedToUnit =
     pending?.values.targetUnit === 'measurement'
       ? pending.values.measurementUnit
@@ -452,14 +554,25 @@ function ItemInfoTab() {
           text={t('settings.catalogReadOnlyItem')}
         />
       )}
+      {canEditCatalog && readsFailed && (
+        <p
+          role="alert"
+          className="max-w-2xl mx-auto mb-4 text-sm text-status-error-foreground"
+        >
+          {t('items.detail.readsFailed')}
+        </p>
+      )}
       <ItemForm
         initialValues={formValues}
         sections={['info']}
         onSubmit={handleSubmit}
         onDirtyChange={registerDirtyState}
+        onSaveControlChange={registerSaveControl}
         savedAt={savedAt}
         isPending={updateItem.isPending}
+        submitBlocked={readsMissing}
         readOnly={!canEditCatalog}
+        submitSlot={saveSlot}
       />
 
       <AlertDialog
@@ -471,19 +584,45 @@ function ItemInfoTab() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {hasConversions
-                ? t('items.detail.unitSwitchDialog.title')
-                : t('items.detail.recipeAdjustDialog.title')}
+              {/* Turning Consumable off always uses this title, with or
+                  without stock to convert (owner request 2026-11-26). */}
+              {pending?.toNonConsumable
+                ? t('items.detail.unitSwitchDialog.nonConsumableTitle')
+                : hasConversions
+                  ? t('items.detail.unitSwitchDialog.title')
+                  : t('items.detail.recipeAdjustDialog.title')}
             </AlertDialogTitle>
           </AlertDialogHeader>
           {/* Exactly one description element: Radix points the dialog's
               aria-describedby at it, so a second would duplicate the id. */}
           <AlertDialogDescription>
-            {hasConversions && (
+            {/* Turning Consumable off: the recipe line comes FIRST, then the
+                conversion line (owner request 2026-11-26). */}
+            {pending?.toNonConsumable && removedFromRecipes > 0 && (
               <span className="block">
-                {t('items.detail.unitSwitchDialog.description', {
-                  unit: switchedToUnit,
+                {t('items.detail.unitSwitchDialog.removedFromRecipes', {
+                  count: removedFromRecipes,
                 })}
+              </span>
+            )}
+            {hasConversions && (
+              <span
+                className={
+                  pending?.toNonConsumable && removedFromRecipes > 0
+                    ? 'mt-2 block'
+                    : 'block'
+                }
+              >
+                {pending?.toNonConsumable
+                  ? t(
+                      'items.detail.unitSwitchDialog.nonConsumableDescription',
+                      {
+                        unit: switchedToUnit,
+                      },
+                    )
+                  : t('items.detail.unitSwitchDialog.description', {
+                      unit: switchedToUnit,
+                    })}
               </span>
             )}
             {hasAdjustments && pending && (

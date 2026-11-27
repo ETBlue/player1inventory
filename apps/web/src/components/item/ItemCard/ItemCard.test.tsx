@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { deserializeItem } from '@/lib/deserialization'
 import { joinItemStock } from '@/lib/itemStock'
+import { defined } from '@/test/narrow'
 import { renderWithRouter } from '@/test/utils'
 import type {
   Item,
@@ -2206,5 +2207,310 @@ describe('ItemCard - controlsDescribedBy', () => {
     expect(
       screen.getByRole('checkbox', { name: 'Remove Milk' }),
     ).not.toHaveAttribute('aria-describedby')
+  })
+})
+
+// The cart page's amount button (cart amount dialog, 2026-11-25). With
+// `onAmountEdit` the card shows ONE button instead of `− n +`.
+describe('ItemCard - amount button (onAmountEdit)', () => {
+  const milk = makeItem({
+    name: 'Milk',
+    packageUnit: 'bottle',
+    targetUnit: 'package',
+    targetQuantity: 4,
+    refillThreshold: 1,
+    packedQuantity: 1,
+    unpackedQuantity: 0,
+  })
+
+  it('user can press the amount button, and it calls onAmountEdit once', async () => {
+    const user = userEvent.setup()
+    const onAmountEdit = vi.fn()
+    const onAmountChange = vi.fn()
+    await renderWithRouter(
+      <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
+        item={milk}
+        tags={[]}
+        tagTypes={[]}
+        mode="shopping"
+        isChecked
+        onCheckboxToggle={vi.fn()}
+        controlAmount={10}
+        amountUnit="bottle"
+        onAmountEdit={onAmountEdit}
+        onAmountChange={onAmountChange}
+      />,
+    )
+
+    // One button; no − n + even with onAmountChange
+    const button = screen.getByRole('button', {
+      name: 'Edit amount of Milk: 10 bottle',
+    })
+    expect(
+      screen.queryByRole('button', { name: /Increase quantity of Milk/ }),
+    ).toBeNull()
+
+    await user.click(button)
+    expect(onAmountEdit).toHaveBeenCalledTimes(1)
+    expect(onAmountChange).not.toHaveBeenCalled()
+  })
+
+  it('user sees only the number on the amount button, with the unit in its name', async () => {
+    // Given a cart row with 10 bottles
+    await renderWithRouter(
+      <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
+        item={milk}
+        tags={[]}
+        tagTypes={[]}
+        mode="shopping"
+        isChecked
+        onCheckboxToggle={vi.fn()}
+        controlAmount={10}
+        amountUnit="bottle"
+        onAmountEdit={vi.fn()}
+      />,
+    )
+
+    // Then the button shows "10" only: no unit word and no pencil icon
+    const button = screen.getByRole('button', {
+      name: 'Edit amount of Milk: 10 bottle',
+    })
+    expect(button.textContent).toBe('10')
+    expect(button.querySelector('svg')).toBeNull()
+  })
+
+  it('the amount button takes a narrow lane, and the − n + group keeps its wide one', async () => {
+    // Given a cart row (one amount button) and a cooking row (− n +)
+    await renderWithRouter(
+      <>
+        <ItemCard
+          lastPurchaseDate={lastPurchaseToday()}
+          item={milk}
+          tags={[]}
+          tagTypes={[]}
+          mode="shopping"
+          isChecked
+          onCheckboxToggle={vi.fn()}
+          controlAmount={10}
+          amountUnit="bottle"
+          onAmountEdit={vi.fn()}
+        />
+        <ItemCard
+          lastPurchaseDate={lastPurchaseToday()}
+          item={{ ...milk, id: 'item-flour', name: 'Flour' }}
+          tags={[]}
+          tagTypes={[]}
+          mode="cooking"
+          isChecked
+          onCheckboxToggle={vi.fn()}
+          controlAmount={2}
+          onAmountChange={vi.fn()}
+        />
+      </>,
+    )
+
+    // Then the cart card reserves 4rem (mr-16) for a 3rem button, with 0.5rem
+    // between the card and the button
+    const editButton = screen.getByRole('button', {
+      name: /^Edit amount of Milk/,
+    })
+    expect(editButton).toHaveClass('w-12', '-right-14')
+    const cartCard = defined(editButton.parentElement ?? undefined, 'cart card')
+    expect(cartCard).toHaveClass('mr-16')
+    expect(cartCard).not.toHaveClass('mr-28')
+
+    // And the cooking card keeps 7rem (mr-28) for the − n + group
+    const plus = screen.getByRole('button', {
+      name: 'Increase quantity of Flour',
+    })
+    const group = defined(plus.parentElement ?? undefined, 'stepper group')
+    expect(group).toHaveClass('-right-26')
+    const cookingCard = defined(
+      group.parentElement ?? undefined,
+      'cooking card',
+    )
+    expect(cookingCard).toHaveClass('mr-28')
+    expect(cookingCard).not.toHaveClass('mr-16')
+  })
+
+  it('shows no amount button for an item not in the cart', async () => {
+    await renderWithRouter(
+      <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
+        item={milk}
+        tags={[]}
+        tagTypes={[]}
+        mode="shopping"
+        isChecked={false}
+        onCheckboxToggle={vi.fn()}
+        amountUnit="bottle"
+        onAmountEdit={vi.fn()}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: /^Edit amount of/ })).toBeNull()
+  })
+
+  it('location viewer sees the amount button disabled, and told why', async () => {
+    await renderWithRouter(
+      <>
+        <p id="why">You can view this location, but not change it.</p>
+        <ItemCard
+          lastPurchaseDate={lastPurchaseToday()}
+          item={milk}
+          tags={[]}
+          tagTypes={[]}
+          mode="shopping"
+          isChecked
+          disabled
+          controlsDescribedBy="why"
+          onCheckboxToggle={vi.fn()}
+          controlAmount={3}
+          amountUnit="bottle"
+          onAmountEdit={vi.fn()}
+        />
+      </>,
+    )
+    const button = screen.getByRole('button', { name: /^Edit amount of Milk/ })
+    expect(button).toBeDisabled()
+    expect(button).toHaveAccessibleDescription(
+      'You can view this location, but not change it.',
+    )
+  })
+})
+
+describe('ItemCard - non-consumable items', () => {
+  const cupsStock = {
+    packedQuantity: 3,
+    unpackedQuantity: 0,
+    targetQuantity: 5,
+    refillThreshold: 2,
+  }
+
+  it('user sees squares instead of the progress bar for a non-consumable item', async () => {
+    // Given cups, which are not consumable: 3 of 5 in stock
+    const item = makeItem({
+      ...cupsStock,
+      targetUnit: 'package',
+      packageUnit: 'cup',
+      consumable: false,
+    })
+
+    await renderWithRouter(
+      <ItemCard lastPurchaseDate={null} item={item} tags={[]} tagTypes={[]} />,
+    )
+
+    // Then 5 squares show, 3 filled, with the piece count
+    const squares = screen.getAllByTestId('count-square')
+    expect(squares).toHaveLength(5)
+    expect(squares.filter((s) => s.dataset.filled === 'true')).toHaveLength(3)
+    expect(screen.getByText('3 / 5 cup')).toBeInTheDocument()
+    // And the refill marker sits at 2
+    expect(screen.getByTestId('refill-marker').dataset.threshold).toBe('2')
+  })
+
+  it('user sees the progress bar for a consumable item, and for an item with no value', async () => {
+    // The item with NO value is what tells "missing means consumable" apart
+    // from "missing means not consumable".
+    for (const consumable of [true, undefined]) {
+      const item = makeItem({
+        ...cupsStock,
+        targetUnit: 'package',
+        ...(consumable !== undefined ? { consumable } : {}),
+      })
+      const { unmount } = await renderWithRouter(
+        <ItemCard
+          lastPurchaseDate={null}
+          item={item}
+          tags={[]}
+          tagTypes={[]}
+        />,
+      )
+      expect(screen.queryAllByTestId('count-square')).toHaveLength(0)
+      unmount()
+    }
+  })
+
+  it('a non-consumable item tracked in a measurement unit shows whole pieces', async () => {
+    // Given 750 ml in stock of a 1000 ml target, 250 ml per piece
+    const item = makeItem({
+      packedQuantity: 3,
+      unpackedQuantity: 0,
+      targetQuantity: 1000,
+      refillThreshold: 500,
+      targetUnit: 'measurement',
+      measurementUnit: 'ml',
+      amountPerPackage: 250,
+      packageUnit: 'bottle',
+      consumable: false,
+    })
+
+    await renderWithRouter(
+      <ItemCard lastPurchaseDate={null} item={item} tags={[]} tagTypes={[]} />,
+    )
+
+    // Then 4 squares, 3 filled, and the marker at 2 pieces
+    const squares = screen.getAllByTestId('count-square')
+    expect(squares).toHaveLength(4)
+    expect(squares.filter((s) => s.dataset.filled === 'true')).toHaveLength(3)
+    expect(screen.getByText('3 / 4 bottle')).toBeInTheDocument()
+    expect(screen.getByTestId('refill-marker').dataset.threshold).toBe('2')
+  })
+
+  it('user sees whole packs only for a non-consumable item that still holds opened stock', async () => {
+    // Given an old row of cups with 2 packs and 1.5 opened: the Amount field
+    // shows 2, so the card must show 2 too, not floor(3.5) = 3
+    const item = makeItem({
+      packedQuantity: 2,
+      unpackedQuantity: 1.5,
+      targetQuantity: 5,
+      refillThreshold: 2,
+      targetUnit: 'package',
+      packageUnit: 'cup',
+      consumable: false,
+    })
+
+    await renderWithRouter(
+      <ItemCard lastPurchaseDate={null} item={item} tags={[]} tagTypes={[]} />,
+    )
+
+    expect(screen.getByText('2 / 5 cup')).toBeInTheDocument()
+    const squares = screen.getAllByTestId('count-square')
+    expect(squares.filter((s) => s.dataset.filled === 'true')).toHaveLength(2)
+  })
+
+  it('user sees no expiry on a non-consumable item', async () => {
+    // Given the same expiry settings on two items
+    const expiry = {
+      expirationMode: 'days from purchase' as const,
+      estimatedDueDays: 30,
+    }
+    const consumableItem = makeItem({
+      ...cupsStock,
+      ...expiry,
+      targetUnit: 'package',
+    })
+    const { unmount } = await renderWithRouter(
+      <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
+        item={consumableItem}
+        tags={[]}
+        tagTypes={[]}
+      />,
+    )
+    // The consumable one shows it (so the fixture can show an expiry at all)
+    expect(screen.getByText(/Expires in 30 days/i)).toBeInTheDocument()
+    unmount()
+
+    await renderWithRouter(
+      <ItemCard
+        lastPurchaseDate={lastPurchaseToday()}
+        item={{ ...consumableItem, consumable: false }}
+        tags={[]}
+        tagTypes={[]}
+      />,
+    )
+    expect(screen.queryByText(/Expires/i)).not.toBeInTheDocument()
   })
 })

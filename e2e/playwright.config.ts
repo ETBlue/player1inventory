@@ -168,6 +168,12 @@ const CLOUD_SPECS = [
   '**/household-ownership.spec.ts',
   '**/household-switch.spec.ts',
   '**/location-sort.spec.ts',
+  // Save in the unsaved-changes dialog (2026-11-25). Runs in local too.
+  '**/unsaved-dialog-save.spec.ts',
+  // Consumable items, PR 2 (2026-11-25). Runs in local too.
+  '**/consumable-items.spec.ts',
+  // Expiry from the last restock (2026-11-26). Runs in local too.
+  '**/expiry-from-restock.spec.ts',
 ]
 
 // A `NEON_SPECS` entry that is not in the list above throws here, at load, so

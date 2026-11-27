@@ -1644,6 +1644,52 @@ Without that assertion the cloud run failed much later, as
 `locator.click: Test timeout of 30000ms exceeded` — a missing element, which says far less
 than a missing id.
 
+### `consumable` and `measurementUnit` — two more optional item fields (2026-11-25)
+
+Added for `consumable-items.spec.ts` (consumable items PR 2), in both seeders.
+`consumable` omitted gives `true` in both modes (the product default); `measurementUnit`
+omitted leaves the field unset. A `targetUnit: 'measurement'` item needs a
+`measurementUnit`, or its Info tab opens with the "measurement unit" error.
+
+`consumable-items.spec.ts` runs in `local` and `cloud`: turning the switch off shows one
+square per piece on the pantry after a new page load (the item is seeded CONSUMABLE, so the
+squares prove the save); a gram item shows the converted amounts dialog and ends as whole
+packs; the Not consumable filter on a cart keeps only the non-consumable item and survives a
+reload; and axe scans, light and dark, of the pantry with a count bar, the open Consumable
+menu, the Info tab with the switch off and the converted amounts dialog.
+
+Since 2026-11-26 (the Amount field) it also checks, in both projects: the gram item's switch
+drops the 250 g opened stock and stores `[packed 2, unpacked 0, target 4, refill 1]` (read
+back with `readStocksForItem`); the quick edit dialog and the Stock tab show one "Amount"
+field; and an Amount saved on the Stock tab writes `unpackedQuantity: 0`.
+`FIXTURE_CUPS_NOT_CONSUMABLE` seeds Cups with half a pack open on purpose, as an old row.
+
+Since 2026-11-26 (only consumable items in a recipe) it also checks: turning Consumable off
+for Cups, which is in a recipe and has no stock to convert, opens "Mark as not consumable?"
+with "It will be removed from 1 recipe", and afterwards the recipe holds Tissue only (read
+back from IndexedDB or the `recipe` query; `readRecipeItemIds` in the spec). A cloud-only
+test, with no browser, checks that `updateRecipe` with a non-consumable item is refused
+with `NOT_CONSUMABLE` and changes nothing. **The cooking test's fixture differs by mode
+now:** `seedLocalFixture` writes the recipe's old link to Cups straight to IndexedDB, but
+`seedCloudFixture` imports through `bulkCreateRecipes`, which skips a non-consumable item.
+So in cloud the recipe arrives with Tissue only. A fixture can no longer give a cloud
+recipe a non-consumable item at all.
+
+### A cloud stock seed is a restock — since 2026-11-26
+
+`seedCloudFixture` (and every spec that calls `upsertItemStock`) writes stock through the
+same mutation the Stock tab uses. Since 2026-11-25 that mutation writes a `stockCount` log
+row dated NOW when the amount changes, and since 2026-11-26 such a row with `delta > 0`
+is the item's last purchase date (`docs/features/items/2026-11-26-expiry-from-last-restock-design.md`).
+So in cloud every seeded item with stock was "bought" at seed time. Local seeds write no
+log, so the two modes differ here.
+
+A spec that needs an OLD purchase date in cloud seeds the stock with `bulkCreateItemStocks`
+(an import writes no log) and the purchase with `bulkCreateInventoryLogs` (it keeps a date
+in the past). `expiry-from-restock.spec.ts` does this. It runs in `local` and `cloud`: a
+Quick update that raises Yogurt's amount moves its "Expires in" from 10 to 30 days and its
+place in the Purchased sort, with no reload.
+
 ### Location order is assigned differently in the two modes — keep the default first
 
 | Helper | How it assigns `order` |

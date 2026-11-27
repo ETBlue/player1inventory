@@ -27,6 +27,7 @@ import { useTags } from '@/hooks/useTags'
 import { useUrlSearchAndFilters } from '@/hooks/useUrlSearchAndFilters'
 import {
   filterItems,
+  filterItemsByConsumable,
   filterItemsByRecipes,
   filterItemsByVendors,
 } from '@/lib/filterUtils'
@@ -110,6 +111,7 @@ export function ItemListToolbar({
     filterState,
     selectedVendorIds,
     selectedRecipeIds,
+    consumableFilter,
     isFiltersVisible,
     isTagsVisible,
     setSearch,
@@ -129,15 +131,15 @@ export function ItemListToolbar({
   const hasActiveFilters =
     Object.values(filterState).some((tagIds) => tagIds.length > 0) ||
     selectedVendorIds.length > 0 ||
-    selectedRecipeIds.length > 0
+    selectedRecipeIds.length > 0 ||
+    consumableFilter !== 'all'
 
   // Pass tags to enable descendant expansion (selecting a parent tag matches its children too)
   const tagFiltered = filterItems(items, filterState, tags)
   const vendorFiltered = filterItemsByVendors(tagFiltered, selectedVendorIds)
-  const filteredCount = filterItemsByRecipes(
-    vendorFiltered,
-    selectedRecipeIds,
-    recipes ?? [],
+  const filteredCount = filterItemsByConsumable(
+    filterItemsByRecipes(vendorFiltered, selectedRecipeIds, recipes ?? []),
+    consumableFilter,
   ).length
   const totalCount = items.length
 
@@ -171,7 +173,7 @@ export function ItemListToolbar({
 
         <div className="flex items-center gap-2 truncate">
           {showSort && (
-            <div className="flex items-center ml-2 truncate">
+            <div className="flex items-center gap-2 ml-2 truncate">
               <span className="hidden lg:inline text-sm text-foreground-muted">
                 {t('itemListToolbar.sortBy')}
               </span>

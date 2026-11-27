@@ -36,8 +36,10 @@ export const NotInCart: Story = {
   },
 }
 
+// The cart page's shape since 2026-11-25: ONE amount button that opens
+// `CartAmountDialog`, not `− n +`.
 export const InCart: Story = {
-  name: 'In cart (with amount controls)',
+  name: 'In cart (amount button)',
   args: {
     item: { ...mockItem, packedQuantity: 1, unpackedQuantity: 0 },
     tags: mockTags,
@@ -48,7 +50,57 @@ export const InCart: Story = {
     showTagSummary: false,
     isChecked: true,
     controlAmount: 3,
+    amountUnit: 'gallon',
     onCheckboxToggle: () => console.log('Toggle cart'),
+    onAmountEdit: () => console.log('Edit amount'),
+  },
+}
+
+export const InCartAmountZero: Story = {
+  name: 'In cart, amount 0 (buy next time)',
+  args: {
+    ...InCart.args,
+    controlAmount: 0,
+  },
+}
+
+// The unit is not on the button; it is only in the accessible name.
+export const InCartLongUnit: Story = {
+  name: 'In cart, long unit (in the name only)',
+  args: {
+    ...InCart.args,
+    controlAmount: 12,
+    amountUnit: 'family-size bottle',
+  },
+}
+
+// A 4-digit amount still fits the 3rem button at `text-sm`.
+export const InCartLargeAmount: Story = {
+  name: 'In cart, 4-digit amount',
+  args: {
+    ...InCart.args,
+    controlAmount: 1000,
+  },
+}
+
+export const InCartViewOnly: Story = {
+  name: 'In cart, location viewer (disabled)',
+  args: {
+    ...InCart.args,
+    disabled: true,
+  },
+}
+
+// The `− n +` group, which the cooking page and the recipe items tab still
+// use. Shown here so the two shapes can be compared.
+// The same args as InCart, without `onAmountEdit` (a key set to undefined
+// is a type error under `exactOptionalPropertyTypes`).
+const { onAmountEdit: _edit, ...inCartWithoutEdit } = InCart.args ?? {}
+
+export const InCartStepper: Story = {
+  name: 'In cart with − n + (not the cart page any more)',
+  args: {
+    ...inCartWithoutEdit,
     onAmountChange: (delta) => console.log('Amount change:', delta),
   },
 }

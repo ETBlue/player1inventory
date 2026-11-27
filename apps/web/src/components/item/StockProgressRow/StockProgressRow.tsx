@@ -1,4 +1,5 @@
 import { ArrowLeftToLine, ArrowRightToLine } from 'lucide-react'
+import { ItemCountBar } from '@/components/item/ItemCountBar'
 import { ItemProgressBar } from '@/components/item/ItemProgressBar'
 import { Button } from '@/components/ui/button'
 
@@ -10,13 +11,21 @@ export interface StockProgressRowProps {
   current: number
   target: number
   status: 'ok' | 'warning' | 'error' | 'inactive'
+  // `isConsumable(item)`. A non-consumable item (cups) draws `ItemCountBar`,
+  // one square per whole piece, like its `ItemCard`; a consumable one draws
+  // `ItemProgressBar`. Required, not optional: a caller that forgot it would
+  // otherwise draw the wrong bar with no compiler error.
+  consumable: boolean
   targetUnit: 'package' | 'measurement'
   packed: number
   unpacked: number
   measurementUnit?: string
   amountPerPackage?: number
-  // Refill threshold in the item's tracking unit (same unit as `target`).
-  // Forwarded to ItemProgressBar, which draws a tick at it.
+  // `current`, `target` and `refillThreshold` are in the bar's unit: the
+  // tracking unit for a consumable item, whole pieces for a non-consumable
+  // one. `getStockPreview` gives both (`current`, `target`,
+  // `refillThreshold`), so this row does no unit maths of its own.
+  // The refill threshold is forwarded to the bar, which draws a tick at it.
   refillThreshold?: number
   onClear: () => void
   onFill: () => void
@@ -42,6 +51,7 @@ export function StockProgressRow({
   current,
   target,
   status,
+  consumable,
   targetUnit,
   packed,
   unpacked,
@@ -82,17 +92,26 @@ export function StockProgressRow({
               (docs/global/bugs/2026-08-29-bug-unit-badge-contrast.md). */}
           <span>{`${quantityLabel} ${unitLabel}`}</span>
         </div>
-        <ItemProgressBar
-          current={current}
-          target={target}
-          status={status}
-          targetUnit={targetUnit}
-          packed={packed}
-          unpacked={unpacked}
-          {...(measurementUnit ? { measurementUnit } : {})}
-          {...(amountPerPackage ? { amountPerPackage } : {})}
-          {...(refillThreshold !== undefined ? { refillThreshold } : {})}
-        />
+        {consumable ? (
+          <ItemProgressBar
+            current={current}
+            target={target}
+            status={status}
+            targetUnit={targetUnit}
+            packed={packed}
+            unpacked={unpacked}
+            {...(measurementUnit ? { measurementUnit } : {})}
+            {...(amountPerPackage ? { amountPerPackage } : {})}
+            {...(refillThreshold !== undefined ? { refillThreshold } : {})}
+          />
+        ) : (
+          <ItemCountBar
+            current={current}
+            target={target}
+            status={status}
+            {...(refillThreshold !== undefined ? { refillThreshold } : {})}
+          />
+        )}
       </div>
       <Button
         type="button"

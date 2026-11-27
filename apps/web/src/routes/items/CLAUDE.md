@@ -1,6 +1,40 @@
 ### Tabbed Item Form
 
-Item detail pages use a tabbed layout. The toolbar order is **Info · Stock · Relation · Log** (4 buttons). Tags, Vendors, and Recipes are grouped under the **Relation** tab as a secondary submenu.
+Item detail pages use a tabbed layout with two rows (since 2026-11-24, design
+`docs/features/items/2026-11-24-item-tabs-flat-design.md`, part B; brainstorming beside it):
+
+- **Row 1** is the top bar: back, the item name and, on Info and Stock, **Save**.
+- **Row 2** is one flat tab row, **Info · Stock · Tags · Vendors · Recipes · Log**: a
+  `<nav aria-label="Item sections">` (`items.detail.tabsLabel`) passed to `LayoutInnerPages`'s
+  `tabs` prop. Below `sm` each tab shows its icon only; from `sm` up, icon and text. The name is
+  a `sr-only sm:not-sr-only` span, so it is each link's accessible name at every width (the old
+  icon-only toolbar used `aria-label`s such as "Item info tab"; those are gone). TanStack
+  Router marks the open tab with `aria-current="page"`; Info uses `activeOptions.exact`.
+- **Save is in row 1** (owner decision 2026-11-25, brainstorming Q4; until then it was the
+  full-width button at the bottom of each `ItemForm`). `$id.tsx` passes an empty
+  `<div ref={setSaveSlot} className="contents" />` as `toolbarEnd`; `useItemLayout()` shares
+  the element as `saveSlot`; the Info and Stock tabs pass it to `ItemForm` as `submitSlot`.
+  `ItemForm` renders its Save there with `createPortal`, as
+  `<button type="submit" form={formId}>` (`formId` from `useId()`). So the button is OUTSIDE
+  the `<form>` in the DOM, and the HTML `form` attribute is what makes a click, and Enter in a
+  field, submit it. Disabled state, the spinner (`isPending`), validation, the toast, the
+  unsaved-changes dialog and the unit-switch dialog are unchanged. A read-only form (`readOnly`)
+  renders no Save, in the slot or in the form. While the slot is `null` (the first render,
+  before the top bar's ref is set) there is no Save. Tags, Vendors, Recipes and Log render
+  nothing into the slot, and `contents` keeps an empty slot from adding a flex gap. On a
+  phone row 1 is back, the truncated name and "Save" with its text label (default `h-8`
+  size, the same height as the back button). Tests: `$id/saveTopBar.test.tsx`;
+  `ItemForm.test.tsx` (`submitSlot`); Enter is checked only by E2E
+  (`item-management.spec.ts`), because user-event looks for the submit button inside the
+  form only.
+
+Until 2026-11-24 the toolbar was **Info · Stock · Relation · Log**, and Tags, Vendors and
+Recipes sat under **Relation** as a submenu (`/items/$id/relation/…`). That level is gone. The
+old addresses still work: `$id/relation/index.tsx` (`/items/$id/relation`) and `$id/relation/$.tsx`
+(`/items/$id/relation/{tags,vendors,recipes}`, and anything else under it) redirect to the new
+tab. TanStack Router replaces the history entry on every redirect, so Back does not land on
+the old address (the routes also pass `replace: true`, which changes nothing today).
+Tests: `routes/items/$id.tabs.test.tsx`.
 
 **The Info/Stock line is "global vs per-location", not "identity vs stock".** Since the v16 schema bump (see `src/db/CLAUDE.md`) the eight stock **configuration** fields are properties of the `Item`, so they are edited on Info and apply to every location at once. Stock holds only what genuinely varies by location.
 
@@ -75,19 +109,19 @@ The dialog used to hang off the **Stock** tab, where saving *one location's* `co
 - **"Expires on"** — this location's own due date, shown only when the item's (global) expiration mode is `date`, directly under Unpacked and above the progress row. `QuickUpdateDialog` renders the identical field in the same position under the same gate — the pantry-page mirror of this row, added 2026-08-27, repositioned 2026-09-22
   - Two stories show it: `ItemForm.stories.tsx` → `StockSectionDateMode` at the component level, and `$id/stock.stories.tsx` → `DateModeItem` at the route level (so the row appears in its real position). Both need **two** fields set, on two different tables — `expirationMode: 'date'` on the `Item` and a `dueDate` on the `ItemStock`. Setting only one leaves the row hidden or empty
   - **The `dueDate` key is OMITTED from the save payload entirely whenever that gate is closed** — not sent as `undefined`. `buildStockUpdates` uses a conditional spread, the same convention `QuickUpdateDialog` follows (the rule is stated in full in `components/CLAUDE.md`): both persistence paths read a key's *absence* as "leave it alone" and its *presence* — even as `undefined` — as "clear it", so emitting it unconditionally silently wiped this location's stored date every time a quantity was saved on an item in `'days from purchase'` or `'disabled'` mode. A form must not clear a field it never showed the user. When the field IS rendered and the user empties it, the key is still emitted as `undefined` and the date is still cleared — that case is intended. Fixed 2026-08-29, issue #261 — see `docs/features/items/2026-08-29-bug-stock-tab-clears-duedate.md`
-- A **`StockProgressRow`** (Clear · `x / y` label · `ItemProgressBar` · Fill to Full), previewing live off the form's own in-progress state — not the saved values — via the shared `getStockPreview` (`lib/quantityUtils.ts`, also called by `QuickUpdateDialog`). Raising Refill above the current total flips the status before Save is pressed; Fill to Full targets whatever Target currently reads, not the last-saved one. Clear/Fill mark the form dirty like any other field edit. The bar also draws the **refill tick** from the live Refill When Below value (since 2026-09-23), so the tick moves as the user steps Refill, before Save. See `ItemProgressBar` in `components/CLAUDE.md`
+- A **`StockProgressRow`** (Clear · `x / y` label · `ItemProgressBar`, or `ItemCountBar` for a non-consumable item since 2026-11-26 · Fill to Full; its unit word is the package unit or `pack`, the same as the card, since 2026-11-26 — it said `unit` before), previewing live off the form's own in-progress state — not the saved values — via the shared `getStockPreview` (`lib/quantityUtils.ts`, also called by `QuickUpdateDialog`). Raising Refill above the current total flips the status before Save is pressed; Fill to Full targets whatever Target currently reads, not the last-saved one. Clear/Fill mark the form dirty like any other field edit. The bar also draws the **refill tick** from the live Refill When Below value (since 2026-09-23), so the tick moves as the user steps Refill, before Save. See `ItemProgressBar` in `components/CLAUDE.md`
 - **Target Quantity**, then **Refill When Below** — steppers too, with no action button and no grid. Every stepper clamps at 0 and disables `−` there; Packed always steps by 1, the other three step by `consumeAmount` (falling back to 1 when unset — a `+`/`−` increment must be non-zero to be usable), and Target steps by 1 instead whenever `targetUnit === 'package'`
 - **Structurally the Stock tab is NOT the dialog's grid.** It is a `<div className="space-y-2">` of sibling blocks, each a `<Label>` stacked above its stepper, so the progress row is a plain sibling and needs no `col-span-3` wrapper and no `my-2`. The dialog needs both because its rows share one `grid-cols-[auto_auto_auto]` grid whose columns must line up above and below the bar. Do not copy the dialog's grid here
 - The quantity labels still show the item's units (`(bottle)`, `(ml)`): they read the **global** configuration, which is why every location page labels them identically even for a row that carries nothing but numbers
-- Save button (persists the five via `buildStockUpdates`) — disabled when no changes made. Saves route to **the location whose page is on screen** (`useUpdateItem({ …, locationId })`), not necessarily the active one
+- Save button in the top bar (persists the five via `buildStockUpdates`) — disabled when no changes made. Saves route to **the location whose page is on screen** (`useUpdateItem({ …, locationId })`), not necessarily the active one
 - No global settings and no unit-switch dialog — both moved to Info
 - Editable: registers dirty state via `useItemLayout()`; the toolbar dirty-guard fires when leaving it
 
 *The pager (`StockTab`, both modes):* one page per `Location` (ordered by `order`), read from `useLocations()` + `useItemStocks(itemId)` — Dexie in local mode, `GetLocations` + `ItemStocksForItem` in cloud. Cloud's `ItemStocksForItem` is the **same document and variables `useItem` already issues**, so the pager shares that cache entry rather than costing a second request. The pager opens on the **active** location and remembers the page the user turned to (`viewedLocationId`; `null` means "follow the active location").
 - **Stocked page** → `StockFormPanel` for that location's `ItemStock`, plus `RemoveFromLocationButton` (a `DeleteButton`). Its confirmation names the item and the location and, **in both modes since PR 3c**, lists what else goes: `Inventory logs: N · Cart entries: N`, from `useInventoryLogCountByItem(itemId, locationId)` / `useCartItemCountByItem(itemId, locationId)` — **location-scoped**, and rendered only once both counts resolve. The line was local-only before PR 3c, because cloud's `removeItemFromLocation` deleted the stock row and nothing else, so the local numbers would have named rows a cloud removal did not touch. PR 3c gave cloud the same cascade and both count hooks a cloud branch, so the number shown and the rows deleted come from the same filter. The two count hooks live in that child component on purpose: declared up in `StockTab` they would each fire once against `locationId: undefined` (an item-global scan) before `useLocations()` resolves. Confirming calls `useRemoveItemFromLocation({ itemId, locationId })`; the page then becomes the not-stocked state (no navigation)
-- **Not-stocked page** → `EmptyState` + an **"Add to location"** button calling `useAddItemToLocation({ itemId, locationId })` (copy-on-add). Failures are caught and reported inline (`locationPager.addFailed`, `role="alert"`) — the call runs straight off an `onClick`, so an uncaught rejection would leave nothing on screen. There is no stock form to save here, which is why the PR D implicit stock-add confirmation (`items.detail.stockAddDialog.*`) is gone: an explicit CTA replaced it and the dialog became unreachable
+- **Not-stocked page** → `EmptyState` + an **"Add to location"** button calling `useAddItemToLocation({ itemId, locationId })` (copy-on-add). While the add is saving, the button shows a spinner and is disabled (`Button isLoading={addItemToLocation.isPending}`), so a second click sends no second write. `isPending` stays true until the stock lists have refetched (local: `onSuccess` returns the invalidations; cloud: `refetchAfterWrite`), so the stock form replaces the button. Failures are caught and reported inline (`locationPager.addFailed`, `role="alert"`) — the call runs straight off an `onClick`, so an uncaught rejection would leave nothing on screen. There is no stock form to save here, which is why the PR D implicit stock-add confirmation (`items.detail.stockAddDialog.*`) is gone: an explicit CTA replaced it and the dialog became unreachable
 - **The page item is re-joined by `withLocationStock`**, which strips the active-location join off the `PantryItem` `useItem()` returned before applying the viewed row (`stripStockFields` + `joinItemStock` from `db/operations`). Spreading the viewed row straight over the joined item let the **active** location's values show through wherever the viewed row omitted the key — and Save wrote them into the viewed location's row. Since v16 only `dueDate` is still exposed to that trap (the unit/expiration-config keys are global and are *meant* to survive the strip), but the strip is still required: a location's expiry date must not leak onto another location's page. **`withLocationStock` and its `stripStockFields` call survived cloud locations PR 5 and must not be read as dead.** PR 5 dropped the five state columns from the cloud `Item`, which made three *other* `stripStockFields` call sites dead — but this one never had anything to do with them. It operates on an already-joined `PantryItem`, and `useItem` joins in **both** modes, so the fields it strips come from `ItemStock` and exist in local mode too
-- **Paging while dirty** shows the shared discard dialog (`common.unsaved*`) — the form is remounted per page (`key={locationId}`), so its edits would otherwise vanish silently. No explicit dirty reset is needed there: the remounted `ItemForm` reports `onDirtyChange(false)` on mount (its `prevIsDirtyRef` starts `null`). **Removing** a location does need one — it swaps the form for the empty state, so nothing remounts to report the dirty state back down, and the tab guard would stay armed for edits that no longer exist
+- **Paging while dirty** shows the shared unsaved-changes dialog (`UnsavedChangesDialog`, Cancel · Discard · Save; see *The unsaved-changes dialog* below) — the form is remounted per page (`key={locationId}`), so its edits would otherwise vanish silently. No explicit dirty reset is needed there: the remounted `ItemForm` reports `onDirtyChange(false)` on mount (its `prevIsDirtyRef` starts `null`). **Removing** a location does need one — it swaps the form for the empty state, so nothing remounts to report the dirty state back down, and the tab guard would stay armed for edits that no longer exist
 - **Single location → no pager chrome at all** (no dots, no chevrons); `showPager = locations.length > 1` gates both the `LocationPager` and the `role="tabpanel"` wiring around the page
 
 *What Save writes in cloud:* `useUpdateItem({ id, updates, locationId })` splits the payload the way local mode does — configuration to `updateItem`, the five state fields to `upsertItemStock(itemId, locationId)`, **the location whose page is on screen**. The five fields are stripped from `updateItem` rather than sent to both — `toConfigInput` does it — and **since cloud locations PR 5 that strip is required for a new reason**. `UpdateItemInput` no longer declares the five, so sending them inline fails GraphQL validation outright and the save errors. Before PR 5 the reason was quieter and worse: `updateItem` had a server-side dual-write that targeted the caller's *default* location, so leaving them inline made a save in the Garage silently overwrite the Kitchen's row. The strip stays; only its failure mode changed, from silent corruption to a loud error.
@@ -108,33 +142,53 @@ an allow-list that forgot them would drop them here with no error. Since 2026-10
 
 The **cart rows themselves survive** (they are shared by every item in the location), other locations' logs and cart entries are untouched, and the global **`Item` persists**. An item removed from its *last* location becomes an **orphan**: gone from the pantry (`getStockedItems` filters on `ItemStock`) but still in the catalog (`getAllItems`), so the pantry Add combobox still finds it and can re-stock it via copy-on-add. Removing an item from *everywhere* is the Info tab's **Delete** button (`deleteItem`), not this. The Stock tab is also reachable for an orphan — every page just renders the not-stocked state.
 
-> Both the Info and Stock tabs are editable `ItemForm`s registering dirty state through `useItemLayout()`. The toolbar guard in `$id.tsx` (`isOnEditableTab`) shows the discard dialog when navigating away dirty from **either** tab. The Relation subtabs (Tags/Vendors/Recipes) and Log apply changes immediately and never go dirty.
+> Both the Info and Stock tabs are editable `ItemForm`s registering dirty state through `useItemLayout()`. The tab-row guard in `$id.tsx` (`isOnEditableTab`) shows the unsaved-changes dialog when navigating away dirty from **either** tab. Tags, Vendors, Recipes and Log apply changes immediately and never go dirty.
 
-**3. Relation (`/items/$id/relation`, `Settings2` icon)**
-- A layout (`$id/relation.tsx`) that renders a secondary submenu (three `Link` icon buttons: Tags `Tags`, Vendors `Store`, Recipes `ChefHat`) under the main toolbar, plus the routed `<Outlet/>`
-- The Relation toolbar button is active on any `…/relation/*` route
-- `/items/$id/relation` (index) redirects to `…/relation/tags` (default subtab)
-
-**3a. Tags (`/items/$id/relation/tags`, default subtab)**
+**3. Tags (`/items/$id/tags`, `Tags` icon)**
 - Tag assignment interface with uppercase text styling for tag type names
 - Click badges to toggle tag assignment (selected tags show X icon)
 - Visual dividers between tag type sections
-- Inline tag creation via "New Tag" buttons (opens `AddNameDialog`)
+- Inline tag creation via "New Tag" buttons (opens `AddNameDialog`): creates the tag and immediately assigns it to this item
 - Changes apply immediately without save button
 
-**3b. Vendors (`/items/$id/relation/vendors`)**
+**A tag or vendor created on this page is assigned to the item, in both modes** (since 2026-03-23 for tags, `e6253d2e`; checked again for issue #402 on 2026-11-24). It is two writes: the create (`useCreateTag` / `useCreateVendor`), then `useUpdateItem` with the item's list plus the new id. Cloud has no single write for this: `createTag` and `createVendor` take no item, and adding that would be a server change. When the create succeeds and the assign fails, the dialog closes (trying again would create a second tag or vendor), the new row exists but is not on the item, and `showSaveError` shows "Could not save the change. Please try again." The user can press the new badge to assign it. Tests: local `tags.test.tsx` "… automatically assigned to the item" and `vendors.test.tsx` "user can create a new vendor from the vendors tab"; cloud `createAssign.cloud.test.tsx` (the assign is sent with the old ids kept); the failed assign in `$id/saveFailed.cloud.test.tsx` and in both local files. Removing the assign call turns all four success tests red. The settings pages' create flows assign nothing; they have no item.
+
+**The new badge shows as selected from the moment it appears** (issue #402 part 1, fixed 2026-11-25; `docs/features/items/2026-11-25-bug-new-tag-vendor-not-selected-at-once.md`). Before, it showed as not selected for about a second in cloud: the list had the new row, the item did not have it yet. Now the tab keeps the new id in local state (`assigningTagIds` / `assigningVendorIds`) from the moment the create returns until the assign is done, and shows a badge as selected when its id is on the item OR in that state. While it waits, the badge has `aria-busy="true"` (no spinner). A failed assign removes the id, so the badge goes back to not selected, and `showSaveError` shows the toast. **While an assign is in flight, a press on any badge of the tab does nothing**: each write sends the whole `tagIds` / `vendorIds` list, so two writes at once could undo each other. Tests: the second `describe` of `createAssign.cloud.test.tsx` (they hold the assign with `holdMutation` from `test/cloudServerStub.ts`). The E2E tests in `item-management.spec.ts` wait for `aria-busy` to end, then reload, so they check the saved state and not only the screen.
+
+**4. Vendors (`/items/$id/vendors`, `Store` icon)**
 - Vendor assignment interface: click-to-toggle badges, immediate save
 - "New Vendor" button inline with badges — opens `AddNameDialog`, creates and immediately assigns the vendor
 - Changes apply immediately without save button
 
-**3c. Recipes (`/items/$id/relation/recipes`)**
+**5. Recipes (`/items/$id/recipes`, `ChefHat` icon)**
 - Recipe assignment interface: click-to-toggle badges, immediate save
 - Architecture: recipe-centric — `Recipe.items[]` stores the relationship; toggling updates the recipe, not the item
 - "New Recipe" button inline with badges — opens `AddNameDialog`, creates recipe assigned to this item
 - Changes apply immediately without save button
 
-**4. Log (`/items/$id/log`, `History` icon)**
+**6. Log (`/items/$id/log`, `History` icon)**
 - History/logs tab (view-only); never has unsaved changes
+- **Layout since 2026-11-25** (design `docs/features/items/2026-11-25-inventory-log-layout-design.md`).
+  One `<li>` per row, newest first, in a `<ul>` named "Log" (`items.detail.tabs.history`):
+
+  | Part | What |
+  |---|---|
+  | row 1, left | sign, amount and unit (`−30 g`, U+2212 for minus), then the label of the kind: "Bought at {vendor}" / "Bought", "Used in {recipes}" / "Used in cooking", "Stock count" (Chinese: 在 {vendor} 購買 / 購買, 用於 {recipes} / 烹飪使用, 盤點) |
+  | row 1, right | the quantity after the change, with the unit; a screen reader hears "After the change:" first |
+  | row 2 | `Wed, Nov 25, 2026 · 14:30` / `2026/11/25（週三）14:30`, through `Intl`, in a `<time>` |
+  | unit | the item's tracking unit: `measurementUnit` when the item tracks in measurement (with a measurement unit AND an `amountPerPackage`, the `consumeItem` test), else `packageUnit`. Purchase and stock count rows store `delta` and `quantity` in packs and are multiplied by `amountPerPackage`; a cooking row stores `delta` in the tracking unit already, so only its `quantity` is converted |
+  | numbers | at most 2 decimals, no trailing zeros |
+
+  Every rule is in `lib/inventoryLogDisplay.ts` (tests: `lib/inventoryLogDisplay.test.ts`, both
+  languages). The page reads `useVendors()` and `useRecipes()` for current names. Tests:
+  `$id/log.test.tsx` (the page, both languages), `$id/log.stories.tsx` → `NewLogShapes`
+  (renamed vendor, deleted vendor, deleted recipe, a real stock count, in grams)
+- **What writes a row.** Checkout (`purchase`), cooking (`cooking`), and since 2026-11-25 a
+  manual save that changes the on-hand total (`stockCount`): the Stock tab Save and the pantry
+  Quick update. The server writes it in cloud (`upsertItemStock`), local `updateItem` in local
+  mode. A save that changes only the target, the refill level or the due date writes none, and
+  neither does opening a pack (same total). Item create, Add to location and the unit switch
+  write none
 
 **Measurement Tracking Behavior:**
 
@@ -161,34 +215,143 @@ The switch is a global setting: it lives on Info with `targetUnit`. Covered by `
 
 Each tab tracks unsaved changes independently:
 - Navigation guard prevents tab switching with unsaved changes
-- Confirmation dialog offers "Discard" or "Cancel" options
+- Confirmation dialog offers **Cancel · Discard · Save** (since 2026-11-25; see *The
+  unsaved-changes dialog* below)
 - Save button disabled when form is clean (no changes)
 - Logs tab never has unsaved changes (view-only)
+
+**The unsaved-changes dialog (since 2026-11-25).** Design:
+`docs/global/ui-polish/2026-11-25-unsaved-dialog-save-design.md`. Leaving Info or Stock with
+edits (a tab, Back, or another page of the Stock location pager) opens the shared
+`UnsavedChangesDialog` (`components/shared/`): **Cancel** (`neutral-outline`) stays,
+**Discard** (`destructive-outline`) leaves without saving, **Save** (`primary`) saves and then
+goes where the user pressed.
+
+- **Save is the same save as the top bar Save.** `ItemForm` hands the layout a
+  `SaveControl` (`{ canSave, save }`, `hooks/useSaveControl.ts`) through its
+  `onSaveControlChange` prop; the Info and Stock tabs pass `useItemLayout().registerSaveControl`.
+  `save()` calls the tab's own `handleSubmit`, which answers whether it worked
+  (`Promise<boolean>`). `canSave` is `ItemForm`'s `isSubmitDisabled` rule (and not read only),
+  so Save is off with a field error or a save in flight.
+- **The page moves only after `save()` answers `true`.** A failed save shows
+  `showSaveError` and the dialog stays open. While the save runs every button of the dialog
+  is off and Escape does nothing, so a Discard cannot race the save.
+- **The converted amounts dialog opens ON TOP** (owner's flow, brainstorming Q2). When an
+  Info save needs it, `handleSubmit` returns a promise that waits for that dialog
+  (`pendingAnswerRef` in `$id/index.tsx`). Confirm → the write → `true` → both close and the
+  page moves. Cancel → `false` → only the top dialog closes. A failed write → toast →
+  `false` → the top dialog is closed, the unsaved-changes dialog stays.
+- **Trap:** `handleConfirmAdjustments` takes the waiting answer out of the ref BEFORE its
+  first `await`. `AlertDialogAction` closes its dialog right after the click handler starts,
+  and that close runs `handleCancelAdjustments`, which would answer `false` first. Moving the
+  take after the write turns "user can confirm the converted amounts and then leave" red
+  (measured 2026-11-25).
+- Tests: `$id/unsavedDialogSave.test.tsx` (local: tab, Back, field error, Cancel, Discard and
+  its class, the stacked confirm and cancel, Stock tab, the location pager) and
+  `$id/unsavedDialogSave.cloud.test.tsx` (a held write: the page waits; a failed write: the
+  dialog stays; a failed converted amounts write; the pager failing and held). E2E:
+  `e2e/tests/unsaved-dialog-save.spec.ts`.
 
 **Navigation:**
 
 Back button and post-action navigation use smart history tracking:
 - Back button navigates to previous app page (fallback to home if no history)
-- After successful save: auto-navigate back
+- **Save stays on the page** (since 2026-11-24, design
+  `docs/features/items/2026-11-24-item-tabs-flat-design.md`, part A). After a successful save
+  on Info or Stock the page does not move: the tab bumps `savedAt`, so `ItemForm` takes the
+  saved values as its new clean state (Save is disabled again and the dirty guard is not
+  armed), and the toast `items.detail.saved` ("Saved") shows. The Stock tab stays on the same
+  location page. The unit-switch dialog still runs before an Info save; only the `goBack()`
+  at its end is gone. A failed save shows `showSaveError` and keeps the edit, as before.
+  Tests: `$id/saveStays.test.tsx` (local) and `$id/saveStays.cloud.test.tsx` (cloud)
 - After successful delete: auto-navigate back
-- Back button respects dirty state guard (shows discard dialog if unsaved changes)
+- Back button respects dirty state guard (shows the unsaved-changes dialog if unsaved changes)
 
 Uses `useAppNavigation()` hook from `src/hooks/useAppNavigation.ts`.
 
 **Files:**
 - `src/components/item/ItemForm/ItemForm.tsx` - Shared form component (gates fields via its `sections` prop: `'info'` = identity + the global stock settings, `'stock'` = the per-location numbers). It always holds every value — the stock section's labels read the global units — but each section renders only its own half
-- `src/routes/items/$id.tsx` - Parent layout with the 4-button toolbar (Info · Stock · Relation · Log) and navigation guard (dual-tab dirty guard via `isOnEditableTab`)
+- `src/routes/items/$id.tsx` - Parent layout: the top bar, the flat tab row (Info · Stock · Tags · Vendors · Recipes · Log) and the navigation guard (dual-tab dirty guard via `isOnEditableTab`). Tests at `$id.tabs.test.tsx` (the row, the marking, the old addresses)
 - `src/routes/items/$id/index.tsx` - Info tab (`ItemForm sections={['info']}` — identity + the eight global stock settings, persisted by `buildInfoUpdates`); hosts the unit-switch dialog (recipe `defaultAmount`s + every location's tracked quantities) and the Delete button. Stories at `$id/index.stories.tsx` (`StockedInThreeLocations` seeds the multi-location conversion). Cloud-mode coverage of the same switch is in `$id/index.cloud.test.tsx`, which drives the real `useApplyUnitSwitchMutation` through `MockedProvider`
 - `src/routes/items/$id/stock.tsx` - Stock tab: `ItemStockTab` → `StockTab`, one all-locations pager for **both** modes (no mode split since PR 2), rendering `StockFormPanel` (the `sections={['stock']}` ItemForm; `buildStockUpdates` writes the five per-location fields only). Stories at `$id/stock.stories.tsx`, smoke tests at `$id/stock.stories.test.tsx`, integration tests at `$id/stock.test.tsx` and cloud-mode tests at `$id/stock.cloud.test.tsx`
 - `src/components/item/LocationPager/LocationPager.tsx` - the dot pager (tablist) used by the Stock tab
-- `src/routes/items/$id/relation.tsx` - Relation layout: secondary submenu (Tags/Vendors/Recipes) + `<Outlet/>`. Stories at `$id/relation.stories.tsx`
-- `src/routes/items/$id/relation/index.tsx` - Redirects to `…/relation/tags`
-- `src/routes/items/$id/relation/tags.tsx` - Tags subtab implementation (default); tests at `relation/tags.test.tsx`
-- `src/routes/items/$id/relation/vendors.tsx` - Vendors subtab implementation; tests at `relation/vendors.test.tsx`
-- `src/routes/items/$id/relation/recipes.tsx` - Recipes subtab implementation; tests at `relation/recipes.test.tsx`
+- `src/routes/items/$id/tags.tsx` - Tags tab; tests at `$id/tags.test.tsx`
+- `src/routes/items/$id/vendors.tsx` - Vendors tab; tests at `$id/vendors.test.tsx`
+- `src/routes/items/$id/recipes.tsx` - Recipes tab; tests at `$id/recipes.test.tsx`
+- `src/routes/items/$id/relation/index.tsx` and `relation/$.tsx` - redirects from the old `/items/$id/relation/…` addresses
 - `src/routes/items/$id/log.tsx` - History/logs tab (view-only); stories at `$id/log.stories.tsx`
 - `src/routes/items/$id.test.tsx` - Integration tests
-- `src/hooks/useItemLayout.tsx` - Dirty state context for tab coordination
+- `src/hooks/useItemLayout.tsx` - Dirty state context for tab coordination, the top bar's Save slot (`saveSlot`, `setSaveSlot`), and the form's `SaveControl` for the unsaved-changes dialog (`saveControl`, `registerSaveControl`)
+
+### Save waits for the recipes and the stock rows (2026-11-26)
+
+Bug doc: `docs/features/items/2026-11-26-bug-save-before-recipes-load.md`.
+
+The Info tab's `handleSubmit` decides whether the converted amounts dialog opens from two
+reads: `useRecipes()` (`allRecipes`) and `useItemStocks(id)` (`stocks`). Before this fix,
+while either had not loaded, it counted no recipe and no location, skipped the dialog and
+saved. So turning Consumable off lost the recipe warning, and a unit switch left recipe
+amounts and every location's stock in the old unit. E2E found it on Neon
+(`consumable-items.spec.ts`, the recipe warning test).
+
+| State | Save | Message |
+|---|---|---|
+| both reads have data | on (the other rules still apply) | none |
+| one read still loading | off | none |
+| one read failed with nothing cached | off | `items.detail.readsFailed`, "Could not load this item's recipes or stock, so it cannot be saved. Reload the page to try again." (`role="alert"`, above the form) |
+
+- **One rule turns off all three Saves.** The tab passes `submitBlocked={readsMissing}` to
+  `ItemForm`, where it joins `isSubmitDisabled`: the top bar Save, the in-form Save, and the
+  unsaved-changes dialog's Save (`canSave`). `handleSubmit` also returns `false` when a read
+  is missing, as a second line of defense.
+- **Keyed on `data === undefined`, not `isLoading`.** A read that failed with nothing cached
+  is not loading and still has no data. The message uses each hook's `isError`, which is
+  `true` only when there is no data to show.
+- **`useLocations()` is NOT in the rule.** It only names and orders the dialog's rows; a
+  missing name falls back to the location id.
+- **In cloud the stock rows cannot be "still loading" on this tab.** `useItem` reads the
+  same `ItemStocksForItem` query, and the item layout (`$id.tsx`) shows a spinner until it
+  answers. Only a FAILED stock read reaches the form without stock rows. In local mode
+  `useItem` reads `getItem`, so the stock rows can still be loading.
+- Tests: `$id/saveWaitsForReads.test.tsx` (local: each read held for good with a mock of
+  `getRecipes` / `getItemStocks`, the unsaved-changes dialog's Save, and a control) and
+  `$id/index.cloud.test.tsx` (cloud: `GetRecipes` held with `delay: Infinity`, and a failed
+  `GetRecipes` and a failed `ItemStocksForItem` showing the message).
+
+### The Consumable switch (consumable items PR 2, 2026-11-25)
+
+The first row under "Stock settings" on the Info tab is **Consumable** (`ItemForm`'s
+`consumable` value; `itemToFormValues` reads `isConsumable(item)`, `buildInfoUpdates`
+sends it). On for a new item.
+
+| Switch | Info tab | Stock tab and `QuickUpdateDialog` |
+|---|---|---|
+| on | everything, as before | everything, as before |
+| off | no "Advanced stock settings" block: no Track in measurement, measurement unit, amount per package or expiration | ONE stock field, **Amount** (since 2026-11-26), no Unpack or Pack, no "Expires on" |
+
+- **Hidden values are kept.** They stay in the form and are saved unchanged, so turning the
+  switch on again shows them as they were.
+- **Turning it off on a measurement item moves it to packages.** `handleConsumableChange`
+  calls `handleTargetUnitChange(false)`, so the form converts like the Track in measurement
+  switch. On Save, `targetUnit` has changed, so the converted amounts dialog above opens and
+  one `applyUnitSwitch` writes the item (with `consumable: false`), every location and the
+  recipe amounts. Turning it on again does not move the item back to the measurement unit.
+- **A hidden "Expires on" sends no `dueDate` key** (`buildStockUpdates` in `stock.tsx`, and
+  `QuickUpdateDialog`), the issue #261 rule: the location's stored date is kept.
+- `consumeAmount` is NOT hidden: it is the recipe step, and recipes do not change.
+
+**The Amount field of a non-consumable item (2026-11-26, owner decisions; design
+`docs/features/items/2026-11-26-non-consumable-amount-design.md`).** A non-consumable item
+counts whole pieces in the package unit, and the measurement unit does not count.
+
+| Part | What |
+|---|---|
+| Amount | `items.form.amount.*` / `pantry.quickUpdate.amount*` ("Amount", 「數量」), labelled with the package unit. It edits `packedQuantity`; there is no new column. A typed fraction is rounded down on blur |
+| saved `unpackedQuantity` | always `0` for a non-consumable item: `buildStockUpdates` (`stock.tsx`) and `QuickUpdateDialog`'s submit. So the first save clears opened stock an old row still held |
+| Target, Refill | in the package unit, step 1, a typed fraction rounded UP (`getPieceCounts`' rule) |
+| the stock row | `getStockPreview(…, { consumable: false })` gives pieces: `current` = whole packed packages, `target` and `refillThreshold` = `getPieceCounts`. Fill to Full = the target in pieces, no opened stock |
+| switching to non-consumable | `buildStockConversions` (`$id/index.tsx`) runs for EVERY location when `isConsumable(item) && !values.consumable`, with or without a unit change: `toNonConsumableQuantities` (`lib/quantityUtils.ts`) gives `unpackedQuantity: 0` and target and threshold in whole packs (divided by `amountPerPackage` for a measurement item, then rounded up). Packed stays. The converted amounts dialog says so (`unitSwitchDialog.nonConsumableDescription`), and ONE `applyUnitSwitch` writes it in both modes. No server change |
+| old rows | read-time only, no Dexie version and no migration: the card, the stock row and the cart dialog count packed packages only (`getPieceCounts`), and the next save writes `unpackedQuantity: 0` |
 
 ### Manual Quantity Input
 
@@ -222,7 +385,8 @@ Users can manually set current inventory quantities in the item detail form:
 - Pre-populates with current `item.packedQuantity` and `item.unpackedQuantity`
 - Validates non-negative values
 - Warns when unpacked ≥ amountPerPackage
-- Saves directly to database without creating inventory log entries
+- A save that changes the on-hand total writes one "Stock count" log row (since 2026-11-25;
+  before, it wrote no log). See *6. Log* above
 - Use for initial setup, corrections, or adjustments
 
 **Files:**
@@ -236,7 +400,7 @@ A household `member` may read the catalog but not change it. Everything reads `u
 
 | Tab | Member |
 | --- | --- |
-| Info | `ItemForm readOnly`: the fields are `readOnly` or disabled, no Save, no Delete. The note "Only a household owner or manager can change this." (`settings.catalogReadOnlyItem`) shows above the form. The unit-switch dialog is reached only through Save, so it cannot open |
+| Info | `ItemForm readOnly`: the fields are `readOnly` or disabled, no Save (in the top bar or anywhere), no Delete. The note "Only a household owner or manager can change this." (`settings.catalogReadOnlyItem`) shows above the form. The unit-switch dialog is reached only through Save, so it cannot open |
 | Tags, Vendors, Recipes | the badges show what is assigned, are `aria-disabled`, and a press writes nothing. No "New Tag Type" / "New …" buttons |
 | Stock | unchanged by the household role. It follows the LOCATION role (task F.6) |
 

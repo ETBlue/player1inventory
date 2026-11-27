@@ -19,7 +19,7 @@
     "goBack": "Go back",
     "edit": "Edit",
     "unsavedTitle": "Unsaved changes",
-    "unsavedDescription": "You have unsaved changes. Discard changes?",
+    "unsavedDescription": "You have unsaved changes. Save them before you leave, or discard them?",
     "done": "Done",
     "back": "Nevermind",
     "confirm": "Confirm",
@@ -40,7 +40,8 @@
     "notInThisList_other": "{{count}} not in this list",
     "expiresOn": "Expires on",
     "expiresOnHint": "When the stock in this location expires",
-    "refillWhenBelow": "Refill when below {{value}}"
+    "refillWhenBelow": "Refill when below {{value}}",
+    "notConsumable": "An item here is no longer consumable, so it cannot be in a recipe or be cooked. Nothing was saved."
   },
   "shopping": {
     "title": "Shopping",
@@ -76,6 +77,15 @@
       "description": "All items will be removed from the cart."
     },
     "cartChanged": "This cart changed. Please check and try again.",
+    "amountDialog": {
+      "titleEdit": "Item in cart",
+      "titleAdd": "Add to cart",
+      "buy": "Buy",
+      "amountLabel": "Buy ({{unit}})",
+      "decrease": "Decrease amount",
+      "increase": "Increase amount",
+      "zeroNote": "Amount 0 keeps the item in the cart. It is not bought this time. Buy it next time."
+    },
     "checkoutDialog": {
       "title": "Complete shopping trip?",
       "description": "Quantities will be updated based on your cart."
@@ -209,6 +219,10 @@
       "packedField": "Packed ({{unit}})",
       "decreasePacked": "Decrease packed",
       "increasePacked": "Increase packed",
+      "amountLabel": "Amount",
+      "amountField": "Amount ({{unit}})",
+      "decreaseAmount": "Decrease amount",
+      "increaseAmount": "Increase amount",
       "unpack": "Unpack",
       "unpackedLabel": "Unpacked",
       "unpackedField": "Unpacked ({{unit}})",
@@ -268,7 +282,8 @@
         "error": "Couldn't add to this shelf. Try again.",
         "confirm": "Add",
         "cancel": "Cancel"
-      }
+      },
+      "notConsumable": "Not consumable, so it cannot be added to a recipe."
     },
     "tags": {
       "empty": {
@@ -312,7 +327,8 @@
         "dialogTitle": "New Recipe",
         "submitLabel": "Add Recipe",
         "placeholder": "e.g., Pasta, Milk Tea"
-      }
+      },
+      "notConsumable": "This item is not consumable, so it cannot be added to a recipe. Cooking does not use it in the recipes it is already in."
     },
     "info": {
       "wikidataUrl": {
@@ -388,6 +404,12 @@
         "decrease": "Decrease packed",
         "increase": "Increase packed"
       },
+      "amount": {
+        "label": "Amount",
+        "hint": "Number of whole pieces in stock",
+        "decrease": "Decrease amount",
+        "increase": "Increase amount"
+      },
       "unpackedQuantity": {
         "label": "Unpacked",
         "hint": "Loose amount from opened package(s)",
@@ -395,18 +417,24 @@
         "increase": "Increase unpacked"
       },
       "unpack": "Unpack",
-      "pack": "Pack"
+      "pack": "Pack",
+      "consumable": {
+        "label": "Consumable",
+        "hint": "Used up over time, like tissue paper. Turn it off for things you keep, like cups: the item then counts whole pieces only, and measurement, opened packs and expiration are hidden."
+      }
     },
     "detail": {
       "notFound": "Item not found",
+      "saved": "Saved",
+      "readsFailed": "Could not load this item's recipes or stock, so it cannot be saved. Reload the page to try again.",
+      "tabsLabel": "Item sections",
       "tabs": {
-        "info": "Item info tab",
-        "stock": "Item stock tab",
-        "relations": "Item relations tab",
-        "tags": "Item tags tab",
-        "vendors": "Item vendors tab",
-        "recipes": "Item recipes tab",
-        "history": "Item history tab"
+        "info": "Info",
+        "stock": "Stock",
+        "tags": "Tags",
+        "vendors": "Vendors",
+        "recipes": "Recipes",
+        "history": "Log"
       },
       "deleteDialog": {
         "title": "Delete Item?",
@@ -415,10 +443,14 @@
       "unitSwitchDialog": {
         "title": "Update stock numbers?",
         "description": "Now tracking in {{unit}}. Unpacked, Target Quantity and Refill When Below convert in every location; packed packages are unchanged.",
+        "nonConsumableDescription": "Now counting whole {{unit}}. In every location, opened packs are removed, and Target Quantity and Refill When Below are rounded up to whole {{unit}}. Packed packages are unchanged.",
         "locationHeader": "Location",
         "unpackedHeader": "Unpacked",
         "targetHeader": "Target Quantity",
-        "refillHeader": "Refill When Below"
+        "refillHeader": "Refill When Below",
+        "removedFromRecipes_one": "It will be removed from {{count}} recipe, because only consumable items can be in a recipe.",
+        "removedFromRecipes_other": "It will be removed from {{count}} recipes, because only consumable items can be in a recipe.",
+        "nonConsumableTitle": "Mark as not consumable?"
       },
       "recipeAdjustDialog": {
         "title": "Update recipe amounts?",
@@ -452,11 +484,27 @@
       }
     },
     "history": {
-      "empty": "No history yet."
+      "empty": "No history yet.",
+      "kind": {
+        "purchaseAt": "Bought at {{vendor}}",
+        "purchase": "Bought",
+        "cookingIn": "Used in {{recipes}}",
+        "cooking": "Used in cooking",
+        "stockCount": "Stock count"
+      },
+      "listSeparator": ", ",
+      "when": "{{weekday}}, {{date}} · {{time}}",
+      "afterLabel": "After the change:"
     }
   },
   "itemFilters": {
-    "editTags": "Edit Tags"
+    "editTags": "Edit Tags",
+    "consumable": {
+      "label": "Consumable",
+      "all": "All",
+      "consumable": "Consumable",
+      "notConsumable": "Not consumable"
+    }
   },
   "filterStatus": {
     "showing": "Showing {{filtered}} of {{total}} items",
@@ -780,7 +828,9 @@
         "empty": {
           "title": "No items yet",
           "description": "Use search to add items linked to this recipe"
-        }
+        },
+        "notConsumable": "Not consumable. Only consumable items can be in a recipe.",
+        "notUsedInCooking": "Not used in cooking: this item is not consumable."
       }
     },
     "language": {
@@ -1142,5 +1192,8 @@
     "gone": "This offer is no longer open.",
     "failed": "Could not send your answer. Please try again.",
     "close": "Close"
+  },
+  "itemCountBar": {
+    "more": "+{{count}}"
   }
 }

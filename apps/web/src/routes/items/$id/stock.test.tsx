@@ -7,6 +7,7 @@ import {
 } from '@tanstack/react-router'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
+import Dexie from 'dexie'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
 import {
@@ -326,6 +327,7 @@ describe('Item stock tab', () => {
   })
 
   afterEach(() => {
+    for (const undo of undoGates.splice(0)) undo()
     localStorage.removeItem('data-mode')
     localStorage.removeItem(activeLocationStorageKey('cloud'))
   })
@@ -358,6 +360,31 @@ describe('Item stock tab', () => {
       loading: false,
       error: undefined,
     })
+  }
+
+  // Holds every `db.itemStocks.add` until the test calls `release()`, then
+  // runs the real write. This keeps the "Add to location" write pending for as
+  // long as the test needs. `Dexie.Promise`, not a native promise, because
+  // `Table.add` is typed to return Dexie's `PromiseExtended`.
+  const undoGates: (() => void)[] = []
+  const gateItemStockAdd = () => {
+    const realAdd = db.itemStocks.add.bind(db.itemStocks)
+    let release: () => void = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const addSpy = vi
+      .spyOn(db.itemStocks, 'add')
+      .mockImplementation((...args: Parameters<typeof realAdd>) =>
+        Dexie.Promise.resolve(gate).then(() => realAdd(...args)),
+      )
+    // Undone in `afterEach` too, so a test that fails before its own
+    // `mockRestore()` cannot leave the gate on `add` for the next test.
+    undoGates.push(() => {
+      release()
+      addSpy.mockRestore()
+    })
+    return { addSpy, release }
   }
 
   const renderStockTab = (itemId: string) => {
@@ -404,6 +431,64 @@ describe('Item stock tab', () => {
       const stock = await getItemStock(item.id)
       expect(stock?.packedQuantity).toBe(5)
     })
+  })
+
+  it('user sees one square per piece on the stock tab for a non-consumable item', async () => {
+    const user = userEvent.setup()
+
+    // Given cups, not consumable: 3 of 5, refill below 2
+    const item = await createItem({
+      name: 'Cups',
+      packageUnit: 'cup',
+      targetUnit: 'package',
+      targetQuantity: 5,
+      refillThreshold: 2,
+      packedQuantity: 3,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      consumable: false,
+      tagIds: [],
+    })
+
+    renderStockTab(item.id)
+
+    // Then the stock row draws 5 squares, 3 filled
+    const filled = () =>
+      screen
+        .getAllByTestId('count-square')
+        .filter((s) => s.dataset.filled === 'true')
+    await waitFor(() => {
+      expect(screen.getAllByTestId('count-square')).toHaveLength(5)
+    })
+    expect(filled()).toHaveLength(3)
+
+    // When the user presses Fill to Full, before saving, the squares follow
+    await user.click(screen.getByRole('button', { name: /fill to full/i }))
+    expect(filled()).toHaveLength(5)
+  })
+
+  it('user sees the progress bar, not squares, on the stock tab for a consumable item', async () => {
+    // Given milk, consumable
+    const item = await createItem({
+      name: 'Milk',
+      packageUnit: 'bottle',
+      targetUnit: 'package',
+      targetQuantity: 4,
+      refillThreshold: 2,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      consumeAmount: 1,
+      consumable: true,
+      tagIds: [],
+    })
+
+    renderStockTab(item.id)
+
+    // Then the progress bar draws its refill tick and there are no squares
+    await waitFor(() => {
+      expect(screen.getByTestId('refill-marker')).toBeInTheDocument()
+    })
+    expect(screen.queryAllByTestId('count-square')).toHaveLength(0)
   })
 
   // The regression guard for commit 2fe372a1: `hasFieldError` gated the Stock
@@ -928,7 +1013,7 @@ describe('Item stock tab', () => {
 
     // …and clears the layout dirty flag with it: leaving the tab afterwards
     // must not re-raise a discard prompt for edits that no longer exist
-    await user.click(screen.getByRole('link', { name: /item info tab/i }))
+    await user.click(screen.getByRole('link', { name: /^info$/i }))
     await waitFor(() => {
       expect(screen.queryByLabelText(/^packed/i)).not.toBeInTheDocument()
     })
@@ -969,7 +1054,7 @@ describe('Item stock tab', () => {
     await screen.findByRole('button', { name: /add to location/i })
 
     // Then leaving the tab is not blocked by edits that no longer exist
-    await user.click(screen.getByRole('link', { name: /item info tab/i }))
+    await user.click(screen.getByRole('link', { name: /^info$/i }))
     await waitFor(() => {
       expect(
         screen.queryByRole('button', { name: /add to location/i }),
@@ -1207,6 +1292,73 @@ describe('Item stock tab', () => {
     }
   })
 
+  it('user sees a spinner on "Add to location" while the add is saving', async () => {
+    const user = userEvent.setup()
+
+    // Given an item not stocked in the active location, and a write that
+    // waits for a promise this test controls
+    const cabin = await createLocation('Cabin')
+    const item = await createItem({ name: 'Butter', tagIds: [] }, cabin.id)
+    const { addSpy, release } = gateItemStockAdd()
+
+    renderStockTab(item.id)
+    const addButton = await screen.findByRole('button', {
+      name: /add to location/i,
+    })
+    expect(addButton).toBeEnabled()
+    expect(addButton.querySelector('.animate-spin')).toBeNull()
+
+    // When the user presses it and the write has not finished yet
+    await user.click(addButton)
+
+    // Then the button shows a spinner, keeps its name, and is disabled
+    await waitFor(() => expect(addSpy).toHaveBeenCalledTimes(1))
+    const pending = screen.getByRole('button', { name: /add to location/i })
+    expect(pending).toBeDisabled()
+    expect(pending.querySelector('.animate-spin')).not.toBeNull()
+
+    // And once the write lands, the page turns into the stock form
+    release()
+    expect(await screen.findByLabelText(/^packed/i)).toHaveValue(0)
+    expect(
+      screen.queryByRole('button', { name: /add to location/i }),
+    ).not.toBeInTheDocument()
+    addSpy.mockRestore()
+  })
+
+  it('a second click on "Add to location" while saving sends no second write', async () => {
+    const user = userEvent.setup()
+
+    // Given an item not stocked in the active location, and a write that
+    // waits for a promise this test controls
+    const cabin = await createLocation('Cabin')
+    const item = await createItem({ name: 'Butter', tagIds: [] }, cabin.id)
+    const { addSpy, release } = gateItemStockAdd()
+
+    renderStockTab(item.id)
+    const addButton = await screen.findByRole('button', {
+      name: /add to location/i,
+    })
+
+    // When the user clicks twice before the first write finishes
+    await user.click(addButton)
+    await waitFor(() => expect(addSpy).toHaveBeenCalledTimes(1))
+    await user.click(screen.getByRole('button', { name: /add to location/i }))
+
+    // Then only one row is written
+    release()
+    expect(await screen.findByLabelText(/^packed/i)).toHaveValue(0)
+    expect(addSpy).toHaveBeenCalledTimes(1)
+    expect(
+      await db.itemStocks
+        .where('itemId')
+        .equals(item.id)
+        .filter((s) => s.locationId === DEFAULT_LOCATION_ID)
+        .count(),
+    ).toBe(1)
+    addSpy.mockRestore()
+  })
+
   it('tells the user when adding to a location fails', async () => {
     const user = userEvent.setup()
 
@@ -1230,9 +1382,9 @@ describe('Item stock tab', () => {
     expect(
       await screen.findByText(/could not add butter to my home/i),
     ).toBeInTheDocument()
-    expect(
-      screen.getByRole('button', { name: /add to location/i }),
-    ).toBeEnabled()
+    const retry = screen.getByRole('button', { name: /add to location/i })
+    expect(retry).toBeEnabled()
+    expect(retry.querySelector('.animate-spin')).toBeNull()
     addSpy.mockRestore()
   })
 
@@ -1334,6 +1486,7 @@ describe('Item stock tab', () => {
       tagIds: [],
       targetUnit: 'package',
       consumeAmount: 1,
+      consumable: true,
       createdAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
       updatedAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
     }
@@ -1395,6 +1548,7 @@ describe('Item stock tab', () => {
       tagIds: [],
       targetUnit: 'package',
       consumeAmount: 1,
+      consumable: true,
       createdAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
       updatedAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
     }
@@ -1448,6 +1602,7 @@ describe('Item stock tab', () => {
       packageUnit: 'bottle',
       targetUnit: 'package',
       consumeAmount: 1,
+      consumable: true,
       createdAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
       updatedAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
     }
@@ -1591,6 +1746,48 @@ describe('Item stock tab', () => {
       expect((await getItemStock(item.id))?.dueDate).toEqual(stored)
     })
 
+    it('user can save a quantity of a non-consumable item in "date" mode without losing this location’s due date', async () => {
+      const user = userEvent.setup()
+
+      // Given a non-consumable item in 'date' mode: the mode alone would
+      // render "Expires on", but a non-consumable hides it
+      const stored = new Date('2026-10-10T00:00:00.000Z')
+      const item = await createItem({
+        name: 'Cups',
+        tagIds: [],
+        packageUnit: 'cup',
+        targetUnit: 'package',
+        consumeAmount: 1,
+        consumable: false,
+        expirationMode: 'date',
+        targetQuantity: 6,
+        refillThreshold: 2,
+        packedQuantity: 4,
+        // Opened stock left from before the Amount field: the save drops it
+        unpackedQuantity: 1.5,
+        dueDate: stored,
+      })
+
+      renderStockTab(item.id)
+
+      // The one stock field is "Amount", not "Packed"
+      const packedInput = await screen.findByLabelText(/^amount \(/i)
+      expect(screen.queryByLabelText(/expires on/i)).not.toBeInTheDocument()
+
+      // When the user changes a quantity and saves
+      await user.clear(packedInput)
+      await user.type(packedInput, '5')
+      await user.click(screen.getByRole('button', { name: /save/i }))
+
+      // Then the stored due date survives
+      await waitFor(async () => {
+        expect((await getItemStock(item.id))?.packedQuantity).toBe(5)
+      })
+      expect((await getItemStock(item.id))?.dueDate).toEqual(stored)
+      // And the opened stock is saved as 0 (owner decision 2026-11-26)
+      expect((await getItemStock(item.id))?.unpackedQuantity).toBe(0)
+    })
+
     // The other half of the fix: in 'date' mode the field IS rendered, so the
     // key is still emitted and an emptied field still clears the stored date.
     // Without this the fix could over-correct into "never clear".
@@ -1643,6 +1840,7 @@ describe('Item stock tab', () => {
         packageUnit: 'bottle',
         targetUnit: 'package',
         consumeAmount: 1,
+        consumable: true,
         expirationMode: 'days from purchase',
         estimatedDueDays: 7,
         createdAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),

@@ -1,4 +1,9 @@
-import { decimalPlaces, getCurrentQuantity, roundToStep } from '@p1i/types'
+import {
+  DEFAULT_PACKAGE_UNIT,
+  decimalPlaces,
+  getCurrentQuantity,
+  roundToStep,
+} from '@p1i/types'
 import type { StockConfigFields, StockFields } from '@/types'
 
 // `getPackedTotal`, `consumeItem`, `roundToStep`, `getCurrentQuantity` and
@@ -279,6 +284,9 @@ export interface StockPreviewConfig {
   packageUnit?: string
   amountPerPackage?: number
   consumeAmount: number
+  // `false` for a non-consumable item (cups): the preview counts whole pieces
+  // in the package unit (`getPieceCounts`). Left out means consumable.
+  consumable?: boolean
 }
 
 // The four live values driving the preview — never the stored/saved ones, so
@@ -291,8 +299,18 @@ export interface StockPreviewValues {
 }
 
 export interface StockPreview {
-  /** Total quantity in the item's tracking unit (measurement-aware). */
+  /**
+   * Total quantity in the item's tracking unit (measurement-aware). For a
+   * non-consumable item: the whole pieces in stock.
+   */
   current: number
+  /**
+   * The bar's target and refill threshold. For a consumable item these are
+   * the values passed in, unchanged. For a non-consumable item they are whole
+   * pieces (`getPieceCounts`).
+   */
+  target: number
+  refillThreshold: number
   /** `packedQuantity` re-expressed in the tracking unit, for the label. */
   displayPacked: number
   unitLabel: string
@@ -320,9 +338,43 @@ export function getStockPreview(
     packageUnit,
     amountPerPackage,
     consumeAmount,
+    consumable = true,
   } = config
   const { packedQuantity, unpackedQuantity, targetQuantity, refillThreshold } =
     values
+
+  // The package unit as the card shows it (`ItemStockSummary`:
+  // `item.packageUnit || DEFAULT_PACKAGE_UNIT`). `||`, not `??`: an item
+  // created with just a name stores `''`. Until 2026-11-26 this fell back to
+  // the literal word 'unit', so the stock row said "3 / 5 unit" where the card
+  // said "3 / 5 pack" (owner decision 2026-11-26).
+  const packageWord = packageUnit || DEFAULT_PACKAGE_UNIT
+
+  const isAtZero = packedQuantity === 0 && unpackedQuantity === 0
+
+  // A non-consumable item (cups) counts whole pieces in the package unit,
+  // whatever its measurement settings say (owner decision 2026-11-26).
+  if (!consumable) {
+    const pieces = getPieceCounts(
+      { targetUnit, ...(amountPerPackage ? { amountPerPackage } : {}) },
+      { packedQuantity, targetQuantity, refillThreshold },
+    )
+    return {
+      current: pieces.inStock,
+      displayPacked: pieces.inStock,
+      target: pieces.wanted,
+      refillThreshold: pieces.refillThreshold,
+      unitLabel: packageWord,
+      quantityLabel: `${pieces.inStock} / ${pieces.wanted}`,
+      status: isInactive({ targetQuantity })
+        ? 'inactive'
+        : getStockStatus(pieces.inStock, pieces.refillThreshold),
+      isAtZero,
+      // Fill to Full for a non-consumable item is the target in whole
+      // pieces, with no opened stock.
+      isAtFull: packedQuantity === pieces.wanted && unpackedQuantity === 0,
+    }
+  }
 
   // `amountPerPackage && amountPerPackage > 0` (not bare truthiness): 0 means
   // "no conversion rate" in this file's convention — see computeFillToFull's
@@ -347,12 +399,7 @@ export function getStockPreview(
   const unitLabel =
     targetUnit === 'measurement' && measurementUnit
       ? measurementUnit
-      : // Falls back to the literal string 'unit', not DEFAULT_PACKAGE_UNIT
-        // ('pack') — a pre-existing divergence from QuickUpdateDialog's own
-        // `item.packageUnit || DEFAULT_PACKAGE_UNIT` label logic, left as-is
-        // deliberately: unifying it would change the dialog's shipped display
-        // text for every item with no package unit, which is out of scope here.
-        (packageUnit ?? 'unit')
+      : packageWord
 
   const quantityLabel =
     unpackedQuantity > 0
@@ -366,7 +413,6 @@ export function getStockPreview(
     ...(amountPerPackage ? { amountPerPackage } : {}),
   })
 
-  const isAtZero = packedQuantity === 0 && unpackedQuantity === 0
   const isAtFull =
     packedQuantity === fillToFullState.packedQuantity &&
     unpackedQuantity === fillToFullState.unpackedQuantity
@@ -374,11 +420,100 @@ export function getStockPreview(
   return {
     current,
     displayPacked,
+    target: targetQuantity,
+    refillThreshold,
     unitLabel,
     quantityLabel,
     status,
     isAtZero,
     isAtFull,
+  }
+}
+
+/**
+ * How many tracking units make one piece of a non-consumable item.
+ *
+ * A non-consumable item (cups) counts whole pieces. Such an item normally
+ * tracks in packages, so one piece is one package and the scale is 1. An item
+ * that still tracks in a measurement unit (for example from a hand-edited
+ * backup) has `amountPerPackage` units per piece. A missing or 0 rate gives 1,
+ * the same "no conversion rate" rule as `getStockPreview`.
+ */
+export function getPieceScale(config: {
+  targetUnit: 'package' | 'measurement'
+  amountPerPackage?: number | undefined
+}): number {
+  const { targetUnit, amountPerPackage } = config
+  return targetUnit === 'measurement' &&
+    amountPerPackage &&
+    amountPerPackage > 0
+    ? amountPerPackage
+    : 1
+}
+
+// A target or refill threshold in whole pieces: divided by the piece scale,
+// then rounded UP (owner decision 2026-11-26). Up, because the person wanted
+// at least that much, and because a threshold of 0.4 must not become 0, which
+// would turn the low-stock warning off. The dust guard first, so 0.7 / 0.1
+// (6.999999999999999) gives 7, and 2.0000000000000004 does not give 3.
+function toWholePieces(value: number, scale: number): number {
+  return Math.ceil(stripFloatDust(value / scale))
+}
+
+/**
+ * The stock of a NON-consumable item, in whole pieces of the package unit.
+ *
+ * - `inStock` is the whole packed packages. Opened stock (`unpackedQuantity`)
+ *   does not count: a non-consumable item has no opened packs, and its one
+ *   "Amount" field edits `packedQuantity` (owner decision 2026-11-26). An old
+ *   row that still holds opened stock is shown without it, and the next save
+ *   writes `unpackedQuantity: 0`.
+ * - `wanted` and `refillThreshold` are the target and the threshold divided
+ *   by `getPieceScale` and rounded up (`toWholePieces`).
+ *
+ * `ItemStockSummary` (the card and the cart dialog) and `getStockPreview`
+ * (the quick edit dialog and the Stock tab) both use it, so they agree.
+ */
+export function getPieceCounts(
+  config: {
+    targetUnit: 'package' | 'measurement'
+    amountPerPackage?: number | undefined
+  },
+  values: {
+    packedQuantity: number
+    targetQuantity: number
+    refillThreshold: number
+  },
+): { inStock: number; wanted: number; refillThreshold: number } {
+  const scale = getPieceScale(config)
+  return {
+    inStock: Math.max(0, Math.floor(values.packedQuantity)),
+    wanted: toWholePieces(values.targetQuantity, scale),
+    refillThreshold: toWholePieces(values.refillThreshold, scale),
+  }
+}
+
+/**
+ * One location's tracked quantities after the item is switched from
+ * consumable to non-consumable (owner decision 2026-11-26): opened stock is
+ * dropped (`unpackedQuantity: 0`), and the target and the refill threshold
+ * become whole packs. `config` is the item's unit BEFORE the switch, the unit
+ * the stored numbers are in. A measurement item divides by `amountPerPackage`,
+ * the same rule as a unit switch (`convertTrackedQuantities`), then rounds up
+ * like `getPieceCounts`. `packedQuantity` is not part of it: it stays.
+ */
+export function toNonConsumableQuantities(
+  before: TrackedQuantities,
+  config: {
+    targetUnit: 'package' | 'measurement'
+    amountPerPackage?: number | undefined
+  },
+): TrackedQuantities {
+  const scale = getPieceScale(config)
+  return {
+    unpackedQuantity: 0,
+    targetQuantity: toWholePieces(before.targetQuantity, scale),
+    refillThreshold: toWholePieces(before.refillThreshold, scale),
   }
 }
 
@@ -418,4 +553,25 @@ export function isLowStock(item: Stock): boolean {
     item.refillThreshold > 0 &&
     getCurrentQuantity(item) === item.refillThreshold
   )
+}
+
+/**
+ * The amount the cart amount dialog suggests when an item is ticked into a
+ * cart: the whole packs still missing to reach the target at this location,
+ * and at least 1.
+ *
+ * A cart amount counts PACKAGES, but the target and the stock are in the
+ * item's TRACKING unit. For a measurement item (for example 750 ml a bottle,
+ * target 2000 ml) both are turned into packs first, with `getItemPackUnits`,
+ * so "ceil(target − stock)" is not 1250 bottles. An item whose amounts cannot
+ * be turned into packs (a measurement item with no amount per package) has a
+ * pack target of 0, so it gets 1.
+ *
+ * The difference is rounded to 6 places before `Math.ceil`, so a float error
+ * such as 2.0000000000000004 does not become 3.
+ */
+export function suggestedCartAmount(item: Stock): number {
+  const { packed, target } = getItemPackUnits(item)
+  const missing = Math.round((target - packed) * 1e6) / 1e6
+  return Math.max(1, Math.ceil(missing))
 }

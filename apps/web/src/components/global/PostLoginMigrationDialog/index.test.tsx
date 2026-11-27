@@ -3,13 +3,18 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { getShownHouseholdId } from '@/apollo/householdGuard'
 import { db } from '@/db'
 import { getLocations } from '@/db/operations'
 import {
   ActiveLocationProvider,
   activeLocationStorageKey,
 } from '@/hooks/useActiveLocation'
-import { ImportRefusedError, importCloudData } from '@/lib/importData'
+import {
+  type ImportProgress,
+  ImportRefusedError,
+  importCloudData,
+} from '@/lib/importData'
 import { callArgs } from '@/test/narrow'
 import type { Item } from '@/types'
 import { PostLoginMigrationDialog } from '.'
@@ -70,7 +75,13 @@ const { householdServer, switchMock } = vi.hoisted(() => ({
 vi.mock('@/apollo/householdGuard', async (importOriginal) => {
   const actual =
     await importOriginal<typeof import('@/apollo/householdGuard')>()
-  return { ...actual, switchToHousehold: switchMock }
+  return {
+    ...actual,
+    switchToHousehold: switchMock,
+    // Real by default. The copy that runs after the move (issue #402 test)
+    // needs it to name the household the page shows.
+    getShownHouseholdId: vi.fn(() => actual.getShownHouseholdId()),
+  }
 })
 
 function resetHouseholdServer() {
@@ -353,7 +364,7 @@ describe('PostLoginMigrationDialog — signing in copies the local pantry', () =
     await waitFor(() => expect(importCloudData).toHaveBeenCalled())
     const call = callArgs(vi.mocked(importCloudData).mock, 0)
     expect(call[1]).toBe('skip')
-    expect(call[3]).toEqual({ target: { locationId: 'cloud_home' } })
+    expect(call[3]?.target).toEqual({ locationId: 'cloud_home' })
   })
 
   it('user with a single location has their pantry copied', async () => {
@@ -1323,5 +1334,135 @@ describe('PostLoginMigrationDialog — the copy can go into another household', 
       expect(node.className).not.toMatch(/\bcapitalize\b/)
       node = node.parentElement
     }
+  })
+})
+
+// Issue #402: while local data is copied into cloud, the page shows a spinner,
+// and the batches sent once the copy has counted them. These tests hold
+// `importCloudData` on a promise the test settles by hand.
+describe('PostLoginMigrationDialog — a spinner shows while the copy runs', () => {
+  function heldCopy() {
+    let resolve: (value: unknown) => void = () => {}
+    let reject: (reason: unknown) => void = () => {}
+    let onProgress: ((p: ImportProgress) => void) | undefined
+    vi.mocked(importCloudData).mockImplementationOnce(
+      (_payload, _strategy, _client, options) => {
+        onProgress = options?.onProgress
+        return new Promise((res, rej) => {
+          resolve = res as (value: unknown) => void
+          reject = rej
+        })
+      },
+    )
+    return {
+      resolve: () => act(async () => resolve({ skipped: {} })),
+      reject: (err: unknown) => act(async () => reject(err)),
+      progress: (p: ImportProgress) => act(() => onProgress?.(p)),
+    }
+  }
+
+  const spinner = () =>
+    screen.queryByRole('status', { name: 'Copying local data to cloud…' })
+
+  afterEach(async () => {
+    // Unmount first; see the first afterEach in this file.
+    cleanup()
+    localStorage.clear()
+    sessionStorage.clear()
+    setHousehold('owner')
+    vi.mocked(importCloudData).mockReset()
+    vi.mocked(importCloudData).mockResolvedValue(undefined as never)
+    vi.mocked(getLocations).mockReset()
+    vi.mocked(getShownHouseholdId).mockReset()
+    await db.items.clear()
+  })
+
+  async function startCopyHere() {
+    await db.items.put(makeItem({ id: 'item-1', name: 'Milk' }))
+    const user = userEvent.setup()
+    renderDialog()
+    await user.click(await screen.findByRole('button', { name: 'Copy here' }))
+    await screen.findByRole('heading', { name: 'Import into which location?' })
+    await user.click(screen.getByRole('button', { name: 'Import' }))
+  }
+
+  it('user sees a spinner and the batches sent while the copy runs, and it goes when the copy ends', async () => {
+    // Given a copy the server has not answered yet
+    const copy = heldCopy()
+
+    // When the user presses Copy here and picks the location
+    await startCopyHere()
+
+    // Then a spinner shows, and the question with Copy here has closed
+    expect(await screen.findByRole('status')).toHaveAccessibleName(
+      'Copying local data to cloud…',
+    )
+    expect(screen.queryByRole('button', { name: 'Copy here' })).toBeNull()
+
+    // When the copy has sent 2 of 5 batches
+    await copy.progress({
+      completedBatches: 2,
+      totalBatches: 5,
+      currentEntity: 'items',
+    })
+
+    // Then the count shows under the spinner
+    expect(spinner()).toHaveTextContent('2 / 5 batches')
+
+    // When the copy ends
+    await copy.resolve()
+
+    // Then the spinner is gone
+    await waitFor(() => expect(spinner()).toBeNull())
+  })
+
+  it('user sees the spinner go and the error show when the copy fails', async () => {
+    // Given a copy the server will refuse
+    const copy = heldCopy()
+    await startCopyHere()
+    expect(await screen.findByRole('status')).toBeInTheDocument()
+
+    // When the server refuses
+    await copy.reject(forbiddenError())
+
+    // Then the spinner is gone, and the error says why
+    expect(
+      await screen.findByText(
+        /belong to another household, so the copy was refused/,
+      ),
+    ).toBeInTheDocument()
+    expect(spinner()).toBeNull()
+  })
+
+  it('user sees the spinner while the copy runs after the page moved to the chosen household', async () => {
+    // Given the page has reloaded in the household the person chose for a
+    // stored clear copy (task L.5): no question is asked again
+    const now = new Date()
+    vi.mocked(getLocations).mockResolvedValue([
+      {
+        id: 'local',
+        name: 'My Home',
+        order: 0,
+        isDefault: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ])
+    localStorage.setItem('migration-strategy', 'clear')
+    sessionStorage.setItem('copy-into-household', 'hh-1')
+    vi.mocked(getShownHouseholdId).mockReturnValue('hh-1')
+    const copy = heldCopy()
+
+    // When the dialog mounts
+    renderDialog()
+
+    // Then the copy runs at once, with the spinner
+    await waitFor(() => expect(importCloudData).toHaveBeenCalledTimes(1))
+    expect(spinner()).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Copy here' })).toBeNull()
+
+    // When the copy ends, the spinner goes
+    await copy.resolve()
+    await waitFor(() => expect(spinner()).toBeNull())
   })
 })

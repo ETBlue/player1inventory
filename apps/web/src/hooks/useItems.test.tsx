@@ -265,6 +265,38 @@ describe('useItem (cloud mode)', () => {
 // ─── useCreateItem ────────────────────────────────────────────────────────────
 
 describe('useCreateItem (cloud mode)', () => {
+  it('user creating a non-consumable item in cloud mode sends consumable: false', async () => {
+    localStorage.setItem('data-mode', 'cloud')
+    mockCloudCreate.mockResolvedValue({
+      data: {
+        createItem: {
+          id: 'item-cups',
+          name: 'Cups',
+          tagIds: [],
+          targetUnit: 'package',
+          consumeAmount: 1,
+          consumable: false,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      },
+    })
+    const { result } = renderHook(() => useCreateItem(), {
+      wrapper: createWrapper(),
+    })
+    await result.current.mutateAsync({
+      name: 'Cups',
+      tagIds: [],
+      targetUnit: 'package',
+      consumable: false,
+    })
+    const sent = mockCloudCreate.mock.calls[0]?.[0]?.variables?.input as Record<
+      string,
+      unknown
+    >
+    expect(sent.consumable).toBe(false)
+  })
+
   it('user can create an item via Apollo in cloud mode', async () => {
     // Given cloud mode and Apollo mutation resolves
     localStorage.setItem('data-mode', 'cloud')
@@ -631,6 +663,67 @@ describe('useRemoveItemFromLocation (local mode)', () => {
         result.current.stocks.data?.find((s) => s.locationId === cabin.id)
           ?.packedQuantity,
       ).toBe(9),
+    )
+  })
+})
+
+// Since 2026-11-26 a stock count that raises the amount moves the last
+// purchase date (`getLastPurchaseDate`), so a save must make the sort and
+// expiry reader read it again. Before, only `['items']` and `['itemStocks']`
+// were invalidated, so the pantry kept the old date until it mounted again.
+describe('useUpdateItem refreshes the last purchase date (local mode)', () => {
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.itemStocks.clear()
+    await db.inventoryLogs.clear()
+    localStorage.removeItem('data-mode')
+    localStorage.removeItem(activeLocationStorageKey('local'))
+    mockUseLastPurchaseDatesQuery.mockReturnValue({ data: undefined })
+  })
+
+  it('user saving a higher amount sees the last purchase date move without a reload', async () => {
+    // Given an item bought long ago
+    const item = await createItem(
+      { name: 'Beans', tagIds: [], packedQuantity: 1 },
+      DEFAULT_LOCATION_ID,
+    )
+    const bought = new Date('2026-01-01T00:00:00.000Z')
+    await addInventoryLog({
+      itemId: item.id,
+      locationId: DEFAULT_LOCATION_ID,
+      delta: 1,
+      quantity: 1,
+      occurredAt: bought,
+      logKey: 'purchase',
+    })
+    const pantryItems = [
+      (await getItem(item.id, DEFAULT_LOCATION_ID)) as PantryItem,
+    ]
+
+    const { result } = renderHook(
+      () => ({
+        update: useUpdateItem(),
+        sort: useItemSortData(pantryItems),
+      }),
+      { wrapper: createWrapper() },
+    )
+    await waitFor(() =>
+      expect(result.current.sort.purchaseDates?.get(item.id)?.getTime()).toBe(
+        bought.getTime(),
+      ),
+    )
+
+    // When the user counts the stock and saves a higher amount
+    await result.current.update.mutateAsync({
+      id: item.id,
+      updates: { packedQuantity: 4 },
+    })
+
+    // Then the cached date moves to the stock count, on its own
+    await waitFor(() =>
+      expect(
+        result.current.sort.purchaseDates?.get(item.id)?.getTime(),
+      ).toBeGreaterThan(bought.getTime()),
     )
   })
 })

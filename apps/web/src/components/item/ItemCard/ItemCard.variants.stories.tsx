@@ -94,3 +94,25 @@ export const ActiveVendorFilter: Story = {
     activeVendorIds: ['v1'],
   },
 }
+
+// A non-consumable item (cups): the card shows one square per piece instead
+// of the progress bar, and no expiry.
+export const NonConsumable: Story = {
+  name: 'Not consumable (count squares)',
+  args: {
+    item: {
+      ...mockItem,
+      id: 'cups',
+      name: 'Cups',
+      packageUnit: 'cup',
+      targetUnit: 'package',
+      packedQuantity: 4,
+      unpackedQuantity: 0,
+      targetQuantity: 6,
+      refillThreshold: 2,
+      consumable: false,
+    },
+    tags: [],
+    tagTypes: [],
+  },
+}

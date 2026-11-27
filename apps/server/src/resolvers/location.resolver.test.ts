@@ -21,13 +21,24 @@ import type { FakeLocation } from '../test/stockFake.js'
 vi.mock('../lib/prisma.js', async () => {
   const { createHouseholdWorld } = await import('../test/householdWorld.js')
   const { createOwnedRowFake } = await import('../test/ownedRowFake.js')
+  const { createInventoryLogFake } = await import('../test/inventoryLogFake.js')
   const world = createHouseholdWorld()
+  // `upsertItemStock` writes a `stockCount` log row when the amount changes
+  // (design 2026-11-25), inside a transaction that first locks the row.
+  const logs = createInventoryLogFake()
   const items = createOwnedRowFake({
     model: 'Item',
     scope: 'householdId',
     rows: [{ id: 'item-1', householdId: 'hh-1', userId: 'caller' }],
   })
-  world.extend({ item: { findMany: items.client.findMany } })
+  world.extend(
+    {
+      item: { findMany: items.client.findMany, findUnique: items.client.findUnique },
+      inventoryLog: logs.client,
+      $queryRaw: async () => [],
+    },
+    [logs.state as unknown as Record<string, unknown>],
+  )
   return { prisma: { ...world.client, $world: world } }
 })
 

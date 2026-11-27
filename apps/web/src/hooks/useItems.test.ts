@@ -223,6 +223,16 @@ describe('toUpdateItemInput', () => {
     expect(result).not.toHaveProperty('dueDate')
   })
 
+  it('passes consumable through, and leaves it out when absent', () => {
+    // `consumable` is a plain boolean: `false` must reach the server, and an
+    // update that does not mention it must not send it (the server then keeps
+    // the stored value)
+    expect(toUpdateItemInput({ consumable: false })).toEqual({
+      consumable: false,
+    })
+    expect(toUpdateItemInput({ name: 'Cups' })).not.toHaveProperty('consumable')
+  })
+
   it('sends null for an optional field explicitly set to undefined', () => {
     // Given an update that deliberately includes packageUnit as undefined
     // (meaning: clear this field in the DB)
