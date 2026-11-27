@@ -759,6 +759,49 @@ db.version(21)
       }),
   )
 
+// Version 22: `ItemStock.isActive` (the "Active here" switch, PR 2, 2026-11-27)
+//
+// Before this version a stock row was "inactive here" when its target was 0.
+// Now the switch says it. Every stock row without a boolean gets
+// `isActive = targetQuantity !== 0`, so each old row keeps the meaning it had.
+// A row that already has a boolean keeps it, so running the upgrade twice
+// changes nothing. No index change (`isActive` is not indexed: no read
+// queries by it), so the stores are version 21's.
+//
+// The readers do not depend on this backfill: `isStockActive` (`@p1i/types`)
+// reads a missing value with the same rule, because a restored backup or an
+// E2E seed can still write a row with no value. The backfill makes the
+// stored rows say what the readers already assume.
+//
+// A fresh database never runs this upgrade, and needs nothing from it: it has
+// no stock rows at populate time, and every writer that creates a stock row
+// writes `isActive: true` (see `upsertItemStock` in `operations.ts`). So
+// `on('populate')` needs no change.
+db.version(22)
+  .stores({
+    items: 'id, name, createdAt, updatedAt',
+    itemStocks: 'id, itemId, locationId, [itemId+locationId], updatedAt',
+    tags: 'id, typeId, parentId, createdAt',
+    tagTypes: 'id, name',
+    inventoryLogs: 'id, itemId, locationId, occurredAt, createdAt',
+    shoppingCarts: 'id',
+    cartItems: 'id, cartId, itemId, &[cartId+itemId]',
+    vendors: 'id, name',
+    recipes: 'id, name, lastCookedAt',
+    shelves: 'id, name, type, order',
+    locations: 'id, order, name',
+  })
+  .upgrade((tx) =>
+    tx
+      .table('itemStocks')
+      .toCollection()
+      .modify((stock: Record<string, unknown>) => {
+        if (typeof stock.isActive !== 'boolean') {
+          stock.isActive = stock.targetQuantity !== 0
+        }
+      }),
+  )
+
 // Fresh-DB seed: `on('populate')` fires exactly once, when the database is
 // first created at the latest version (brand-new users). The version upgrade
 // fns above do NOT run in that case, so the default location is seeded here.

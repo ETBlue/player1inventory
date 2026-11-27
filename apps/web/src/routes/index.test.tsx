@@ -450,11 +450,12 @@ describe('Home page filtering integration', () => {
   })
 
   it('shows inactive items always visible with a count label', async () => {
-    // Create inactive item (target = 0, current = 0)
+    // Create inactive item (the Active here switch off, current = 0)
     await createItem({
       name: 'Inactive Item',
       packageUnit: 'pack',
       targetUnit: 'package',
+      isActive: false,
       targetQuantity: 0,
       refillThreshold: 0,
       packedQuantity: 0,

@@ -2,11 +2,11 @@
 
 The local-mode data source. `index.ts` declares the Dexie schema, `operations.ts` holds every read/write. Components never touch Dexie directly — they go through the Query hooks in `src/hooks/` (see `src/hooks/CLAUDE.md`).
 
-**Files:** `index.ts` (schema + migrations), `operations.ts` (+ `operations.test.ts`), `migrations.test.ts`, `upgradeV15.test.ts`, `upgradeV16.test.ts`, `upgradeV17.test.ts`, `upgradeV18.test.ts`, `upgradeV19V20.test.ts`, `upgradeV21.test.ts`.
+**Files:** `index.ts` (schema + migrations), `operations.ts` (+ `operations.test.ts`), `migrations.test.ts`, `upgradeV15.test.ts`, `upgradeV16.test.ts`, `upgradeV17.test.ts`, `upgradeV18.test.ts`, `upgradeV19V20.test.ts`, `upgradeV21.test.ts`, `upgradeV22.test.ts`.
 
 ## Schema versioning
 
-One `db.version(n).stores({...})` per migration in `index.ts`. Migrations are **forward-only** and **idempotent within a bump**. Current version: **21**.
+One `db.version(n).stores({...})` per migration in `index.ts`. Migrations are **forward-only** and **idempotent within a bump**. Current version: **22**.
 
 Rules:
 - **Add a new version; never edit a shipped one.** An upgrade function must be valid on a database built only from committed history.
@@ -33,7 +33,7 @@ v15 left `ItemStock` conflating two different kinds of thing. **Configuration** 
 |---|---|
 | `packageUnit` · `measurementUnit` · `amountPerPackage` · `targetUnit` · `consumeAmount` · `estimatedDueDays` · `expirationThreshold` · `expirationMode` | `packedQuantity` · `unpackedQuantity` · `targetQuantity` · `refillThreshold` · `dueDate` |
 
-**`targetQuantity` stays per-location deliberately** — `targetQuantity === 0` is the "inactive here" marker that `isInactive` / `isStockedHere` / `isInactiveHere` (`lib/quantityUtils.ts`) read.
+**`targetQuantity` stays per-location deliberately** — it is per-location state. Until v22, `targetQuantity === 0` was also the "inactive here" marker that `isInactive` / `isStockedHere` / `isInactiveHere` (`lib/quantityUtils.ts`) read. Since v22 the per-location `isActive` switch is the marker, and target 0 means "no target" (see v22 below).
 
 No index changes: none of the eight was indexed in v15's store definitions.
 
@@ -139,13 +139,45 @@ import writes `isConsumable(raw)` for it (`deserializeItem` in `lib/importData.t
 `true`, so "set where missing" differs from "set everywhere") and a fresh database.
 `upgradeV19V20.test.ts` now checks `verno` is at least 20, not exactly 20.
 
+### v22 — `ItemStock.isActive`
+
+The "Active here" switch, PR 2 (`docs/features/items/2026-11-26-item-stock-active-design.md`).
+Same stores as 21 (`isActive` is not indexed: no read queries by it). The upgrade sets
+`isActive = targetQuantity !== 0` on every stock row whose value is not a boolean, so an
+old row keeps the meaning it had; a stored `true` or `false` stays.
+
+**Readers do not rely on the backfill.** `ItemStock.isActive` is optional, and every reader
+uses `isStockActive(row)` (`@p1i/types`), which reads a missing or `null` value with the
+same old rule. E2E seed helpers write raw IndexedDB rows after Dexie has opened at the
+newest version, and a backup file from before the field can bring a row with no value; the
+local import writes `isStockActive(raw)` for it (`deserializeItemStock` in
+`lib/importData.ts`).
+
+**Every new row is active (owner answer Q1).** `ZERO_STOCK` carries no `isActive` on
+purpose, so each writer that creates a row writes `true`:
+
+| Writer | How |
+|---|---|
+| `upsertItemStock`, create branch | `isActive: fields.isActive ?? true`, so a caller may still say `false`. `createItem` and `updateItem` on a not-yet-stocked item create through it |
+| `addItemToLocation` (copy-on-add, and `checkout` through it) | `pickStockFields` copies the source row's `isActive`, so it is set back to `true`: a row copied from an inactive one opens active, with the target and refill copied |
+| `consumeRecipesBatch`, create branch | `isActive: true` |
+
+Turning the switch on or off writes no `stockCount` log row: `stockCountChange` compares only
+the two quantities.
+
+**`on('populate')` needed no change.** A fresh database has no stock rows at populate time.
+`upgradeV22.test.ts` checks a version-21 database with five rows (target 0, 5 and 0.5 with no
+value, a stored `true` with target 0 and a stored `false` with target 5, so "derive where
+missing" differs from "derive everywhere") and a fresh database. `upgradeV21.test.ts` now
+checks `verno` is at least 21, not exactly 21.
+
 ## The Item/ItemStock join
 
 An item is **"stocked at" a location iff an `ItemStock` row exists for the pair.** Reads join the two: `useItems`/`useItem` return a `PantryItem` (global `Item` + the active location's stock) via `joinItemStock` / `stripStockFields`, both exported from `operations.ts` so the Stock-tab pager re-joins against a different location with the same implementation.
 
 `PantryItem = Item & StockFields & { stockId?, locationId? }` — unchanged by v16. A read site says `item.packageUnit` or `item.packedQuantity` without caring which half it came from; only the writes have to route. `StockConfigFields` (in `packages/types`) names the global half for helpers that need both (`quantityUtils`, `expiration`).
 
-**Writes route by field.** `updateItem(id, updates, locationId)` sends the five state fields to `locationId`'s `ItemStock` and everything else — identity *and* configuration — to the `Item`, where it applies to every location at once. `addItemToLocation`'s copy-on-add therefore inherits only `targetQuantity`, `refillThreshold` and `dueDate`: there is no configuration left on a row to copy.
+**Writes route by field.** `updateItem(id, updates, locationId)` sends the six state fields (the five in the v16 table plus `isActive`, since v22) to `locationId`'s `ItemStock` and everything else — identity *and* configuration — to the `Item`, where it applies to every location at once. `addItemToLocation`'s copy-on-add therefore inherits only `targetQuantity`, `refillThreshold` and `dueDate`: there is no configuration left on a row to copy. It does NOT inherit `isActive`: the new row is always active (v22).
 
 `getStockedItems(locationId)` filters on `ItemStock` (the pantry's data source); `getAllItems()` does not (the Add combobox catalog). That difference is what makes an **orphan** — an item with no stock rows left — invisible in the pantry but still re-addable.
 
