@@ -271,6 +271,33 @@ describe('useRelationDraft', () => {
     expect(result.current.dirty).toBe(false)
   })
 
+  // The list of rows can go back to "not loaded" (a refetch after a cache
+  // reset). The hook keeps the last list it saw, so the check that decides
+  // whether a clean-up is due must compare with that kept list. Before the
+  // fix it compared with `undefined`, never matched, and set state on every
+  // render: "Too many re-renders".
+  it('the list of rows going back to not loaded keeps the draft and does not loop', () => {
+    const { result, rerender } = setup({
+      saved: ['a'],
+      existingIds: ['a', 'b', 'c'],
+    })
+    // Given a press made while the list was loaded
+    act(() => result.current.press('b'))
+
+    // When the list of rows is not loaded any more
+    rerender({ saved: ['a'], existingIds: undefined })
+
+    // Then the draft is kept
+    expect(result.current.added).toEqual(['b'])
+    expect(result.current.shown).toEqual(['a', 'b'])
+
+    // And the "was in the list, gone now" rule still uses the last list:
+    // when the list comes back without `b`, the press leaves the draft
+    rerender({ saved: ['a'], existingIds: ['a', 'c'] })
+    expect(result.current.added).toEqual([])
+    expect(result.current.dirty).toBe(false)
+  })
+
   it('Recipes: the item turning non-consumable drops added, keeps removed', () => {
     const { result, rerender } = setup({
       saved: ['a'],

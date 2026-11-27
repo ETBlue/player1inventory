@@ -172,10 +172,17 @@ export function useRelationDraft(
     canAdd,
   }))
 
+  // While the list has not loaded, keep the last list that was seen, so the
+  // "was in the list, gone now" rule still has something to compare. The
+  // check below compares with what is STORED, not with the prop: with the
+  // prop, a list going back to `undefined` never matched the kept list, and
+  // the state was set on every render ("Too many re-renders"). Each field of
+  // the check must compare with the value the update stores, or it loops.
+  const nextExistingIds = existingIds ?? state.existingIds
   let current = state
   if (
     !sameIds(state.saved, saved) ||
-    !sameList(state.existingIds, existingIds) ||
+    !sameList(state.existingIds, nextExistingIds) ||
     state.canEdit !== canEdit ||
     state.canAdd !== canAdd
   ) {
@@ -188,12 +195,10 @@ export function useRelationDraft(
       canEdit,
       canAdd,
     })
-    // While the list has not loaded, keep the last list that was seen, so
-    // the "was in the list, gone now" rule still has something to compare
     current = {
       ...sets,
       saved,
-      existingIds: existingIds ?? state.existingIds,
+      existingIds: nextExistingIds,
       canEdit,
       canAdd,
     }
