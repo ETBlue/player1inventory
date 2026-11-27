@@ -212,7 +212,33 @@ vi.mock('../lib/prisma.js', async () => {
     },
     itemTag: itemTag.client,
     itemVendor: itemVendor.client,
-    recipeItem: recipeItem.client,
+    recipeItem: {
+      ...recipeItem.client,
+      // `setItemRecipes` reads an item's links with the relation filter
+      // `recipe: { householdId }` (`RecipeItem` has no `householdId`). It is
+      // followed to the recipe store. Any other key or shape throws, checked
+      // once per call, before the rows are searched.
+      findMany: async ({ where = {} }: { where?: Record<string, unknown> } = {}) => {
+        checkWhere('junctionFake(RecipeItem).findMany', where, {
+          itemId: 'in',
+          recipeId: 'in',
+          recipe: { nested: { householdId: 'equals' } },
+        })
+        return recipeItem.state.rows
+          .filter((r) =>
+            Object.entries(where).every(([key, filter]) => {
+              if (filter === undefined) return true
+              if (key === 'recipe') {
+                const parent = recipes.state.rows.find((x) => x.id === r.recipeId)
+                return parent?.householdId === (filter as { householdId: string }).householdId
+              }
+              if (typeof filter === 'string') return r[key] === filter
+              return (filter as { in: unknown[] }).in.includes(r[key])
+            }),
+          )
+          .map((r) => ({ ...r }))
+      },
+    },
     cart: carts.client.cart,
     cartItem: carts.client.cartItem,
     inventoryLog: logs.client,
@@ -250,7 +276,7 @@ vi.mock('../lib/prisma.js', async () => {
       $world: world,
       $carts: carts,
       $logs: logs,
-      $stores: { items, recipes, tags, tagTypes, vendors, shelves, itemTag },
+      $stores: { items, recipes, tags, tagTypes, vendors, shelves, itemTag, recipeItem },
     },
   }
 })
@@ -273,6 +299,7 @@ const handles = prisma as unknown as {
     vendors: Rows
     shelves: Rows
     itemTag: { state: { rows: Record<string, unknown>[] } }
+    recipeItem: { state: { rows: Record<string, unknown>[] } }
   }
 }
 const world = handles.$world
@@ -386,6 +413,7 @@ function seed() {
     { id: 'sh_theirs', householdId: 'hh_other', name: 'Theirs', type: 'selection', order: 0, filterConfig: null, itemIds: [] },
   ] as never[])
   S.itemTag.state.rows = []
+  S.recipeItem.state.rows = []
   logs.reset([
     makeInventoryLog({ id: 'log_milk_home_1', itemId: 'item_milk', userId: ALICE, locationId: LOC_HOME }),
     makeInventoryLog({ id: 'log_milk_home_2', itemId: 'item_milk', userId: ALICE, locationId: LOC_HOME }),
@@ -510,6 +538,7 @@ const plainCatalog: [name: string, query: string, variables?: Record<string, unk
   ['updateRecipe', 'mutation { updateRecipe(id: "rec_1", name: "Renamed", items: []) { id } }'],
   ['deleteRecipe', 'mutation { deleteRecipe(id: "rec_1") }'],
   ['updateRecipeLastCookedAt', 'mutation { updateRecipeLastCookedAt(id: "rec_1") { id } }'],
+  ['setItemRecipes', 'mutation { setItemRecipes(itemId: "item_bread", recipeIds: ["rec_1"]) { id } }'],
   ['createShelf', 'mutation { createShelf(name: "Snacks", type: "selection", itemIds: ["item_bread"]) { id } }'],
   ['updateShelf', 'mutation { updateShelf(id: "sh_1", name: "Renamed") { id } }'],
   ['deleteShelf', 'mutation { deleteShelf(id: "sh_1") }'],
@@ -582,6 +611,7 @@ const refusedForMember: [name: string, query: string][] = [
   ['createRecipe', 'mutation { createRecipe(name: "X") { id } }'],
   ['updateRecipe', 'mutation { updateRecipe(id: "rec_1", name: "X") { id } }'],
   ['deleteRecipe', 'mutation { deleteRecipe(id: "rec_1") }'],
+  ['setItemRecipes', 'mutation { setItemRecipes(itemId: "item_bread", recipeIds: ["rec_1"]) { id } }'],
   ['createShelf', 'mutation { createShelf(name: "X", type: "selection") { id } }'],
   ['updateShelf', 'mutation { updateShelf(id: "sh_1", name: "X") { id } }'],
   ['deleteShelf', 'mutation { deleteShelf(id: "sh_1") }'],
@@ -618,6 +648,9 @@ const changesNothing: [name: string, query: string, check: (res: Result) => void
   ['deleteVendor, a missing vendor', 'mutation { deleteVendor(id: "ven_gone") }', (r) => expect(r.data?.deleteVendor).toBe(false)],
   ['updateRecipe, a missing recipe', 'mutation { updateRecipe(id: "rec_gone", name: "X") { id } }', (r) => expect(code(r)).toBe('NOT_FOUND')],
   ['deleteRecipe, another household\'s recipe', 'mutation { deleteRecipe(id: "rec_theirs") }', (r) => expect(r.data?.deleteRecipe).toBe(false)],
+  ['setItemRecipes, another household\'s recipe', 'mutation { setItemRecipes(itemId: "item_bread", recipeIds: ["rec_theirs"]) { id } }', (r) => expect(code(r)).toBe('FORBIDDEN')],
+  ['setItemRecipes, another household\'s item', 'mutation { setItemRecipes(itemId: "item_theirs", recipeIds: ["rec_1"]) { id } }', (r) => expect(code(r)).toBe('NOT_FOUND')],
+  ['setItemRecipes, a list that changes nothing', 'mutation { setItemRecipes(itemId: "item_bread", recipeIds: []) { id } }', (r) => expect(r.data?.setItemRecipes).toEqual([])],
   ['updateRecipeLastCookedAt, a missing recipe', 'mutation { updateRecipeLastCookedAt(id: "rec_gone") { id } }', (r) => expect(code(r)).toBe('NOT_FOUND')],
   ['updateShelf, a missing shelf', 'mutation { updateShelf(id: "sh_gone", name: "X") { id } }', (r) => expect(code(r)).toBe('NOT_FOUND')],
   ['deleteShelf, another household\'s shelf', 'mutation { deleteShelf(id: "sh_theirs") }', (r) => expect(r.data?.deleteShelf).toBe(false)],
@@ -632,6 +665,22 @@ describe('a catalog write that changes nothing publishes nothing', () => {
     const res = await run(query, ALICE)
 
     check(res)
+    expect(events()).toEqual([])
+  })
+
+  it('setItemRecipes with the same list again publishes nothing', async () => {
+    // Given a first save that added item_bread to rec_1 (and published once)
+    const first = await run('mutation { setItemRecipes(itemId: "item_bread", recipeIds: ["rec_1"]) { id } }', ALICE)
+    expect(first.errors).toBeUndefined()
+    expect(events()).toEqual([CATALOG_HOME])
+    seen.length = 0
+
+    // When the same list is saved again
+    const again = await run('mutation { setItemRecipes(itemId: "item_bread", recipeIds: ["rec_1"]) { id } }', ALICE)
+
+    // Then nothing changed, so no event
+    expect(again.errors).toBeUndefined()
+    expect(again.data?.setItemRecipes).toEqual([])
     expect(events()).toEqual([])
   })
 
