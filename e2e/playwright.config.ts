@@ -176,6 +176,9 @@ const CLOUD_SPECS = [
   '**/expiry-from-restock.spec.ts',
   // The "Active here" switch, PR 2 (2026-11-27). Runs in local too.
   '**/item-stock-active.spec.ts',
+  // Save item tags, vendors and recipes with one Save, PR B (2026-11-28).
+  // Runs in local too; its member test is cloud only.
+  '**/item-relations-save.spec.ts',
 ]
 
 // A `NEON_SPECS` entry that is not in the list above throws here, at load, so
