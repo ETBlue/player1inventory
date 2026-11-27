@@ -156,6 +156,7 @@ describe.each(people)('$who on the item page', (person) => {
       badge: /iHerb/,
       newButton: 'New Vendor',
       stored: async (id: string) => (await db.items.get(id))?.vendorIds ?? [],
+      hasSave: true,
     },
     {
       tab: 'tags',

@@ -154,6 +154,7 @@ describe('Item page - Save in the top bar', { timeout: 15_000 }, () => {
   // plain `type="button"`: there is no form.
   it.each([
     ['Tags', 'tags'],
+    ['Vendors', 'vendors'],
   ])('user sees the Save in the top bar on the %s tab, off until a press', async (label, path) => {
     const user = userEvent.setup()
     // Given an item on its Info tab
@@ -183,7 +184,6 @@ describe('Item page - Save in the top bar', { timeout: 15_000 }, () => {
   })
 
   it.each([
-    ['Vendors', 'vendors'],
     ['Recipes', 'recipes'],
     ['Log', 'log'],
   ])('user sees no Save on the %s tab', async (label, path) => {

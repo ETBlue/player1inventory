@@ -15,6 +15,7 @@ import {
   cloudStock,
   cloudTag,
   cloudTagType,
+  cloudVendor,
   LOC_A,
 } from '@/test/cloudFixtures'
 import {
@@ -25,10 +26,11 @@ import {
 } from '@/test/cloudServerStub'
 import { watchUnhandledRejections } from '@/test/unhandledRejections'
 
-// The top bar Save of the item Tags tab, in CLOUD mode (item relations Save,
+// The top bar Save of the item Tags and Vendors tabs, in CLOUD mode (item relations Save,
 // design `docs/features/items/2026-11-27-item-relations-save-design.md`). A
 // press changes only the screen; Save sends ONE `updateItem` with the whole
-// list on screen. The local tests are in `tags.test.tsx`.
+// list on screen. The local tests are in `tags.test.tsx` and
+// `vendors.test.tsx`.
 vi.mock('@/generated/graphql', async (importOriginal) => {
   const { stubGeneratedHooks } = await import('@/test/cloudServerStub')
   return stubGeneratedHooks(await importOriginal())
@@ -242,6 +244,201 @@ describe('Item Tags tab - the Save (cloud)', () => {
     await waitFor(() =>
       expect(cloudServer.calls.useUpdateItemMutation).toEqual([
         { id: 'item-flour', input: { tagIds: ['tag-dairy'] } },
+      ]),
+    )
+    await rejections.settle()
+    expect(rejections.list).toEqual([])
+  })
+})
+
+const COSTCO = cloudVendor('vendor-costco', 'Costco')
+const LIDL = cloudVendor('vendor-lidl', 'Lidl')
+const IHERB = cloudVendor('vendor-iherb', 'iHerb')
+const ALDI = cloudVendor('vendor-aldi', 'Aldi')
+const RICE = cloudItem('item-rice', 'Rice', { vendorIds: ['vendor-costco'] })
+const RICE_A = cloudStock('stock-rice-a', 'item-rice', LOC_A, {
+  targetQuantity: 2,
+  refillThreshold: 1,
+  packedQuantity: 1,
+  unpackedQuantity: 0,
+})
+
+describe('Item Vendors tab - the Save (cloud)', () => {
+  let rejections: ReturnType<typeof watchUnhandledRejections>
+
+  beforeEach(() => {
+    localStorage.setItem('data-mode', 'cloud')
+    localStorage.setItem(activeLocationStorageKey('cloud'), LOC_A)
+    resetCloudServer()
+    seedCloudHousehold(CLOUD_LOCATIONS)
+    cloudServer.queries.useGetItemQuery = { item: RICE }
+    cloudServer.queries.useGetItemsQuery = { items: [RICE] }
+    cloudServer.queries.usePantryDataQuery = {
+      items: [RICE],
+      itemStocks: [RICE_A],
+    }
+    cloudServer.queries.useItemStocksForItemQuery = {
+      itemStocksForItem: [RICE_A],
+    }
+    cloudServer.queries.useGetRecipesQuery = { recipes: [] }
+    cloudServer.queries.useGetTagTypesQuery = { tagTypes: [] }
+    cloudServer.queries.useGetTagsQuery = { tags: [] }
+    cloudServer.queries.useGetVendorsQuery = { vendors: [COSTCO, LIDL, IHERB] }
+    // The server writes the list, and the item reads it back
+    cloudServer.results.useUpdateItemMutation = (vars) => {
+      const input = vars.input as { vendorIds: string[] }
+      const item = { ...RICE, vendorIds: input.vendorIds }
+      cloudServer.queries.useGetItemQuery = { item }
+      return { updateItem: item }
+    }
+    rejections = watchUnhandledRejections()
+  })
+
+  afterEach(() => {
+    rejections.stop()
+    localStorage.removeItem('data-mode')
+    localStorage.removeItem(activeLocationStorageKey('cloud'))
+  })
+
+  function renderPage() {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const router = createRouter({
+      routeTree,
+      history: createMemoryHistory({
+        initialEntries: ['/items/item-rice/vendors'],
+      }),
+      context: { queryClient },
+    })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+  }
+
+  const saveButton = () => screen.getByRole('button', { name: /^save$/i })
+
+  it('user can press two vendors and save both with one Save', async () => {
+    const user = userEvent.setup()
+    // Given the item with the vendor "Costco"
+    renderPage()
+
+    // When the user presses "Lidl" and "iHerb"
+    await user.click(await screen.findByRole('button', { name: 'Lidl' }))
+    await user.click(screen.getByRole('button', { name: 'iHerb' }))
+
+    // Then nothing is sent yet
+    expect(cloudServer.calls.useUpdateItemMutation).toBeUndefined()
+
+    // When the user presses Save
+    await user.click(saveButton())
+
+    // Then ONE write is sent, with the old vendor kept and both new ones
+    await waitFor(() =>
+      expect(cloudServer.calls.useUpdateItemMutation).toEqual([
+        {
+          id: 'item-rice',
+          input: {
+            vendorIds: ['vendor-costco', 'vendor-lidl', 'vendor-iherb'],
+          },
+        },
+      ]),
+    )
+    expect(await screen.findByText('Saved')).toBeInTheDocument()
+    await waitFor(() => expect(saveButton()).toBeDisabled())
+    await rejections.settle()
+    expect(rejections.list).toEqual([])
+  })
+
+  it('user sees Save loading and cannot press a badge while the vendors save', async () => {
+    const user = userEvent.setup()
+    // Given a server that holds the write
+    const write = holdMutation('useUpdateItemMutation')
+    renderPage()
+
+    // When the user presses "Lidl" and Save
+    await user.click(await screen.findByRole('button', { name: 'Lidl' }))
+    await user.click(saveButton())
+    await waitFor(() =>
+      expect(cloudServer.calls.useUpdateItemMutation).toHaveLength(1),
+    )
+
+    // Then Save shows a spinner and is off, and every badge is disabled
+    await waitFor(() => expect(saveButton()).toBeDisabled())
+    expect(saveButton().querySelector('.animate-spin')).not.toBeNull()
+    const iherb = screen.getByRole('button', { name: 'iHerb' })
+    expect(iherb).toHaveAttribute('aria-disabled', 'true')
+
+    // When the user presses "iHerb" before the write is answered
+    await user.click(iherb)
+    expect(iherb).toHaveAttribute('aria-pressed', 'false')
+
+    // When the server answers
+    write.release()
+
+    // Then "iHerb" was never sent, and there is nothing left to save
+    expect(await screen.findByText('Saved')).toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'iHerb' })).not.toHaveAttribute(
+        'aria-disabled',
+      ),
+    )
+    expect(saveButton()).toBeDisabled()
+    expect(cloudServer.calls.useUpdateItemMutation).toEqual([
+      {
+        id: 'item-rice',
+        input: { vendorIds: ['vendor-costco', 'vendor-lidl'] },
+      },
+    ])
+    await rejections.settle()
+    expect(rejections.list).toEqual([])
+  })
+
+  it('user sees a new vendor stay selected when the vendor list arrives late', async () => {
+    const user = userEvent.setup()
+    // Given a server that creates "Aldi", while the vendor list is read
+    // again only later
+    cloudServer.results.useCreateVendorMutation = () => ({ createVendor: ALDI })
+    renderPage()
+
+    // When the user adds a vendor named "Aldi"
+    await user.click(await screen.findByRole('button', { name: /new vendor/i }))
+    await user.type(screen.getByLabelText(/name/i), 'Aldi')
+    await user.click(screen.getByRole('button', { name: /add vendor/i }))
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+    )
+    expect(screen.queryByRole('button', { name: 'Aldi' })).toBeNull()
+    expect(saveButton()).toBeEnabled()
+
+    // When another tab takes "Costco" off the item meanwhile, so the draft
+    // is cleaned up while the list still has no "Aldi"
+    cloudServer.queries.useGetItemQuery = { item: { ...RICE, vendorIds: [] } }
+    await user.click(screen.getByRole('button', { name: /new vendor/i }))
+    await user.keyboard('{Escape}')
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Costco', pressed: false }),
+      ).toBeInTheDocument(),
+    )
+
+    // And the vendor list arrives with "Aldi"
+    cloudServer.queries.useGetVendorsQuery = {
+      vendors: [COSTCO, LIDL, IHERB, ALDI],
+    }
+    await user.click(screen.getByRole('button', { name: /new vendor/i }))
+    await user.keyboard('{Escape}')
+
+    // Then the new badge shows as selected, and Save gives it to the item
+    expect(
+      await screen.findByRole('button', { name: 'Aldi', pressed: true }),
+    ).toBeInTheDocument()
+    await user.click(saveButton())
+    await waitFor(() =>
+      expect(cloudServer.calls.useUpdateItemMutation).toEqual([
+        { id: 'item-rice', input: { vendorIds: ['vendor-aldi'] } },
       ]),
     )
     await rejections.settle()

@@ -165,7 +165,7 @@ describe('Item page - a tag or vendor created there is assigned (cloud)', () => 
     expect(rejections.list).toEqual([])
   })
 
-  it('user can create a vendor on the item page and it is assigned to the item', async () => {
+  it('user can create a vendor on the item page and give it to the item with Save', async () => {
     const user = userEvent.setup()
     // Given a server that creates the vendor "Aldi"
     cloudServer.results.useCreateVendorMutation = (vars) => ({
@@ -178,8 +178,22 @@ describe('Item page - a tag or vendor created there is assigned (cloud)', () => 
     await user.type(screen.getByLabelText(/name/i), 'Aldi')
     await user.click(screen.getByRole('button', { name: /add vendor/i }))
 
-    // Then the vendor is created, and then given to the item, next to its
-    // old vendor
+    // Then the vendor is created, the dialog closes, and the create sends no
+    // item write
+    await waitFor(() =>
+      expect(cloudServer.calls.useCreateVendorMutation).toEqual([
+        expect.objectContaining({ name: 'Aldi' }),
+      ]),
+    )
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+    )
+    expect(cloudServer.calls.useUpdateItemMutation).toBeUndefined()
+
+    // When the user presses Save
+    await user.click(screen.getByRole('button', { name: /^save$/i }))
+
+    // Then the vendor is given to the item, next to its old vendor
     await waitFor(() =>
       expect(cloudServer.calls.useUpdateItemMutation).toEqual([
         {
@@ -188,18 +202,12 @@ describe('Item page - a tag or vendor created there is assigned (cloud)', () => 
         },
       ]),
     )
-    expect(cloudServer.calls.useCreateVendorMutation).toEqual([
-      expect.objectContaining({ name: 'Aldi' }),
-    ])
-    // And the dialog has closed, with no error
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(cloudServer.calls.useCreateVendorMutation).toHaveLength(1)
     expect(toastError).not.toHaveBeenCalled()
     await rejections.settle()
     expect(rejections.list).toEqual([])
   })
 })
-
-const SAVE_FAILED = 'Could not save the change. Please try again.'
 
 describe('Item page - a new tag or vendor shows as selected at once (cloud)', () => {
   let rejections: ReturnType<typeof watchUnhandledRejections>
@@ -295,96 +303,21 @@ describe('Item page - a new tag or vendor shows as selected at once (cloud)', ()
     expect(rejections.list).toEqual([])
   })
 
-  it('user sees a new vendor as selected while it is still being assigned', async () => {
+  it('user sees a new vendor as selected at once, with Save on', async () => {
     const user = userEvent.setup()
-    // Given a server that holds the assign
-    const assign = holdMutation('useUpdateItemMutation')
     renderPage('/items/item-flour/vendors')
 
     // When the user adds a vendor named "Aldi"
     await addVendor(user)
 
-    // Then the new badge shows as selected while the assign is in flight
+    // Then the new badge shows as selected, not busy, and Save is on
     const badge = await screen.findByRole('button', { name: 'Aldi' })
-    await waitFor(() =>
-      expect(cloudServer.calls.useUpdateItemMutation).toHaveLength(1),
-    )
     expect(badge).toHaveAttribute('aria-pressed', 'true')
-    expect(badge).toHaveAttribute('aria-busy', 'true')
-
-    // When the assign is saved (Apollo writes the answer to the item)
-    cloudServer.queries.useGetItemQuery = {
-      item: { ...FLOUR, vendorIds: ['vendor-costco', 'vendor-aldi'] },
-    }
-    assign.release()
-
-    // Then the badge stays selected and is no longer busy, with no error
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Aldi' })).not.toHaveAttribute(
-        'aria-busy',
-      ),
-    )
-    expect(screen.getByRole('button', { name: 'Aldi' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    )
+    expect(badge).not.toHaveAttribute('aria-busy')
+    expect(screen.getByRole('button', { name: /^save$/i })).toBeEnabled()
+    // And nothing but the create was sent
+    expect(cloudServer.calls.useUpdateItemMutation).toBeUndefined()
     expect(toastError).not.toHaveBeenCalled()
-    await rejections.settle()
-    expect(rejections.list).toEqual([])
-  })
-
-  it('user sees a new vendor go back to not selected when the assign fails', async () => {
-    const user = userEvent.setup()
-    // Given a server that holds the assign, then refuses it
-    const assign = holdMutation('useUpdateItemMutation')
-    renderPage('/items/item-flour/vendors')
-
-    // When the user adds a vendor named "Aldi"
-    await addVendor(user)
-    const badge = await screen.findByRole('button', { name: 'Aldi' })
-    expect(badge).toHaveAttribute('aria-pressed', 'true')
-
-    // And the server refuses the assign
-    cloudServer.failing.add('useUpdateItemMutation')
-    assign.release()
-
-    // Then the badge goes back to not selected, and a message says so
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Aldi' })).toHaveAttribute(
-        'aria-pressed',
-        'false',
-      ),
-    )
-    expect(toastError).toHaveBeenCalledWith(SAVE_FAILED)
-    expect(cloudServer.calls.useUpdateItemMutation).toHaveLength(1)
-    await rejections.settle()
-    expect(rejections.list).toEqual([])
-  })
-
-  it('user cannot toggle another vendor while a new vendor is being assigned', async () => {
-    const user = userEvent.setup()
-    // Given a server that holds the assign of a new vendor "Aldi"
-    const assign = holdMutation('useUpdateItemMutation')
-    renderPage('/items/item-flour/vendors')
-    await addVendor(user)
-    await screen.findByRole('button', { name: 'Aldi' })
-    await waitFor(() =>
-      expect(cloudServer.calls.useUpdateItemMutation).toHaveLength(1),
-    )
-
-    // When the user presses the old vendor "Costco" before the assign is saved
-    await user.click(screen.getByRole('button', { name: 'Costco' }))
-
-    // Then no second write is sent: it would send the whole list too, and
-    // could undo the assign
-    expect(cloudServer.calls.useUpdateItemMutation).toHaveLength(1)
-    assign.release()
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Aldi' })).not.toHaveAttribute(
-        'aria-busy',
-      ),
-    )
-    expect(cloudServer.calls.useUpdateItemMutation).toHaveLength(1)
     await rejections.settle()
     expect(rejections.list).toEqual([])
   })

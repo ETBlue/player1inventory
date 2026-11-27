@@ -148,9 +148,9 @@ function TagsTab() {
   // A press changes only the screen; the top bar Save writes the list (item
   // relations Save, design
   // `docs/features/items/2026-11-27-item-relations-save-design.md`). The
-  // draft replaces the issue #402 state (`assigningTagIds`, `loadingTagId`):
-  // a new tag goes into the draft the moment it is created, so it shows as
-  // selected through the same rule as a pressed badge.
+  // draft replaces the issue #402 state (`assigningTagIds`) and the press
+  // spinner (`loadingTagId`): a new tag goes into the draft the moment it is
+  // created, so it shows as selected through the same rule as a press.
   const draft = useRelationDraft(
     item?.tagIds ?? [],
     allTags?.map((tag) => tag.id),

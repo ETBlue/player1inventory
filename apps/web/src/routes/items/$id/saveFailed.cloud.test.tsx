@@ -199,8 +199,8 @@ describe('Item pages - a failed cloud save', () => {
 
   // The Tags, Vendors and Recipes tabs (under a "Relation" tab until
   // 2026-11-24). Each "New …" dialog is its own write. Since the item
-  // relations Save the badge presses of the Tags tab are written by its
-  // top bar Save, so a refused Save keeps the presses on screen.
+  // relations Save the badge presses of the Tags and Vendors tabs are written
+  // by their top bar Save, so a refused Save keeps the presses on screen.
   describe('Tags, Vendors and Recipes tabs', () => {
     beforeEach(() => {
       cloudServer.queries.useGetTagTypesQuery = {
@@ -294,49 +294,29 @@ describe('Item pages - a failed cloud save', () => {
       expect(screen.getByLabelText(/name/i)).toHaveValue('Season')
     })
 
-    it('user sees a message when the server refuses a vendor assignment', async () => {
+    it('user sees a message when the server refuses the Vendors Save, and the press is kept', async () => {
       const user = userEvent.setup()
       // Given a server that refuses the item write
       cloudServer.failing.add('useUpdateItemMutation')
-      renderPage('/items/item-flour/vendors')
+      const router = renderPage('/items/item-flour/vendors')
 
-      // When the user presses the vendor badge
+      // When the user presses the vendor badge and Save
       await user.click(await screen.findByRole('button', { name: /costco/i }))
+      await user.click(screen.getByRole('button', { name: /^save$/i }))
 
-      // Then the write was sent, a message shows, and the badge is unpressed
-      await expectSaveFailedAndNoRejection()
-      expect(cloudServer.calls.useUpdateItemMutation).toHaveLength(1)
-      await waitFor(() =>
-        expect(
-          screen.getByRole('button', { name: /costco/i, pressed: false }),
-        ).toBeInTheDocument(),
-      )
-    })
-
-    it('user sees a message when the server refuses to assign a new vendor', async () => {
-      const user = userEvent.setup()
-      // Given a server that creates the vendor but refuses the item write
-      cloudServer.results.useCreateVendorMutation = (vars) => ({
-        createVendor: cloudVendor('vendor-new', String(vars.name)),
-      })
-      cloudServer.failing.add('useUpdateItemMutation')
-      renderPage('/items/item-flour/vendors')
-
-      // When the user adds a vendor named "Aldi"
-      await user.click(
-        await screen.findByRole('button', { name: /new vendor/i }),
-      )
-      await user.type(screen.getByLabelText(/name/i), 'Aldi')
-      await user.click(screen.getByRole('button', { name: /add vendor/i }))
-
-      // Then both writes were sent, and a message says the assign failed
-      await expectSaveFailedAndNoRejection()
-      expect(cloudServer.calls.useCreateVendorMutation).toHaveLength(1)
+      // Then the write was sent, and a message says why it was refused
+      await expectSaveFailedAndNoRejection(CATALOG_FORBIDDEN)
       expect(cloudServer.calls.useUpdateItemMutation).toEqual([
-        expect.objectContaining({
-          input: expect.objectContaining({ vendorIds: ['vendor-new'] }),
-        }),
+        { id: 'item-flour', input: { vendorIds: ['vendor-costco'] } },
       ])
+      // And the page stays, the badge is still pressed, and Save is on again
+      expect(router.state.location.pathname).toBe('/items/item-flour/vendors')
+      expect(
+        screen.getByRole('button', { name: /costco/i, pressed: true }),
+      ).toBeInTheDocument()
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /^save$/i })).toBeEnabled(),
+      )
     })
 
     it('user sees a message when the server refuses a recipe assignment', async () => {
