@@ -487,7 +487,7 @@ its release #449 and the Active switch PR 2 #447). Not merged; not deployed.
 | `919255b6`, `b1e49baa` | review | a row created during a Save stays in the draft (`reset(sent)`); a held Enter or Space presses once |
 | `5baa9b07` | B.7 | the guard, the dialog and the read-only view, as tests |
 | `3ba44475`, `31ad8fdc`, `d34f3569` | B.8 | E2E: `saveRelations()`, the six a11y scans with a pressed badge, the new `item-relations-save.spec.ts` |
-| `cbfbc8a0`, `7fad441d`, `958c2532`, and the line-number commit after them | B.9 | three review fixes (below), then these docs |
+| `cbfbc8a0`, `7fad441d`, `958c2532`, `af914b01`, `62c6626a` | B.9 | three review fixes (below), then these docs |
 
 What differs from this design and the plan:
 
@@ -552,7 +552,21 @@ Measured numbers (2026-11-28):
 | `CLOUD_SPECS` | 44 of 48 spec files | **45 of 49** |
 
 The gate (`pnpm lint`, root `pnpm build` with no `TS6385`, `build-storybook`, `pnpm check`,
-`pnpm test`) was green at the end of B.9. The E2E gate is below.
+`pnpm test`) was green at the end of B.9.
+
+The E2E gate, `pnpm test:e2e:all` at `62c6626a` (the docs commit; the code is the same as
+`af914b01`), 2026-11-28, first try, no retry, no flaky test, **all green**, about 23 minutes:
+
+| Row | Database | Time | Result |
+|---|---|---|---|
+| `local` | — | 4m44s | 220 passed / 13 skipped |
+| `cloud` | the local E2E database (23 migrations applied, 23 folders) | 4m44s | 251 passed / 8 skipped |
+| `cloud-neon` | the Neon test branch (the 8 `NEON_SPECS` files) | 11m46s | 40 passed |
+| `pwa` | — | 1m45s | 77 passed |
+
+Load average 4.88 (1 min) at the start, 2.39 at the end.
+`item-relations-save.spec.ts` is not in `NEON_SPECS`, so it has run on Neon only if a
+checkpoint gate (`pnpm test:e2e:all:neon`) runs it.
 
 ## Release order
 
