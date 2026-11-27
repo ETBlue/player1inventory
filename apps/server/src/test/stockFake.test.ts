@@ -1031,3 +1031,60 @@ describe('stockFake returns copies, not the stored rows', () => {
     expect(fake.state.itemStocks.find((s) => s.id === 'st_1')?.packedQuantity).toBe(2)
   })
 })
+
+// `ItemStock.isActive` (2026-11-26 design). The real column is
+// `NOT NULL DEFAULT true`. The fake keeps the value like any other column, but
+// it does NOT apply the default, so a writer that forgets the value is visible.
+describe('stockFake keeps isActive and adds no default', () => {
+  function fresh() {
+    const fake = createStockFake()
+    fake.reset(
+      [{ id: 'loc_a', householdId: 'hh_1' }],
+      [makeStock({ id: 'st_off', itemId: 'item_off', locationId: 'loc_a', isActive: false })],
+    )
+    return fake
+  }
+
+  it('a create with no isActive leaves the key out (no default true)', async () => {
+    const fake = fresh()
+    const row = await fake.client.itemStock.create({ data: { itemId: 'item_1', locationId: 'loc_a' } })
+    expect(row.isActive).toBeUndefined()
+    expect(Object.keys(fake.state.itemStocks[1] ?? {})).not.toContain('isActive')
+  })
+
+  it('a create and an upsert create keep a given false', async () => {
+    const fake = fresh()
+    await fake.client.itemStock.create({ data: { itemId: 'item_1', locationId: 'loc_a', isActive: false } })
+    const up = await fake.client.itemStock.upsert({
+      where: { itemId_locationId: { itemId: 'item_2', locationId: 'loc_a' } },
+      create: { itemId: 'item_2', locationId: 'loc_a', isActive: false },
+      update: {},
+    })
+    expect(fake.state.itemStocks.find((s) => s.itemId === 'item_1')?.isActive).toBe(false)
+    expect(up.isActive).toBe(false)
+  })
+
+  it('an update with no isActive keeps the stored value; a boolean replaces it', async () => {
+    const fake = fresh()
+    const where = { itemId_locationId: { itemId: 'item_off', locationId: 'loc_a' } }
+    await fake.client.itemStock.upsert({ where, create: { itemId: 'item_off', locationId: 'loc_a' }, update: { packedQuantity: 2 } })
+    expect(fake.state.itemStocks[0]?.isActive).toBe(false)
+    await fake.client.itemStock.upsert({ where, create: { itemId: 'item_off', locationId: 'loc_a' }, update: { isActive: true } })
+    expect(fake.state.itemStocks[0]?.isActive).toBe(true)
+  })
+
+  it('null is refused in a create and in an update, like a NOT NULL column', async () => {
+    const fake = fresh()
+    await expect(
+      fake.client.itemStock.create({ data: { itemId: 'item_1', locationId: 'loc_a', isActive: null } }),
+    ).rejects.toThrow(/NOT NULL/)
+    await expect(
+      fake.client.itemStock.upsert({
+        where: { itemId_locationId: { itemId: 'item_off', locationId: 'loc_a' } },
+        create: { itemId: 'item_off', locationId: 'loc_a' },
+        update: { isActive: null },
+      }),
+    ).rejects.toThrow(/NOT NULL/)
+    expect(fake.state.itemStocks[0]?.isActive).toBe(false)
+  })
+})

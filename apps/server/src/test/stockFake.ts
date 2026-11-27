@@ -107,6 +107,13 @@ export interface FakeStock {
   packedQuantity: number
   unpackedQuantity: number
   dueDate: Date | null
+  // The "Active here" switch (2026-11-26 design). OPTIONAL in the fake on
+  // purpose. The real column is `NOT NULL DEFAULT true`, but this fake does
+  // NOT apply that default: a row created with no `isActive` has no key at
+  // all. So a writer that forgets to send `isActive: true` is visible in a
+  // test (the row reads `undefined`, not `true`). `null` is refused, the way
+  // Postgres refuses `NULL` on a `NOT NULL` column.
+  isActive?: boolean
   createdAt: Date
   updatedAt: Date
 }
@@ -381,6 +388,14 @@ function copy<T>(row: T): T {
   return structuredClone(row)
 }
 
+// `ItemStock.isActive` is `NOT NULL`. Prisma refuses `null` for it, in a
+// `create` and in an `update`. `undefined` means "not mentioned".
+function checkIsActive(data: Record<string, unknown>): void {
+  if (data.isActive === null) {
+    throw new Error('ItemStock.isActive is NOT NULL: null is refused')
+  }
+}
+
 function applyNumber(current: number, next: NumberWrite | undefined): number {
   if (next === undefined) return current
   return typeof next === 'number' ? next : current + next.increment
@@ -490,6 +505,8 @@ export function createStockFake() {
       data.refillThreshold as NumberWrite,
     )
     if ('dueDate' in data) row.dueDate = (data.dueDate as Date | null) ?? null
+    checkIsActive(data)
+    if (data.isActive !== undefined) row.isActive = data.isActive as boolean
     // `'key' in data` per field, not `data.key !== undefined`: the difference
     // between "the writer did not mention this column" and "the writer set it"
     // is the whole question for `itemId` and `locationId`. A resolver that
@@ -526,11 +543,14 @@ export function createStockFake() {
     if (state.itemStocks.some((s) => s.itemId === itemId && s.locationId === locationId)) {
       throw new UniqueConstraintError(itemId, locationId)
     }
+    checkIsActive(data)
     const now = new Date()
     const row = makeStock({
       id,
       itemId,
       locationId,
+      // No default here: see `FakeStock.isActive`.
+      ...(data.isActive !== undefined ? { isActive: data.isActive as boolean } : {}),
       targetQuantity: (data.targetQuantity as number) ?? 0,
       refillThreshold: (data.refillThreshold as number) ?? 0,
       packedQuantity: (data.packedQuantity as number) ?? 0,
