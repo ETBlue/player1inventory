@@ -82,3 +82,18 @@ still open, at its end.
   `feature/item-stock-active-web` at `bc72878f`, and in its plan). The two PRs share docs, the
   i18n files and maybe `e2e/playwright.config.ts`, not that file. See the design doc,
   *Release order*.
+
+## Questions 4 to 10 (answered 2026-11-27)
+
+The design doc raised seven more questions (*Owner questions*, 4 to 10). The owner answered
+"all A":
+
+| # | Question | Answer |
+|---|---|---|
+| 4 | `defaultAmount` when Save adds the item to a recipe | A: `consumeAmount \|\| 1`, the same as the other three places (today this tab adds `0`) |
+| 5 | A manager is demoted while presses are unsaved | A: drop the presses; the tab shows the saved state, read only |
+| 6 | A refused create or Save (`FORBIDDEN`) | A: `showSaveError` shows `settings.catalogReadOnlyItem` |
+| 7 | `updateItem`'s tag and vendor lists are written outside a transaction | A: one `prisma.$transaction`, in PR A |
+| 8 | The badges cannot be reached by keyboard | A: fix in PR B (`tabIndex`, Enter and Space) |
+| 9 | Presses while a Save runs | A: ignored (`aria-disabled`) |
+| 10 | A draft row is deleted in another tab | A: it leaves the draft quietly |

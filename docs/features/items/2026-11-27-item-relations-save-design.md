@@ -472,33 +472,33 @@ press; the pantry group views' "add to" buttons; `createTag`, `createTagType`, `
    (`components/pantry/RecipeDetailView.tsx:206`,
    `routes/settings/household/recipes/$id/items.tsx:244`, `db/operations.ts:639`). The approved
    outline said `consumeAmount || 1` and called it today's rule; for this tab it is a change.
-   - A (recommended): `consumeAmount || 1`, the same as the other three. A new ingredient is
+   - **A — chosen by the owner, 2026-11-27.** (recommended): `consumeAmount || 1`, the same as the other three. A new ingredient is
      then used by default when cooking.
    - B: keep `0` for this tab.
 5. **A manager loses the role (demoted in another tab) while the tab has unsaved presses.**
-   - A (recommended): drop the presses; the tab shows the saved state, read only, with no Save.
+   - **A — chosen by the owner, 2026-11-27.** (recommended): drop the presses; the tab shows the saved state, read only, with no Save.
      They could not be saved anyway.
    - B: keep the presses on screen, disabled, with no Save, until the person leaves.
 6. **A refused tag, tag type or recipe create (or a refused Save) shows only "Could not save the
    change."** Reached only after the role was taken away while the page was open.
-   - A (recommended): in `showSaveError`, a `FORBIDDEN` error shows "Only a household owner or
+   - **A — chosen by the owner, 2026-11-27.** (recommended): in `showSaveError`, a `FORBIDDEN` error shows "Only a household owner or
      manager can change this." (`settings.catalogReadOnlyItem`, an existing key). One change
      covers every caller.
    - B: leave the generic message.
 7. **`updateItem` replaces the tag and vendor lists in two writes outside a transaction.** If
    the second fails, the item has no tags until the next Save.
-   - A (recommended): in PR A, put the two `deleteMany` / `createMany` pairs and the item update
+   - **A — chosen by the owner, 2026-11-27.** (recommended): in PR A, put the two `deleteMany` / `createMany` pairs and the item update
      in one `prisma.$transaction`. Server only, no schema change.
    - B: leave it for a separate fix.
 8. **The badges cannot be reached by keyboard** (no `tabIndex`, no key handler).
-   - A (recommended): fix it in PR B, while the three tabs are rewritten: `tabIndex={0}` when
+   - **A — chosen by the owner, 2026-11-27.** (recommended): fix it in PR B, while the three tabs are rewritten: `tabIndex={0}` when
      pressable, Enter and Space press it.
    - B: a separate PR.
 9. **Presses while a Save runs.**
-   - A (recommended): ignored; the badges are `aria-disabled` until the Save answers. The list
+   - **A — chosen by the owner, 2026-11-27.** (recommended): ignored; the badges are `aria-disabled` until the Save answers. The list
      sent is the list on screen.
    - B: allowed, kept as a new draft after the Save.
 10. **A tag, vendor or recipe in the draft is deleted in another tab before Save.**
-    - A (recommended): it leaves the draft quietly when the list is read again (its badge is
+    - **A — chosen by the owner, 2026-11-27.** (recommended): it leaves the draft quietly when the list is read again (its badge is
       gone from the page anyway).
     - B: the same, plus a toast that says one change was dropped.
