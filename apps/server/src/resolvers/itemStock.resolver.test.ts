@@ -421,6 +421,32 @@ describe('itemStock resolvers', () => {
     }
   })
 
+  it('allItemStocks returns the stored isActive of each row, not one made from the target', async () => {
+    // Given three rows of user-a, each with a stored switch. Two of them do
+    // NOT match the old rule "target 0 = inactive":
+    //   - st-home: target 3, active (the old rule agrees)
+    //   - st-garage: target 9, INACTIVE (the old rule would say active)
+    //   - st-zero: target 0, ACTIVE (the old rule would say inactive)
+    // So an export that drops the field, or that rebuilds it from the
+    // target, gives a different answer for at least one row.
+    stockState.itemStocks = [
+      stock({ id: 'st-home', itemId: 'item-milk', locationId: 'loc-a', targetQuantity: 3, isActive: true }),
+      stock({ id: 'st-zero', itemId: 'item-new', locationId: 'loc-a', targetQuantity: 0, isActive: true }),
+      stock({ id: 'st-garage', itemId: 'item-far', locationId: 'loc-a2', targetQuantity: 9, isActive: false }),
+    ]
+
+    // When user-a reads allItemStocks for an export
+    const res = await run(`query Q { allItemStocks { id targetQuantity isActive } }`)
+
+    // Then each row carries the switch that is stored, unchanged
+    expect(res.errors).toBeUndefined()
+    expect(res.data?.allItemStocks).toEqual([
+      { id: 'st-home', targetQuantity: 3, isActive: true },
+      { id: 'st-zero', targetQuantity: 0, isActive: true },
+      { id: 'st-garage', targetQuantity: 9, isActive: false },
+    ])
+  })
+
   it('user can upsert a stock that does not exist yet', async () => {
     const res = await run(
       `mutation M($i: ID!, $l: ID!, $in: ItemStockInput!) { upsertItemStock(itemId: $i, locationId: $l, input: $in) { targetQuantity packedQuantity } }`,

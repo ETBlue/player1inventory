@@ -57,6 +57,26 @@ export function isConsumable(item: {
   return item.consumable !== false
 }
 
+/**
+ * Is this item active at this location? A boolean `isActive` decides, whatever
+ * the target is (an active row with target 0 has "no target"). A missing or
+ * `null` value is old data: a Dexie row, a backup file or a test fixture
+ * written before the field existed. It keeps the old rule, so target 0 reads
+ * as inactive. Every writer writes the value; this fallback is only for rows
+ * nobody wrote since then.
+ *
+ * The parameter is structural on purpose. The `ItemStock` interface below
+ * gains `isActive` in a later change; this function does not need it.
+ */
+export function isStockActive(stock: {
+  isActive?: boolean | null | undefined
+  targetQuantity: number
+}): boolean {
+  return typeof stock.isActive === 'boolean'
+    ? stock.isActive
+    : stock.targetQuantity !== 0
+}
+
 // Per-(item × location) stocking STATE. A (itemId, locationId) pair is unique.
 // An item is "stocked at" a location iff an ItemStock row exists for that pair.
 //

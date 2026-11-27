@@ -10,7 +10,7 @@ import {
   requireLocationRole,
   requireOwnRowOrUnclaimed,
 } from '../lib/authz.js'
-import { parseCartId } from '@p1i/types'
+import { isStockActive, parseCartId } from '@p1i/types'
 import {
   createFirstLocation,
   deleteHouseholdData,
@@ -2068,7 +2068,8 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       const touched: ChangedLocation[] = []
       try {
         for (const stock of itemStocks) {
-          const { id, itemId, locationId, createdAt, updatedAt, dueDate, ...quantities } = stock
+          const { id, itemId, locationId, createdAt, updatedAt, dueDate, isActive, ...quantities } =
+            stock
           // NUL as the separator, not ':'. Neither id generator makes one
           // (`crypto.randomUUID()` locally, `@default(cuid())` in cloud) but
           // `ItemInput.id` is stored verbatim, so a hand-edited backup can
@@ -2095,6 +2096,10 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
               itemId,
               locationId,
               ...quantities,
+              // Taken out of the spread: an old backup sends no value, and
+              // GraphQL gives `null`, which Prisma refuses on this NOT NULL
+              // column. `isStockActive` gives the old meaning then.
+              isActive: isStockActive({ isActive, targetQuantity: quantities.targetQuantity }),
               dueDate: dueDate ? new Date(dueDate) : null,
               createdAt: new Date(createdAt),
               updatedAt: new Date(updatedAt),
@@ -2279,9 +2284,14 @@ export const importResolvers: Pick<Resolvers, 'Mutation'> = {
       const touched: ChangedLocation[] = []
       try {
         for (const stock of itemStocks) {
-          const { id, itemId, locationId, createdAt, updatedAt, dueDate, ...quantities } = stock
+          const { id, itemId, locationId, createdAt, updatedAt, dueDate, isActive, ...quantities } =
+            stock
           const state = {
             ...quantities,
+            // In `state`, so `create` AND `update` write it: a replace takes
+            // the file's value, and an old file (no value, or `null`) gets the
+            // old meaning from `isStockActive`, never the stored value.
+            isActive: isStockActive({ isActive, targetQuantity: quantities.targetQuantity }),
             dueDate: dueDate ? new Date(dueDate) : null,
             createdAt: new Date(createdAt),
             updatedAt: new Date(updatedAt),

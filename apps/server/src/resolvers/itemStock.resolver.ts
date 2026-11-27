@@ -19,14 +19,16 @@ import type { Item, ItemStock, Resolvers } from '../generated/graphql.js'
 import type { Prisma, ItemStock as PrismaItemStock } from '@prisma/client'
 import type { ChangeKind } from '../lib/liveEvents.js'
 
-// The five state fields, all optional on input. A key absent from `input` is
-// left untouched on an existing row — this is a merge, not a replace.
+// The five state fields and the `isActive` switch, all optional on input. A
+// key absent from `input` is left untouched on an existing row — this is a
+// merge, not a replace.
 type StockInput = {
   targetQuantity?: number | null
   refillThreshold?: number | null
   packedQuantity?: number | null
   unpackedQuantity?: number | null
   dueDate?: string | null
+  isActive?: boolean | null
 }
 
 // Narrower than `StockWrite`: every number here is a plain number, never
@@ -40,6 +42,7 @@ type StockData = {
   packedQuantity?: number
   unpackedQuantity?: number
   dueDate?: Date | null
+  isActive?: boolean
 }
 
 function toData(input: StockInput): StockData {
@@ -49,6 +52,9 @@ function toData(input: StockInput): StockData {
   if (input.packedQuantity != null) data.packedQuantity = input.packedQuantity
   if (input.unpackedQuantity != null) data.unpackedQuantity = input.unpackedQuantity
   if ('dueDate' in input) data.dueDate = input.dueDate ? new Date(input.dueDate) : null
+  // Only a boolean is copied. `null` means "leave it", like a missing key:
+  // the column is NOT NULL, so Prisma would refuse a `null`.
+  if (typeof input.isActive === 'boolean') data.isActive = input.isActive
   return data
 }
 
