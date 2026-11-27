@@ -12,6 +12,10 @@ type ItemStock {
   packedQuantity: Float!
   unpackedQuantity: Float!
   dueDate: String
+  # The "Active here" switch: is this item in use at this location?
+  # Independent of the target since 2026-11-26: target 0 with `true` means
+  # "active, no target". Read it through `isStockActive` (@p1i/types).
+  isActive: Boolean!
   createdAt: String!
   updatedAt: String!
 }
@@ -33,8 +37,9 @@ extend type Query {
 extend type Mutation {
   upsertItemStock(itemId: ID!, locationId: ID!, input: ItemStockInput!): ItemStock!
   # Copy-on-add. Inherits targetQuantity, refillThreshold and dueDate from the
-  # source location; packed/unpacked always start at 0. Returns the existing row
-  # unchanged if the item is already stocked there.
+  # source location; packed/unpacked always start at 0, and the new row is
+  # always active (`isActive` is NOT copied from the source). Returns the
+  # existing row unchanged if the item is already stocked there.
   addItemToLocation(itemId: ID!, locationId: ID!, sourceLocationId: ID): ItemStock!
   removeItemFromLocation(itemId: ID!, locationId: ID!): Boolean!
   # One unit switch, applied as ONE server-side transaction: the Item's
@@ -87,4 +92,9 @@ input ItemStockInput {
   packedQuantity: Float
   unpackedQuantity: Float
   dueDate: String
+  # The "Active here" switch. Optional, so a web bundle from before the switch
+  # stays valid. `null` and a missing key both mean "leave it": the column is
+  # NOT NULL, so `null` cannot be written. A NEW row with no value opens
+  # active (`writeStock`, lib/itemStockWrite.ts).
+  isActive: Boolean
 }
