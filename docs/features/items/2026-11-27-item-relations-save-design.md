@@ -315,7 +315,10 @@ half does, and the code is the same shape).
 4. `toAdd` not empty and `!isConsumable(item)`: `throw new NotConsumableError([itemId])`
    (`showSaveError` shows `common.notConsumable` for it, `lib/saveError.ts:24-26`).
 5. Each recipe in `toRemove`: its `items` without this item; each in `toAdd`: its `items` plus
-   `{ itemId, defaultAmount: item.consumeAmount || 1 }`; `updatedAt: now`.
+   `{ itemId, defaultAmount: item.consumeAmount > 0 ? item.consumeAmount : 1 }`; `updatedAt: now`.
+   (This said `consumeAmount || 1` until 2026-11-28. As built, task B.1 uses the server's
+   rule, `consumeAmount > 0 ? consumeAmount : 1`, so the two modes give the same answer. The
+   two forms differ only for a negative amount, which `|| 1` would keep.)
 6. Return the changed recipes.
 
 Every await inside is a Dexie promise, so the zone rule of *Transactional batches*
@@ -522,6 +525,22 @@ press; the pantry group views' "add to" buttons; `createTag`, `createTagType`, `
    - **A — chosen by the owner, 2026-11-27.** (recommended): in `showSaveError`, a `FORBIDDEN` error shows "Only a household owner or
      manager can change this." (`settings.catalogReadOnlyItem`, an existing key). One change
      covers every caller.
+   - **As built (task B.1, 2026-11-28): opt-in, not every caller.** `showSaveError(err, {
+     catalog: true })` (`apps/web/src/lib/saveError.ts`) shows the text; without the option a
+     `FORBIDDEN` still shows "Could not save the change.". The reason: many callers send
+     LOCATION writes (stock, carts, the location pages), where `FORBIDDEN` means the person is
+     only a viewer of the location, and the catalog text would be wrong there. So tasks B.4 to
+     B.6 must pass `{ catalog: true }` at these calls, all catalog writes:
+
+     | Call | Tab | Pass `{ catalog: true }` |
+     |---|---|---|
+     | `createTagType` | Tags | yes |
+     | `createTag` | Tags | yes |
+     | `createRecipe` | Recipes | yes |
+     | Save (`updateItem` with `tagIds`) | Tags | yes |
+     | Save (`updateItem` with `vendorIds`) | Vendors | yes |
+     | Save (`setItemRecipes`) | Recipes | yes |
+     | `createVendor` | Vendors | no: it keeps `showVendorCreateError`, which already shows its own `FORBIDDEN` text ("Only a household owner or manager can add a vendor."). `createVendor` also writes a cart, so its `FORBIDDEN` is not only a catalog refusal |
    - B: leave the generic message.
 7. **`updateItem` replaces the tag and vendor lists in two writes outside a transaction.** If
    the second fails, the item has no tags until the next Save.

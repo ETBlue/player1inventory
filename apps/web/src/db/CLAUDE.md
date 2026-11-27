@@ -197,7 +197,17 @@ Cascades run as sequential awaits rather than one Dexie transaction, consistentl
 
 ## Transactional batches
 
-Five operations wrap their writes in a single `db.transaction('rw', …)`. (Since households H3b task B.8, `addToCart` and the import's `importLocalCartItems` also run in one `rw` transaction on `cartItems` alone; see v19 and v20 above.) All of them must declare **every** table they touch (touching an undeclared one throws at runtime, not compile time) and none may `await` a non-Dexie promise inside the body — a Dexie transaction is zone-scoped, and awaiting a foreign promise can detach the zone so later writes commit *outside* the transaction. **This does not force a caller to compute everything up front**: a plain Dexie read (`db.items.get`, `db.recipes.get`, …) is itself a Dexie promise, so it stays inside the zone and is safe to await mid-transaction — the hazard is specifically a *non*-Dexie await (a network call, a timer, another library's promise), and only `applyShelfFilterPicksBatch` and `setItemRecipesBatch` below actually need the distinction; `consumeRecipesBatch` and `applyUnitSwitchBatch` do compute their rows first, but that is a property of what they happen to need, not a rule the transaction imposes.
+Ten operations wrap their writes in a single `db.transaction('rw', …)`: nine in `operations.ts` and one in `lib/importData.ts` (counted 2026-11-28 with `git grep -n '\.transaction(' -- apps/web/src ':!*.test.*'`; count again rather than quote this). The five described in the list below, plus:
+
+| Operation | Tables | Since |
+|---|---|---|
+| `addToCart` | `cartItems` | households H3b task B.8; see v19 and v20 above |
+| `importLocalCartItems` (`lib/importData.ts`) | `cartItems` | households H3b task B.8 |
+| `createRecipe` | `items`, `recipes` | 2026-11-26; see *Only consumable items in a recipe* below |
+| `updateRecipe` | `items`, `recipes` | 2026-11-26; the same section |
+| `removeNonConsumableRecipeLinks` | `items`, `recipes` | 2026-11-26; the same section (the import's last step) |
+
+All of them must declare **every** table they touch (touching an undeclared one throws at runtime, not compile time) and none may `await` a non-Dexie promise inside the body — a Dexie transaction is zone-scoped, and awaiting a foreign promise can detach the zone so later writes commit *outside* the transaction. **This does not force a caller to compute everything up front**: a plain Dexie read (`db.items.get`, `db.recipes.get`, …) is itself a Dexie promise, so it stays inside the zone and is safe to await mid-transaction — the hazard is specifically a *non*-Dexie await (a network call, a timer, another library's promise), and only `applyShelfFilterPicksBatch` and `setItemRecipesBatch` below actually need the distinction; `consumeRecipesBatch` and `applyUnitSwitchBatch` do compute their rows first, but that is a property of what they happen to need, not a rule the transaction imposes.
 
 - **`consumeRecipesBatch`** — cooking's "done": quantities, logs and `lastCookedAt` over `items`, `itemStocks`, `inventoryLogs`, `recipes`. Callers compute the finished rows first and hand them over.
 - **`applyUnitSwitchBatch`** — the Info tab's unit switch over `items`, `itemStocks`, `recipes`: the `Item`'s configuration, one `ItemStock` per location whose tracked quantities the switch moves, and one recipe per `defaultAmount` expressed in the old unit. As separate writes a failure partway left the item on the **new** unit while some locations and recipes still held **old**-unit numbers — mixed units, silently. It shares `updateItem`'s field routing via the internal `writeItemUpdate` rather than re-deriving the rule. Callers compute the finished rows first and hand them over.
