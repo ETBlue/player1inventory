@@ -80,6 +80,7 @@ import {
   cartIdFor,
   DEFAULT_LOCATION_ID,
   isConsumable,
+  isStockActive,
   parseCartId,
 } from '@/types'
 import { deserializeRecipe, parseWireDate } from './deserialization'
@@ -163,6 +164,12 @@ function deserializeItem(rawItem: Item): Item {
 // (JSON.stringify writes absent optional fields as null on cloud payloads).
 // The required timestamps fall back to now for old backups that carry none —
 // the same defence `toShelfInput` applies.
+//
+// `isActive` (the "Active here" switch, Dexie v22) is always written as a
+// boolean. A file from before the switch has none, and gets the old rule
+// (`isStockActive`: target 0 is off), so an old backup restores with the
+// meaning it had. A stored boolean is kept, whatever the target is. The
+// pre-v15 path (`legacyStockFromItem`) goes through here too.
 function deserializeItemStock(raw: Record<string, unknown>): ItemStock {
   const result = { ...raw } as Record<string, unknown>
   for (const key of DATE_FIELD_KEYS) {
@@ -172,6 +179,10 @@ function deserializeItemStock(raw: Record<string, unknown>): ItemStock {
   for (const key of REQUIRED_STOCK_DATE_KEYS) {
     if (result[key] == null) result[key] = new Date()
   }
+  result.isActive = isStockActive({
+    isActive: result.isActive as boolean | null | undefined,
+    targetQuantity: result.targetQuantity as number,
+  })
   return result as unknown as ItemStock
 }
 
@@ -1520,6 +1531,13 @@ export function toLocationInput(location: Record<string, unknown>) {
 // A LOCAL ItemStock row carries extra columns that the cloud keeps on `Item`
 // instead (`targetUnit`, `packageUnit`, `consumeAmount`, ...). They are dropped
 // here, like every other mapper drops what its Input does not accept.
+//
+// `isActive` is optional on the input, but it is always sent, through
+// `isStockActive`: a row from before the switch gets the old rule (target 0 is
+// off), the same rule the server applies when the field is missing. So the web
+// and the server agree on an old file. A cloud EXPORT also goes through this
+// mapper (`sanitiseCloudPayload` in `exportData.ts`), so a cloud backup carries
+// the switch too.
 export function toItemStockInput(stock: Record<string, unknown>) {
   const createdAt =
     stock.createdAt instanceof Date
@@ -1544,6 +1562,10 @@ export function toItemStockInput(stock: Record<string, unknown>) {
     refillThreshold: stock.refillThreshold as number,
     packedQuantity: stock.packedQuantity as number,
     unpackedQuantity: stock.unpackedQuantity as number,
+    isActive: isStockActive({
+      isActive: stock.isActive as boolean | null | undefined,
+      targetQuantity: stock.targetQuantity as number,
+    }),
     dueDate,
     createdAt,
     updatedAt,

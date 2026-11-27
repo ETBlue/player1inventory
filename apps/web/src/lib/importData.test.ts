@@ -6586,3 +6586,106 @@ describe('fetchImportTargetLocations (households H4 task E.4, step 3)', () => {
     })
   })
 })
+
+// The "Active here" switch (`ItemStock.isActive`) in a backup file. A file
+// written before the switch has no value; it gets the old rule, `target !== 0`
+// (`isStockActive`), so an old backup restores with the meaning it had. A file
+// written after keeps its stored value, whatever the target is. Each fixture
+// pairs target 0 with target 5 AND a stored value against its target: with only
+// "no value" rows, "derive where missing" and "derive everywhere" give the same
+// answer.
+describe('the Active here switch in a backup file', () => {
+  beforeEach(clearAllTables)
+  afterEach(clearAllTables)
+
+  function stockRow(
+    id: string,
+    targetQuantity: number,
+    extra: Record<string, unknown> = {},
+  ) {
+    return {
+      id,
+      itemId: `item-${id}`,
+      locationId: 'local',
+      targetQuantity,
+      refillThreshold: 0,
+      packedQuantity: 1,
+      unpackedQuantity: 0,
+      createdAt: new Date('2026-05-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-05-01T00:00:00.000Z'),
+      ...extra,
+    }
+  }
+
+  const ROWS = [
+    stockRow('old-no-target', 0),
+    stockRow('old-target-five', 5),
+    stockRow('new-off-with-target', 5, { isActive: false }),
+    stockRow('new-on-no-target', 0, { isActive: true }),
+  ]
+
+  async function storedIsActive(id: string): Promise<unknown> {
+    return (await db.itemStocks.get(id))?.isActive
+  }
+
+  it('user restoring an old local backup keeps each row’s meaning, and a new backup keeps its switch', async () => {
+    // Given a backup with two rows from before the switch and two after
+    const payload = emptyPayload({
+      items: ROWS.map((r) => makeItem(r.itemId, r.itemId)),
+      itemStocks: ROWS,
+      locations: [
+        {
+          id: 'local',
+          name: 'My Home',
+          order: 0,
+          isDefault: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ],
+    })
+
+    // When restoring it in local mode
+    await importLocalData(payload, 'clear')
+
+    // Then the old rows get the old rule, written out as a boolean
+    expect(await storedIsActive('old-no-target')).toBe(false)
+    expect(await storedIsActive('old-target-five')).toBe(true)
+    // And the new rows keep their stored value
+    expect(await storedIsActive('new-off-with-target')).toBe(false)
+    expect(await storedIsActive('new-on-no-target')).toBe(true)
+  })
+
+  it('user restoring a pre-v15 backup gets the old rule on the stock built from each item', async () => {
+    // Given a pre-v15 backup: stock still inline on the item
+    const payload = emptyPayload({
+      items: [
+        { ...makeItem('no-target', 'Tissue'), targetQuantity: 0 },
+        { ...makeItem('target-nine', 'Milk'), targetQuantity: 9 },
+      ],
+    })
+
+    await importLocalData(payload, 'skip')
+
+    const byItem = async (itemId: string) =>
+      (await db.itemStocks.where('itemId').equals(itemId).first())?.isActive
+    expect(await byItem('no-target')).toBe(false)
+    expect(await byItem('target-nine')).toBe(true)
+  })
+
+  it('a cloud import sends each row’s switch: the old rule for an old row, the stored value for a new one', () => {
+    const sent = ROWS.map((r) => toItemStockInput(r).isActive)
+
+    expect(sent).toEqual([false, true, false, true])
+  })
+
+  it('a cloud import of an Apollo row with a null switch uses the old rule', () => {
+    // JSON writes a missing optional field as null on a cloud backup
+    expect(
+      toItemStockInput({ ...stockRow('a', 0), isActive: null }).isActive,
+    ).toBe(false)
+    expect(
+      toItemStockInput({ ...stockRow('b', 5), isActive: null }).isActive,
+    ).toBe(true)
+  })
+})
