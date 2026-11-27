@@ -245,8 +245,20 @@ the list of mutations is in the S.3 task report, not in the repo. The export tes
 
 **Real SQL.**
 
-- `verify:migration` on the Neon test branch: _Pending: filled in by the main session._
-- `pnpm test:e2e:all`: _Pending: filled in by the main session._
+- `verify:migration` on the Neon test branch, 2026-11-27, with the owner's consent: passed
+  (304 `ok` lines). The first run failed on an OLDER check: the duplicate `(itemId,
+  locationId)` create in `assertLocationMigrationsBeforeDrop` read `P2022`, not `P2002`,
+  because Prisma 6 writes the `@default(true)` value of `isActive` into its own `INSERT`
+  and the column is not there yet before the last deploy. A `select` did not help. Fixed in
+  `fix(server): check the ItemStock unique key with raw SQL in verify-migration`: a raw
+  `INSERT`, refused with `23505`. Mutation check: with the backfill `UPDATE` deleted, the
+  run failed with "a stock row with target 0 before the migration reads isActive = false
+  (read: true)".
+- E2E, 2026-11-27, the four rows of `pnpm test:e2e:all` run one after another as separate
+  Playwright runs (the local E2E database migrated first with `e2e:db:migrate`): `local`
+  210 passed, 12 skipped (5.1m); `cloud` 240 passed, 8 skipped (5.8m); `pwa` 77 passed
+  (1.9m); `cloud-neon` 40 passed (13.6m). Load average reached 47 during the first three
+  rows; nothing failed. No new spec: the web does not use the field yet.
 
 **Known gaps of PR 1:**
 

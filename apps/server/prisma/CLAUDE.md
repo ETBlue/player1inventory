@@ -318,19 +318,25 @@ than trusting a number here — it said **four** when there were seven.
   (`itemIdsBeforeConsumable`), and `assertItemConsumable` checks after it that each one
   still there reads `true`, plus the column's place (on `"Item"`, not on `"ItemStock"`),
   its type, `NOT NULL`, `DEFAULT true`, a `23502` for an explicit `NULL`, and a stored
-  `false`. **Not run yet**: the main session runs it on the test database, with the
-  owner's consent.
+  `false`. Passed on the Neon test branch on 2026-11-27, in the run below.
   **Fifteen** entries since 2026-11-26 (`20261126000000_add_item_stock_is_active`, in the
   `last` group too: one `NOT NULL` boolean with `DEFAULT true` on `"ItemStock"` and one
   backfill `UPDATE` from `"targetQuantity"`). So the fourth `migrate deploy` now applies seven
   migrations. It hit the same trap again: three `ItemStock` calls run BEFORE the last deploy
   (a `findMany` and a `create` in `assertLocationMigrationsBeforeDrop`, a `findMany` in
   `assertDropUserScope`), and the client built from the final schema would ask for
-  `isActive` (`P2022`). All three got a `select`. The `create` matters most: without the
-  `select` its `INSERT ... RETURNING` fails on the missing column, so the "duplicate is
-  refused with `P2002`" check would read `P2022` and fail. `seedItemStockIsActiveBackfill`
-  writes three stock rows (target 0, 5 and 0.5) before the deploy, and
-  `assertItemStockIsActive` runs second after it. **Not run yet** either.
+  `isActive` (`P2022`). All three got a `select`. **For the `create` a `select` is NOT
+  enough**, measured on the Neon test branch on 2026-11-27: Prisma 6 writes the
+  `@default(true)` value into its own `INSERT`, so the create still failed with `P2022`
+  and the "duplicate is refused" check failed. That check is now a raw `INSERT` through
+  `postgresCodeOf`, refused with `23505`. A raw `INSERT` names only the columns it lists.
+  **Rule: before the last deploy, write a new row with raw SQL whenever its model gains a
+  column with a `@default` in this release**; a `select` is enough only for reads.
+  `seedItemStockIsActiveBackfill` writes three stock rows (target 0, 5 and 0.5) before the
+  deploy, and `assertItemStockIsActive` runs second after it. The whole script passed on
+  2026-11-27 (304 `ok` lines). Mutation check the same day: with the backfill `UPDATE`
+  deleted, it failed with "a stock row with target 0 before the migration reads isActive =
+  false (read: true)".
   The history below said the list was in `scripts/verify-migration.ts`, as a `MIGRATIONS` list —
   **nine** entries since households H3b task B.3 (2026-11-15; eight on 2026-11-11). The
   ninth, `20261114000000_shared_carts`, is applied in a **fourth** `migrate deploy`, after
