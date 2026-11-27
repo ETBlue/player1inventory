@@ -736,6 +736,49 @@ describe('the catalog mutations with a transaction', () => {
     expect(res.data?.deleteTagType).toBe(false)
     expect(events()).toEqual([])
   })
+
+  it('updateItem publishes after its transaction, with the new tag rows saved', async () => {
+    // Given item_milk has tag_1
+    S.itemTag.state.rows = [{ itemId: 'item_milk', tagId: 'tag_1' }]
+
+    // When the item is renamed and its tags are replaced by tag_lone
+    const res = await run(
+      'mutation { updateItem(id: "item_milk", input: { name: "Oat milk", tagIds: ["tag_lone"] }) { id } }',
+      ALICE,
+    )
+
+    // Then one CATALOG, sent after the commit, when the new tag row is there
+    expect(res.errors).toBeUndefined()
+    expect(events()).toEqual([CATALOG_HOME])
+    expect(seen[0]?.inTransaction).toBe(false)
+    expect(seen[0]?.itemTagCount).toBe(1)
+  })
+
+  it('updateItem whose tag write fails keeps the old tags and the old name, and publishes nothing', async () => {
+    // Given item_milk has tag_1, and the next ItemTag createMany fails
+    S.itemTag.state.rows = [{ itemId: 'item_milk', tagId: 'tag_1' }]
+    const itemTagClient = (prisma as unknown as { itemTag: { createMany: (args: unknown) => Promise<unknown> } }).itemTag
+    const realCreateMany = itemTagClient.createMany
+    itemTagClient.createMany = async () => {
+      itemTagClient.createMany = realCreateMany
+      throw new Error('itemTag.createMany failed on purpose')
+    }
+
+    // When the item is renamed and its tags are replaced by tag_lone
+    const res = await run(
+      'mutation { updateItem(id: "item_milk", input: { name: "Oat milk", tagIds: ["tag_lone"] }) { id } }',
+      ALICE,
+    )
+
+    // Then the save fails, and nothing of it is kept: the item still has
+    // tag_1 (not no tags at all) and its old name
+    expect(res.errors).toBeDefined()
+    itemTagClient.createMany = realCreateMany
+    expect(S.itemTag.state.rows).toEqual([{ itemId: 'item_milk', tagId: 'tag_1' }])
+    expect(S.items.state.rows.find((r) => r.id === 'item_milk')?.name).toBe('item_milk')
+    // And nothing changed, so no event
+    expect(events()).toEqual([])
+  })
 })
 
 // ─── deleteItem ──────────────────────────────────────────────────────────────
