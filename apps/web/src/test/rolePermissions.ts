@@ -26,6 +26,16 @@ import type { HouseholdRole, LocationRole } from '@/generated/graphql'
 //
 // With no role set, the real hook runs (local mode: everything allowed).
 //
+// `roleOverride()` is a plain read, so it is right only when the role is set
+// BEFORE the page renders and does not change. A test that changes the role
+// DURING the test (for example a manager demoted while a press is unsaved)
+// must call `useRoleOverride()` in the mock instead, as
+// `routes/items/$id/readOnly.test.tsx` does. `useRoleOverride()` subscribes
+// to the change, so the page renders again with the new role. With
+// `roleOverride()` nothing tells React the role changed: the page keeps the
+// old role until something else makes it render, and the test can pass or
+// fail for the wrong reason.
+//
 // This module must NOT import `@/hooks/usePermissions`. The mock factory
 // imports this module, so an import back into the mocked module waits for
 // itself and the test file never loads (it hung with no output).
