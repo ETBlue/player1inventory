@@ -331,10 +331,11 @@ export interface StockPreviewValues {
   unpackedQuantity: number
   targetQuantity: number
   refillThreshold: number
-  // The live "Active here" switch, so the bar turns grey before Save. Left
-  // out, the preview falls back to `isStockActive`'s old rule on the live
-  // target (target 0 = inactive), which is what it did before the switch.
-  isActive?: boolean
+  // The live "Active here" switch, so the bar turns grey before Save.
+  // Required, so `tsc` finds a caller that forgets it: both callers
+  // (`QuickUpdateDialog` and `ItemForm`'s stock section) pass their own
+  // switch value, never the stored one.
+  isActive: boolean
 }
 
 export interface StockPreview {
@@ -386,13 +387,8 @@ export function getStockPreview(
     refillThreshold,
     isActive,
   } = values
-  // Built once, so both branches below read the same switch. `isActive` is
-  // left out when undefined, because `exactOptionalPropertyTypes` refuses an
-  // explicit `undefined` on an optional key.
-  const inactive = isInactive({
-    targetQuantity,
-    ...(isActive !== undefined ? { isActive } : {}),
-  })
+  // Built once, so both branches below read the same switch.
+  const inactive = isInactive({ targetQuantity, isActive })
 
   // The package unit as the card shows it (`ItemStockSummary`:
   // `item.packageUnit || DEFAULT_PACKAGE_UNIT`). `||`, not `??`: an item

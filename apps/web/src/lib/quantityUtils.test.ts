@@ -1285,6 +1285,7 @@ describe('getStockPreview', () => {
         unpackedQuantity: 1,
         targetQuantity: 8,
         refillThreshold: 2,
+        isActive: true,
       },
     )
     expect(result.current).toBe(6)
@@ -1307,6 +1308,7 @@ describe('getStockPreview', () => {
         unpackedQuantity: 100,
         targetQuantity: 2000,
         refillThreshold: 200,
+        isActive: true,
       },
     )
     expect(result.current).toBe(1100)
@@ -1331,6 +1333,7 @@ describe('getStockPreview', () => {
         unpackedQuantity: 2,
         targetQuantity: 10,
         refillThreshold: 1,
+        isActive: true,
       },
     )
     expect(result.current).toBe(5)
@@ -1353,6 +1356,7 @@ describe('getStockPreview', () => {
         unpackedQuantity: 2,
         targetQuantity: 10,
         refillThreshold: 1,
+        isActive: true,
       },
     )
     expect(result.current).toBe(5)
@@ -1372,6 +1376,7 @@ describe('getStockPreview', () => {
         unpackedQuantity: 100,
         targetQuantity: 2000,
         refillThreshold: 200,
+        isActive: true,
       },
     )
     expect(result.quantityLabel).toBe('1000 (+100) / 2000')
@@ -1385,19 +1390,22 @@ describe('getStockPreview', () => {
         unpackedQuantity: 0,
         targetQuantity: 8,
         refillThreshold: 2,
+        isActive: true,
       },
     )
     expect(result.quantityLabel).toBe('5 / 8')
   })
 
-  it('status is "inactive" when targetQuantity is 0, overriding an otherwise-error quantity', () => {
+  it('status is "inactive" when the switch is off, overriding an otherwise-error quantity', () => {
+    // A target of 5 and nothing in stock would be "error" for an active item.
     const result = getStockPreview(
       { targetUnit: 'package', packageUnit: 'pack', consumeAmount: 1 },
       {
         packedQuantity: 0,
         unpackedQuantity: 0,
-        targetQuantity: 0,
+        targetQuantity: 5,
         refillThreshold: 3,
+        isActive: false,
       },
     )
     expect(result.status).toBe('inactive')
@@ -1417,6 +1425,7 @@ describe('getStockPreview', () => {
         unpackedQuantity: 0.5,
         targetQuantity: 2.5,
         refillThreshold: 1,
+        isActive: true,
       },
     )
     expect(atFull.isAtFull).toBe(true)
@@ -1434,6 +1443,7 @@ describe('getStockPreview', () => {
         unpackedQuantity: 0.3,
         targetQuantity: 2.5,
         refillThreshold: 1,
+        isActive: true,
       },
     )
     expect(notAtFull.isAtFull).toBe(false)
@@ -1447,6 +1457,7 @@ describe('getStockPreview', () => {
         unpackedQuantity: 0,
         targetQuantity: 8,
         refillThreshold: 2,
+        isActive: true,
       },
     )
     expect(zero.isAtZero).toBe(true)
@@ -1458,6 +1469,7 @@ describe('getStockPreview', () => {
         unpackedQuantity: 1,
         targetQuantity: 8,
         refillThreshold: 2,
+        isActive: true,
       },
     )
     expect(notZero.isAtZero).toBe(false)
@@ -1626,6 +1638,7 @@ describe('getStockPreview unit word', () => {
         unpackedQuantity: 0,
         targetQuantity: 5,
         refillThreshold: 1,
+        isActive: true,
       },
     )
     expect(result.unitLabel).toBe('pack')
@@ -1639,6 +1652,7 @@ describe('getStockPreview unit word', () => {
         unpackedQuantity: 0,
         targetQuantity: 5,
         refillThreshold: 1,
+        isActive: true,
       },
     )
     expect(result.unitLabel).toBe('pack')
@@ -1657,6 +1671,7 @@ describe('getStockPreview unit word', () => {
         unpackedQuantity: 0,
         targetQuantity: 1000,
         refillThreshold: 0,
+        isActive: true,
       },
     )
     expect(result.unitLabel).toBe('g')
@@ -1709,18 +1724,20 @@ describe('getStockPreview with the "Active here" switch', () => {
     expect(result.status).toBe('inactive')
   })
 
-  it('falls back to the old rule on the live target when isActive is left out', () => {
+  it('reads the switch, not the target, for the inactive status', () => {
+    // The same numbers with the switch on and off: only the switch decides.
     const values = {
       packedQuantity: 2,
       unpackedQuantity: 0,
+      targetQuantity: 0,
       refillThreshold: 0,
     }
-    expect(
-      getStockPreview(config, { ...values, targetQuantity: 0 }).status,
-    ).toBe('inactive')
-    expect(
-      getStockPreview(config, { ...values, targetQuantity: 5 }).status,
-    ).toBe('ok')
+    expect(getStockPreview(config, { ...values, isActive: true }).status).toBe(
+      'ok',
+    )
+    expect(getStockPreview(config, { ...values, isActive: false }).status).toBe(
+      'inactive',
+    )
   })
 })
 
@@ -1740,6 +1757,7 @@ describe('getStockPreview for a non-consumable item', () => {
         unpackedQuantity: 250,
         targetQuantity: 1200,
         refillThreshold: 200,
+        isActive: true,
       },
     )
     expect(result.unitLabel).toBe('cup')
@@ -1759,6 +1777,7 @@ describe('getStockPreview for a non-consumable item', () => {
         unpackedQuantity: 0.5,
         targetQuantity: 4,
         refillThreshold: 1,
+        isActive: true,
       },
     )
     expect(result.status).toBe('warning')
@@ -1770,7 +1789,7 @@ describe('getStockPreview for a non-consumable item', () => {
       consumeAmount: 1,
       consumable: false,
     }
-    const values = { targetQuantity: 4, refillThreshold: 1 }
+    const values = { targetQuantity: 4, refillThreshold: 1, isActive: true }
     expect(
       getStockPreview(config, {
         ...values,

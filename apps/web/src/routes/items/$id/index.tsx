@@ -35,7 +35,7 @@ import {
 } from '@/lib/quantityUtils'
 import { showSaveError } from '@/lib/saveError'
 import type { Item, PantryItem, StockConfigFields, StockFields } from '@/types'
-import { DEFAULT_PACKAGE_UNIT, isConsumable } from '@/types'
+import { DEFAULT_PACKAGE_UNIT, isConsumable, isStockActive } from '@/types'
 
 export const Route = createFileRoute('/items/$id/')({
   component: ItemInfoTab,
@@ -58,6 +58,10 @@ function itemToFormValues(item: PantryItem): ItemFormValues {
     targetUnit: item.targetUnit,
     targetQuantity: item.targetQuantity,
     refillThreshold: item.refillThreshold,
+    // The Info tab does not show or save the switch (`buildInfoUpdates`
+    // sends no stock field). It is set from the active location only so the
+    // form value matches the stored row and never reads as a change.
+    isActive: isStockActive(item),
     // 0 means "no step size configured" and is shown as stored — the
     // fabricated 1 made an unconfigured item look set up. New items no longer
     // start at 0 (the default became 1 on 2026-08-24), but an explicit 0, an

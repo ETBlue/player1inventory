@@ -99,6 +99,7 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
 
 const {
   PackageItem,
+  InactiveWithTarget,
   MeasurementItem,
   NotConsumableItem,
   DateModeItem,
@@ -116,6 +117,16 @@ describe('Item detail stock tab stories smoke tests', () => {
       await screen.findByRole('spinbutton', { name: /target quantity/i }),
     ).toBeInTheDocument()
     expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
+  })
+
+  it('InactiveWithTarget shows the Active here switch off and the target kept', async () => {
+    render(<InactiveWithTarget />)
+    expect(
+      await screen.findByRole('spinbutton', { name: /target quantity/i }),
+    ).toHaveValue(4)
+    expect(
+      screen.getByRole('switch', { name: 'Active here' }),
+    ).not.toBeChecked()
   })
 
   it('MeasurementItem renders the Packed stock field after setup', async () => {

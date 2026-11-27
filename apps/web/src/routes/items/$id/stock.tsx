@@ -30,7 +30,7 @@ import { usePermissions } from '@/hooks/usePermissions'
 import { hasGraphQLErrorCode } from '@/lib/graphqlErrorCode'
 import { showSaveError } from '@/lib/saveError'
 import type { ItemStock, Location, PantryItem, StockFields } from '@/types'
-import { isConsumable } from '@/types'
+import { isConsumable, isStockActive } from '@/types'
 
 export const Route = createFileRoute('/items/$id/stock')({
   component: ItemStockTab,
@@ -53,6 +53,9 @@ function itemToFormValues(item: PantryItem): ItemFormValues {
     targetUnit: item.targetUnit,
     targetQuantity: item.targetQuantity,
     refillThreshold: item.refillThreshold,
+    // This location's "Active here" switch. A row with no stored value reads
+    // through `isStockActive`'s fallback (target 0 = off), like the card.
+    isActive: isStockActive(item),
     // Shown as stored — see the same field in `$id/index.tsx`. 0 means "not
     // configured", not "a step of 1"; it is no longer the create default but
     // is still reachable.
@@ -128,6 +131,8 @@ function buildStockUpdates(values: ItemFormValues): ItemUpdatePayload {
     unpackedQuantity: values.consumable ? values.unpackedQuantity : 0,
     targetQuantity: values.targetQuantity,
     refillThreshold: values.refillThreshold,
+    // Always sent, so a save that only flips the switch writes it.
+    isActive: values.isActive,
     // A non-consumable item hides the field too (`ItemForm`), so it sends no
     // key and the stored date is kept.
     ...(values.expirationMode === 'date' && values.consumable
