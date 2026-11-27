@@ -1054,28 +1054,24 @@ async function assertLocationMigrationsBeforeDrop(): Promise<void> {
   // by assertDropUserScope's "the column and the index are gone" checks.
 
   // ItemStock_itemId_locationId_key must actually be enforced.
-  let duplicateCode: string | undefined
-  try {
-    await prisma.itemStock.create({
-      data: {
-        itemId: milk!.itemId,
-        locationId: milk!.locationId,
-        targetQuantity: 0,
-        refillThreshold: 0,
-        packedQuantity: 0,
-        unpackedQuantity: 0,
-      },
-      // `select`: a create returns the row, and "isActive" is not there yet.
-      // Without it the INSERT fails on the missing column (P2022), not on the
-      // unique key, and this check reads the wrong error.
-      select: { id: true },
-    })
-  } catch (err) {
-    duplicateCode = err instanceof Prisma.PrismaClientKnownRequestError ? err.code : undefined
-  }
+  //
+  // Raw SQL, not `prisma.itemStock.create`. This runs before the last deploy,
+  // so "ItemStock"."isActive" is not there yet. Prisma 6 writes the
+  // `@default(true)` value into its own INSERT, so a Prisma create fails with
+  // P2022 (missing column) before the unique key is reached, even with a
+  // `select` (measured 2026-11-27). The row gets a new id, so the only key it
+  // can break is (itemId, locationId).
+  const duplicateCode = await postgresCodeOf(
+    () => prisma.$executeRaw`
+      INSERT INTO "ItemStock"
+        ("id","itemId","locationId","targetQuantity","refillThreshold",
+         "packedQuantity","unpackedQuantity","updatedAt")
+      VALUES ('dup-stock-check', ${milk!.itemId}, ${milk!.locationId}, 0, 0, 0, 0, NOW())
+    `,
+  )
   assert(
-    duplicateCode === 'P2002',
-    'a duplicate (itemId, locationId) ItemStock is rejected with P2002 (ItemStock_itemId_locationId_key)',
+    duplicateCode === '23505',
+    `a duplicate (itemId, locationId) ItemStock is refused with 23505 (ItemStock_itemId_locationId_key) (read: ${duplicateCode ?? 'no error'})`,
   )
 
   // FK cascade: deleting a Location must cascade-delete its ItemStock rows.
