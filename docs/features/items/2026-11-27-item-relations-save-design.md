@@ -264,6 +264,44 @@ Notes:
 and show "Could not save the change." Tags and Vendors would still work. That is why PR B
 merges into `develop` only after Railway shows PR A deployed.
 
+## As built: PR A (2026-11-27)
+
+Branch `feature/item-relations-save-server`, three commits on top of the docs (`c94b20c0`,
+`fcbb565e`). Not merged yet.
+
+| Commit | What |
+|---|---|
+| `e6e5b91e` | `setItemRecipes(itemId, recipeIds): [Recipe!]!` in `schema/recipe.graphql` and `resolvers/recipe.resolver.ts`, its row in `lib/consumable.ts`, 14 tests in the new `recipe-set-item.resolver.test.ts`, and its entry in the live guard's `publishes` list |
+| `4ec4262a` | the `CATALOG` publish tests in `catalog-live-publish.resolver.test.ts`, and the live guard count in the root `CLAUDE.md` |
+| `3309692d` | `updateItem` writes the item, its tag list and its vendor list in ONE `prisma.$transaction` (owner answer 7A) |
+
+What differs from this design and the plan:
+
+- **The amount rule is written `consumeAmount > 0 ? consumeAmount : 1`**, as the plan says.
+  This design wrote `consumeAmount || 1`. The two differ only for a negative amount.
+- **The item is checked with one scoped read, not `requireCatalogIds`.** An unknown item and
+  another household's item both get `NOT_FOUND` "Item not found", the same as `updateItem`.
+  `requireCatalogIds` would answer the two differently and so tell a stranger which item ids
+  exist. The recipe ids still go through `requireCatalogIds`.
+- **The guard entry is in the first commit, not in A.2.** The live guard fails as soon as the
+  field exists in the schema, so the first commit could not pass `pnpm test` without it.
+- **`updateItem` publishes only after the transaction has committed** (a `committed` flag in
+  its `finally`). Before A.3, a save whose tag write failed left the item renamed with NO tags
+  and still published `CATALOG`. The new test was red on the old code.
+- Line references to `item.resolver.ts` above (`:264-283`) are from before A.3.
+
+Tests: server **3026 / 94 → 3048 / 95** (14 new for the mutation, 6 publish tests, 2 for
+`updateItem`). Ten mutation checks, each red; the list is in the PR description. The
+`recipeItem` fake models the `(recipeId, itemId)` key, the `recipe: { householdId }` filter,
+and throws on any other `where` key (checked once per call, so an empty store cannot hide an
+unknown key). One negative control: "a repeated recipe id is folded" passes with or without
+the fold, because `skipDuplicates` also stops the second row.
+
+Known gaps of PR A: no real-SQL run of `setItemRecipes` until PR B's cloud E2E; two Saves at
+the same moment are tested only by forcing a link between the read and the write (the fake has
+no row lock); the vendor half of the `updateItem` transaction has no test of its own (the tag
+half does, and the code is the same shape).
+
 ## Local mode (PR B)
 
 `setItemRecipesBatch(itemId, recipeIds)` in `apps/web/src/db/operations.ts`, one
