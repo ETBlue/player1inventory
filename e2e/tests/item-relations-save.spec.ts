@@ -194,7 +194,7 @@ function milkAmountIn(relations: Relations, recipeId: string): number | null {
 
 function badge(page: Page, name: string, pressed: boolean) {
   // Badges on the three tabs: role="button" aria-pressed
-  // (src/routes/items/$id/tags.tsx:91, vendors.tsx:131, recipes.tsx:147)
+  // (src/routes/items/$id/tags.tsx:91, vendors.tsx:131, recipes.tsx:151)
   return page.getByRole('button', { name, exact: true, pressed })
 }
 

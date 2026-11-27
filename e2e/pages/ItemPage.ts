@@ -130,7 +130,7 @@ export class ItemPage {
     await this.navigateToTab('tags')
     // "New Tag" button lives inside the tag type section.
     // exact: true so it doesn't also match the page's "New Tag Type" button
-    // (both render on /items/$id/tags — src/routes/items/$id/tags.tsx:116 and :234).
+    // (both render on /items/$id/tags — src/routes/items/$id/tags.tsx:116 and :239).
     await this.page
       .getByRole('button', { name: 'New Tag', exact: true })
       .first()
@@ -153,7 +153,7 @@ export class ItemPage {
 
   async saveRelations() {
     // The top bar Save of the Tags, Vendors and Recipes tabs
-    // (`TopBarSaveButton`, src/routes/items/$id/tags.tsx:221,
+    // (`TopBarSaveButton`, src/routes/items/$id/tags.tsx:226,
     // vendors.tsx:120, recipes.tsx:134; label `common.save` = "Save"). A
     // badge press changes only the screen; this Save sends the whole list in
     // one write, shows the toast "Saved" (`items.detail.saved`) and turns
@@ -238,7 +238,7 @@ export class ItemPage {
   // ── Recipes tab ───────────────────────────────────────────────────────────────
 
   async clickNewRecipeButton() {
-    // "New Recipe" button inline with recipe badges (src/routes/items/$id/recipes.tsx:172)
+    // "New Recipe" button inline with recipe badges (src/routes/items/$id/recipes.tsx:176)
     await this.page.getByRole('button', { name: /new recipe/i }).click()
   }
 
@@ -259,7 +259,7 @@ export class ItemPage {
   }
 
   getRecipeBadge(name: string) {
-    // Recipe badge: role="button" aria-pressed={isAssigned} (src/routes/items/$id/recipes.tsx:147).
+    // Recipe badge: role="button" aria-pressed={isAssigned} (src/routes/items/$id/recipes.tsx:151).
     // Pressed means "shown as selected": saved, or pressed and not saved yet.
     return this.page.getByRole('button', { name, exact: false, pressed: true })
   }

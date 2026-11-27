@@ -400,7 +400,7 @@ test.describe('recipe creation dialog from item recipes tab', () => {
     await expect(item.getRecipeDialog()).not.toBeVisible()
 
     // And: a badge labelled "Pasta Salad" is visible and selected
-    // Recipe badge: role="button" aria-pressed=true when selected (src/routes/items/$id/recipes.tsx:147)
+    // Recipe badge: role="button" aria-pressed=true when selected (src/routes/items/$id/recipes.tsx:151)
     await expect(item.getRecipeBadge('Pasta Salad')).toBeVisible()
 
     // When: the user presses the top bar Save. The recipe was created with
