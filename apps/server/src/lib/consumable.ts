@@ -10,6 +10,7 @@ import { prisma } from './prisma.js'
 // |---|---|
 // | `createRecipe`, `updateRecipe`, `applyShelfFilterPicks`, the recipe lists of `applyUnitSwitch` | refused, `BAD_USER_INPUT` with `extensions.reason` `NOT_CONSUMABLE`, nothing written |
 // | `consumeRecipes` | refused the same way |
+// | `setItemRecipes` | an ADD is refused the same way; removing the item from a recipe is allowed |
 // | `bulkCreateRecipes`, `bulkUpsertRecipes` (imports) | that recipe item is SKIPPED, the recipe still lands (the import rule: a row that does not resolve is skipped) |
 // | `updateItem`, `applyUnitSwitch`, `bulkUpsertItems` that make an item non-consumable | the item's `RecipeItem` rows are deleted |
 //
