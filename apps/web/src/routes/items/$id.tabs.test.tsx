@@ -12,7 +12,13 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db'
-import { createItem } from '@/db/operations'
+import {
+  createItem,
+  createRecipe,
+  createTag,
+  createTagType,
+  createVendor,
+} from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
 
 const TABS = [
@@ -34,6 +40,8 @@ describe('Item page - one flat tab row', { timeout: 15_000 }, () => {
     await db.tags.clear()
     await db.tagTypes.clear()
     await db.inventoryLogs.clear()
+    await db.vendors.clear()
+    await db.recipes.clear()
     sessionStorage.clear()
     queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -214,6 +222,53 @@ describe('Item page - one flat tab row', { timeout: 15_000 }, () => {
 
     // Then the page goes back with no dialog
     await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  })
+
+  // Since the item relations Save (design 2026-11-27) a press on Tags,
+  // Vendors or Recipes is unsaved until Save, so leaving the tab with one
+  // opens the unsaved-changes dialog, like Info and Stock. The path list in
+  // `$id.tsx` (`isOnEditableTab`) is what turns the guard on for a tab.
+  it.each([
+    { tab: 'Tags', path: '/tags', badge: 'dairy' },
+    { tab: 'Vendors', path: '/vendors', badge: 'Costco' },
+    { tab: 'Recipes', path: '/recipes', badge: 'Pancakes' },
+  ])('user who leaves $tab with an unsaved press sees the unsaved-changes dialog', async ({
+    path,
+    badge,
+  }) => {
+    // Given a tag, a vendor and a recipe the item does not have
+    const tagType = await createTagType({ name: 'Category' })
+    await createTag({ name: 'dairy', typeId: tagType.id })
+    await createVendor('Costco')
+    await createRecipe({ name: 'Pancakes' })
+    const user = userEvent.setup()
+    const router = renderAt(`/items/${itemId}${path}`)
+    const row = await tabRow()
+
+    // When the user presses a badge and opens the Log tab
+    await user.click(await screen.findByRole('button', { name: badge }))
+    await user.click(row.getByRole('link', { name: 'Log' }))
+
+    // Then the dialog asks first, and the page does not move
+    expect(
+      await screen.findByRole('alertdialog', { name: 'Unsaved changes' }),
+    ).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe(`/items/${itemId}${path}`)
+  })
+
+  it('user who leaves the Log tab sees no dialog', async () => {
+    // Log has nothing to save, so leaving it never asks. A negative control:
+    // it stays green when the guard is removed.
+    const user = userEvent.setup()
+    const router = renderAt(`/items/${itemId}/log`)
+    const row = await tabRow()
+
+    await user.click(row.getByRole('link', { name: 'Info' }))
+
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(`/items/${itemId}`),
+    )
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
   })
 })

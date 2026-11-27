@@ -21,6 +21,7 @@ import {
   createItem,
   createLocation,
   createRecipe,
+  createTagType,
   getItem,
   getItemStock,
   getRecipes,
@@ -44,6 +45,7 @@ describe(
       await db.tags.clear()
       await db.tagTypes.clear()
       await db.inventoryLogs.clear()
+      await db.vendors.clear()
       await db.locations.where('id').notEqual(DEFAULT_LOCATION_ID).delete()
       queryClient = new QueryClient({
         defaultOptions: { queries: { retry: false } },
@@ -305,6 +307,68 @@ describe(
         (await getItemStock(item.id, DEFAULT_LOCATION_ID))?.packedQuantity,
       ).toBe(4)
       expect((await getItemStock(item.id, cabin.id))?.packedQuantity).toBe(7)
+    })
+
+    // The Tags, Vendors and Recipes tabs (item relations Save, design
+    // docs/features/items/2026-11-27-item-relations-save-design.md): a press
+    // is unsaved until Save, and the dialog's Save is the tab's own Save.
+    describe('the relation tabs', () => {
+      it('user can save a recipe press from the dialog, and then the page moves', async () => {
+        const user = userEvent.setup()
+        // Given an item and a recipe without it
+        const item = await milk()
+        const pancakes = await createRecipe({ name: 'Pancakes' })
+        const router = renderPage(`/items/${item.id}/recipes`)
+
+        // When the user presses the recipe, opens the Log tab and presses
+        // Save in the dialog
+        await user.click(
+          await screen.findByRole('button', { name: 'Pancakes' }),
+        )
+        await user.click(screen.getByRole('link', { name: /^log$/i }))
+        const dialog = await screen.findByRole('alertdialog', { name: UNSAVED })
+        await user.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+        // Then the recipe holds the item, and the page goes to the Log tab
+        await waitFor(() =>
+          expect(router.state.location.pathname).toBe(`/items/${item.id}/log`),
+        )
+        const saved = (await getRecipes()).find((r) => r.id === pancakes.id)
+        expect(saved?.items.map((ri) => ri.itemId)).toEqual([item.id])
+        expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+      })
+
+      it('user who discards keeps a tag created on the tab, not given to the item', async () => {
+        const user = userEvent.setup()
+        // Given an item and a tag type
+        const item = await milk()
+        await createTagType({ name: 'Category' })
+        const router = renderPage(`/items/${item.id}/tags`)
+
+        // When the user creates the tag "dairy" (shown as selected)
+        await user.click(
+          await screen.findByRole('button', { name: /new tag$/i }),
+        )
+        await user.type(screen.getByLabelText(/name/i), 'dairy')
+        await user.click(screen.getByRole('button', { name: /^add tag$/i }))
+        await screen.findByRole('button', { name: 'dairy', pressed: true })
+
+        // And opens the Log tab and presses Discard in the dialog
+        await user.click(screen.getByRole('link', { name: /^log$/i }))
+        const dialog = await screen.findByRole('alertdialog', { name: UNSAVED })
+        await user.click(
+          within(dialog).getByRole('button', { name: 'Discard' }),
+        )
+
+        // Then the page moves, the tag exists (owner answer 1A), and the item
+        // does not have it
+        await waitFor(() =>
+          expect(router.state.location.pathname).toBe(`/items/${item.id}/log`),
+        )
+        const tags = await db.tags.toArray()
+        expect(tags.map((tag) => tag.name)).toEqual(['dairy'])
+        expect((await getItem(item.id))?.tagIds).toEqual([])
+      })
     })
   },
 )
