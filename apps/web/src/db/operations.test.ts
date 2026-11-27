@@ -3496,6 +3496,24 @@ describe('setItemRecipesBatch', () => {
     expect(await db.recipes.toArray()).toEqual(before)
   })
 
+  it('a repeated id for a recipe that does not hold the item makes one link', async () => {
+    // Given a recipe that does not hold the item
+    const item = await makeItem({ consumeAmount: 3 })
+    const recipe = await createRecipe({ name: 'Soup' })
+
+    // When the save names that recipe twice
+    const changed = await setItemRecipesBatch(item.id, [recipe.id, recipe.id])
+
+    // Then the recipe holds ONE link to the item
+    expect(await itemsOf(recipe.id)).toEqual([
+      { itemId: item.id, defaultAmount: 3 },
+    ])
+    // And the recipe is answered once. (Without the fold the stored list
+    // still holds one link, because both writes start from the same old
+    // row; only the answer shows the second write.)
+    expect(changed.map((r) => r.id)).toEqual([recipe.id])
+  })
+
   it('a missing item is refused', async () => {
     const recipe = await createRecipe({ name: 'Soup' })
     await expect(
