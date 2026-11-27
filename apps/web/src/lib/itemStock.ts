@@ -10,6 +10,12 @@ import type { Item, ItemStock, PantryItem, StockFields } from '@/types'
 
 // The default stock state used when an item has no ItemStock in the requested
 // location (so a joined PantryItem still reads sensible zeroed values).
+//
+// It carries NO `isActive` on purpose. An item not stocked here then reads as
+// inactive through `isStockActive`'s fallback (target 0), exactly as before
+// the switch existed, and `isInactiveHere` still answers `false` for it,
+// because it checks `stockId` first. A writer that spreads this to CREATE a
+// row must set `isActive: true` itself, or the new row reads as inactive.
 export const ZERO_STOCK: StockFields = {
   targetQuantity: 0,
   refillThreshold: 0,
@@ -25,7 +31,7 @@ export const ZERO_STOCK: StockFields = {
 // exhaustiveness check below can read the keys back out. The former annotation,
 // `: (keyof StockFields)[]`, widened the element type to `keyof StockFields`
 // and made any exhaustiveness check vacuous — `Exclude<K, K>` is `never`
-// whatever the array holds, so a sixth `StockFields` field missing from this
+// whatever the array holds, so a new `StockFields` field missing from this
 // list compiled clean and then leaked into `updateItem` / `toConfigInput`.
 export const STOCK_FIELD_KEYS = [
   'targetQuantity',
@@ -33,12 +39,13 @@ export const STOCK_FIELD_KEYS = [
   'packedQuantity',
   'unpackedQuantity',
   'dueDate',
+  'isActive',
 ] as const satisfies readonly (keyof StockFields)[]
 
 // Type-level exhaustiveness check — zero runtime cost, no emitted code.
 //
 // `MissingStockFieldKey` is `never` only while STOCK_FIELD_KEYS lists every key
-// of `StockFields`. Add a sixth field to `StockFields` without adding it here
+// of `StockFields`. Add a new field to `StockFields` without adding it here
 // and `tsc` fails on the line below, naming the key:
 //   Type '"newField"' does not satisfy the constraint 'never'.
 type MissingStockFieldKey = Exclude<

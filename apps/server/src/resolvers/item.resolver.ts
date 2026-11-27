@@ -247,40 +247,53 @@ export const itemResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
       // bundle that sent them here with no location to name. Stock is written
       // by `upsertItemStock(itemId, locationId)` and nothing else.
       //
+      // ── ONE TRANSACTION (owner answer 7A, 2026-11-27) ──
+      //
+      // The item write, the recipe link delete and both junction lists are
+      // written together, or not at all. Until then only the item write and
+      // the recipe link delete were one transaction; the tag and vendor
+      // lists were replaced after it in separate writes, so a failing
+      // `createMany` left the item saved with NO tags or vendors until the
+      // next save (design docs/features/items/2026-11-27-item-relations-
+      // save-design.md, *RBAC*, gap 3).
+      //
       // Only consumable items can be in a recipe (lib/consumable.ts). A save
-      // that makes the item non-consumable also deletes its recipe links, in
-      // ONE transaction with the item write, so a recipe never holds a
-      // non-consumable item. `CATALOG` below covers the recipe change too.
-      if (input.consumable === false) {
+      // that makes the item non-consumable also deletes its recipe links, so
+      // a recipe never holds a non-consumable item. `CATALOG` below covers
+      // the recipe change too.
+      //
+      // `committed` decides the event. A transaction that throws rolled
+      // everything back, so nothing changed and nothing is published. Once it
+      // has committed, the event is sent in `finally`, so other tabs hear of
+      // the saved change even when the read below fails.
+      let committed = false
+      try {
         await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
           await tx.item.update({ where: { id }, data: buildItemUpdateData(input) })
-          await tx.recipeItem.deleteMany({ where: { itemId: id } })
+          if (input.consumable === false) {
+            await tx.recipeItem.deleteMany({ where: { itemId: id } })
+          }
+
+          // Replace junction rows wholesale when the field is explicitly provided
+          if (tagIds !== undefined && tagIds !== null) {
+            await tx.itemTag.deleteMany({ where: { itemId: id } })
+            if (tagIds.length) {
+              await tx.itemTag.createMany({
+                data: tagIds.map((tagId) => ({ itemId: id, tagId })),
+              })
+            }
+          }
+
+          if (vendorIds !== undefined && vendorIds !== null) {
+            await tx.itemVendor.deleteMany({ where: { itemId: id } })
+            if (vendorIds.length) {
+              await tx.itemVendor.createMany({
+                data: vendorIds.map((vendorId) => ({ itemId: id, vendorId })),
+              })
+            }
+          }
         })
-      } else {
-        await prisma.item.update({ where: { id }, data: buildItemUpdateData(input) })
-      }
-
-      // `CATALOG` in `finally`, for the same reason as `createItem`: the
-      // writes below are not one transaction with the update above.
-      try {
-        // Replace junction rows wholesale when the field is explicitly provided
-        if (tagIds !== undefined && tagIds !== null) {
-          await prisma.itemTag.deleteMany({ where: { itemId: id } })
-          if (tagIds.length) {
-            await prisma.itemTag.createMany({
-              data: tagIds.map((tagId) => ({ itemId: id, tagId })),
-            })
-          }
-        }
-
-        if (vendorIds !== undefined && vendorIds !== null) {
-          await prisma.itemVendor.deleteMany({ where: { itemId: id } })
-          if (vendorIds.length) {
-            await prisma.itemVendor.createMany({
-              data: vendorIds.map((vendorId) => ({ itemId: id, vendorId })),
-            })
-          }
-        }
+        committed = true
 
         const full = await prisma.item.findUniqueOrThrow({
           where: { id },
@@ -288,7 +301,7 @@ export const itemResolvers: Pick<Resolvers, 'Query' | 'Mutation'> = {
         })
         return toGraphQL(full)
       } finally {
-        await publishHouseholdChange(ctx, ['CATALOG'], householdId)
+        if (committed) await publishHouseholdChange(ctx, ['CATALOG'], householdId)
       }
     },
 

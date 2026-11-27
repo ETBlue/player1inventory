@@ -9,6 +9,7 @@
 // Lives outside a `.test.ts` file on purpose: `tsconfig.app.json` excludes test
 // files from the build's type-check, so a fixture shared by five specs is worth
 // having type-checked.
+import { isStockActive } from '@p1i/types'
 import {
   BootstrapCartsDocument,
   GetLocationsDocument,
@@ -124,6 +125,7 @@ export const cloudStock = (
     packedQuantity: number
     unpackedQuantity: number
     dueDate?: string | null
+    isActive?: boolean
   },
 ) => ({
   __typename: 'ItemStock' as const,
@@ -131,6 +133,14 @@ export const cloudStock = (
   itemId,
   locationId,
   dueDate: null,
+  // `ItemStock.isActive: Boolean!`: a real row always carries it, and a mock
+  // without it makes Apollo warn "Missing field 'isActive'" and may drop the
+  // result. Left out, it takes the old meaning of the target (target 0 =
+  // inactive), so every fixture written before the switch means what it did.
+  isActive: isStockActive({
+    targetQuantity: fields.targetQuantity,
+    ...(fields.isActive !== undefined ? { isActive: fields.isActive } : {}),
+  }),
   ...fields,
   createdAt: '2026-02-01T00:00:00.000Z',
   updatedAt: '2026-02-02T00:00:00.000Z',

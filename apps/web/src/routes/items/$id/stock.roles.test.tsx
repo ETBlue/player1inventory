@@ -170,6 +170,22 @@ describe.each(people)('$who on the Stock tab', ({ who, role }) => {
     }
   })
 
+  it(`${who} sees the Active here switch ${canEdit ? 'enabled' : 'disabled'}`, async () => {
+    // Given Milk stocked here, active
+    const milk = await makeMilk()
+    asLocationRole(role)
+    renderStock(milk.id)
+
+    // Present first: this location's packed quantity
+    expect(await screen.findByLabelText(/^packed/i)).toHaveValue(3)
+    const activeSwitch = screen.getByRole('switch', { name: 'Active here' })
+
+    // Then the switch shows the stored value, and only an editor can flip it
+    expect(activeSwitch).toBeChecked()
+    if (canEdit) expect(activeSwitch).toBeEnabled()
+    else expect(activeSwitch).toBeDisabled()
+  })
+
   it(`${who} ${isOrganizer ? 'sees' : 'does not see'} Remove from location`, async () => {
     const milk = await makeMilk()
     asLocationRole(role)

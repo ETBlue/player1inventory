@@ -34,6 +34,7 @@ const editValues: ItemFormValues = {
   packageUnit: 'carton',
   targetQuantity: 4,
   refillThreshold: 2,
+  isActive: true,
   consumeAmount: 1,
   expirationMode: 'days from purchase',
   expirationThreshold: 3,

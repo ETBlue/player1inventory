@@ -81,12 +81,16 @@ const STORED = {
   unpackedQuantity: 0,
   targetQuantity: 6,
   refillThreshold: 2,
+  // The "Active here" switch, stored on.
+  isActive: true,
 }
 const SUBMITTED = {
   packedQuantity: 3,
   unpackedQuantity: 1,
   targetQuantity: 7,
   refillThreshold: 4,
+  // The "Active here" switch travels in every save.
+  isActive: true,
 }
 
 const stockMilk = () =>

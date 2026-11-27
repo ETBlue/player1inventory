@@ -161,6 +161,8 @@ const publishes: Record<string, { kinds: Kind[] }> = {
   updateVendor: { kinds: ['CATALOG'] },
   createRecipe: { kinds: ['CATALOG'] },
   updateRecipe: { kinds: ['CATALOG'] },
+  // Only when the list changed something; the same list again publishes nothing.
+  setItemRecipes: { kinds: ['CATALOG'] },
   deleteRecipe: { kinds: ['CATALOG'] },
   updateRecipeLastCookedAt: { kinds: ['CATALOG'] },
   createShelf: { kinds: ['CATALOG'] },

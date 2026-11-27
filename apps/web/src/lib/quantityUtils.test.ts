@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { ZERO_STOCK } from '@/lib/itemStock'
 import type { StockConfigFields, StockFields } from '@/types'
 import {
   addItem,
@@ -8,6 +9,7 @@ import {
   consumeItem,
   convertTrackedQuantities,
   getCurrentQuantity,
+  getGroupPackTotals,
   getItemPackUnits,
   getPackedTotal,
   getPieceCounts,
@@ -539,6 +541,55 @@ describe('isInactive', () => {
   })
 })
 
+// The "Active here" switch (`ItemStock.isActive`). A boolean decides, whatever
+// the target is. The four cases below need BOTH targets with BOTH values: with
+// only `{ false, 0 }` and `{ true, 5 }` the old rule (target 0 = inactive)
+// gives the same answers and the tests could not tell the two apart.
+describe('isInactive with the "Active here" switch', () => {
+  it('user sees an item turned off here as inactive, even with a target', () => {
+    // Given an item the person turned off, which keeps its target of 5
+    const item = makeStock({
+      isActive: false,
+      targetQuantity: 5,
+      refillThreshold: 1,
+    })
+
+    // Then it is inactive here
+    expect(isInactive(item)).toBe(true)
+  })
+
+  it('user sees an active item with target 0 as active ("no target")', () => {
+    // Given an active item with no target
+    const item = makeStock({
+      isActive: true,
+      targetQuantity: 0,
+      refillThreshold: 0,
+    })
+
+    // Then it is active
+    expect(isInactive(item)).toBe(false)
+  })
+
+  it('reads an inactive item with target 0 as inactive', () => {
+    expect(isInactive(makeStock({ isActive: false, targetQuantity: 0 }))).toBe(
+      true,
+    )
+  })
+
+  it('reads an active item with a target as active', () => {
+    expect(isInactive(makeStock({ isActive: true, targetQuantity: 5 }))).toBe(
+      false,
+    )
+  })
+
+  it('reads a row with no switch (old data) by the old rule', () => {
+    // A row written before the switch existed: target 0 is inactive,
+    // any other target is active
+    expect(isInactive(makeStock({ targetQuantity: 0 }))).toBe(true)
+    expect(isInactive(makeStock({ targetQuantity: 5 }))).toBe(false)
+  })
+})
+
 describe('isStockedHere', () => {
   it('returns true when item carries a stockId', () => {
     const item = { stockId: 'stock-1' }
@@ -589,6 +640,37 @@ describe('isInactiveHere', () => {
 
     expect(isInactiveHere(item)).toBe(false)
   })
+
+  it('returns false for the real ZERO_STOCK join, which carries no switch', () => {
+    // Given the exact shape joinItemStock() returns for an item with no row
+    // here: ZERO_STOCK spread over the item, and no stockId
+    const item = { ...makeStock(), ...ZERO_STOCK }
+
+    // Then ZERO_STOCK still carries no switch, so the join reads as inactive
+    // through the old-data fallback ...
+    expect(Object.keys(ZERO_STOCK)).not.toContain('isActive')
+    expect(isInactive(item)).toBe(true)
+    // ... and isInactiveHere is still false, because nothing is stocked here
+    expect(isInactiveHere(item)).toBe(false)
+  })
+
+  it('returns true when stocked here and turned off, with a target', () => {
+    const item = {
+      ...makeStock({ isActive: false, targetQuantity: 5, refillThreshold: 1 }),
+      stockId: 'stock-1',
+    }
+
+    expect(isInactiveHere(item)).toBe(true)
+  })
+
+  it('returns false when stocked here, active, with target 0', () => {
+    const item = {
+      ...makeStock({ isActive: true, targetQuantity: 0, refillThreshold: 0 }),
+      stockId: 'stock-1',
+    }
+
+    expect(isInactiveHere(item)).toBe(false)
+  })
 })
 
 describe('isEmptyStock', () => {
@@ -615,6 +697,21 @@ describe('isEmptyStock', () => {
   it('returns false for an inactive item even when it has no stock', () => {
     const item = { ...base, targetQuantity: 0, refillThreshold: 2 }
 
+    expect(isEmptyStock(item)).toBe(false)
+  })
+
+  it('returns false for an item turned off here that keeps target 5', () => {
+    // Given an inactive item with a target of 5 and stock below its refill
+    // threshold: active, it would count as empty
+    const item = {
+      ...base,
+      isActive: false,
+      targetQuantity: 5,
+      packedQuantity: 1,
+    }
+    expect(isEmptyStock({ ...item, isActive: true })).toBe(true)
+
+    // Then it does not count as empty while it is turned off
     expect(isEmptyStock(item)).toBe(false)
   })
 
@@ -664,6 +761,16 @@ describe('isLowStock', () => {
   it('returns false for an inactive item sitting at its refill threshold', () => {
     const item = { ...base, targetQuantity: 0 }
 
+    expect(isLowStock(item)).toBe(false)
+  })
+
+  it('returns false for an item turned off here that keeps target 5', () => {
+    // Given an inactive item with a target of 5, sitting at its refill
+    // threshold: active, it would count as low
+    const item = { ...base, isActive: false, targetQuantity: 5 }
+    expect(isLowStock({ ...item, isActive: true })).toBe(true)
+
+    // Then it does not count as low while it is turned off
     expect(isLowStock(item)).toBe(false)
   })
 })
@@ -1178,6 +1285,7 @@ describe('getStockPreview', () => {
         unpackedQuantity: 1,
         targetQuantity: 8,
         refillThreshold: 2,
+        isActive: true,
       },
     )
     expect(result.current).toBe(6)
@@ -1200,6 +1308,7 @@ describe('getStockPreview', () => {
         unpackedQuantity: 100,
         targetQuantity: 2000,
         refillThreshold: 200,
+        isActive: true,
       },
     )
     expect(result.current).toBe(1100)
@@ -1224,6 +1333,7 @@ describe('getStockPreview', () => {
         unpackedQuantity: 2,
         targetQuantity: 10,
         refillThreshold: 1,
+        isActive: true,
       },
     )
     expect(result.current).toBe(5)
@@ -1246,6 +1356,7 @@ describe('getStockPreview', () => {
         unpackedQuantity: 2,
         targetQuantity: 10,
         refillThreshold: 1,
+        isActive: true,
       },
     )
     expect(result.current).toBe(5)
@@ -1265,6 +1376,7 @@ describe('getStockPreview', () => {
         unpackedQuantity: 100,
         targetQuantity: 2000,
         refillThreshold: 200,
+        isActive: true,
       },
     )
     expect(result.quantityLabel).toBe('1000 (+100) / 2000')
@@ -1278,19 +1390,22 @@ describe('getStockPreview', () => {
         unpackedQuantity: 0,
         targetQuantity: 8,
         refillThreshold: 2,
+        isActive: true,
       },
     )
     expect(result.quantityLabel).toBe('5 / 8')
   })
 
-  it('status is "inactive" when targetQuantity is 0, overriding an otherwise-error quantity', () => {
+  it('status is "inactive" when the switch is off, overriding an otherwise-error quantity', () => {
+    // A target of 5 and nothing in stock would be "error" for an active item.
     const result = getStockPreview(
       { targetUnit: 'package', packageUnit: 'pack', consumeAmount: 1 },
       {
         packedQuantity: 0,
         unpackedQuantity: 0,
-        targetQuantity: 0,
+        targetQuantity: 5,
         refillThreshold: 3,
+        isActive: false,
       },
     )
     expect(result.status).toBe('inactive')
@@ -1310,6 +1425,7 @@ describe('getStockPreview', () => {
         unpackedQuantity: 0.5,
         targetQuantity: 2.5,
         refillThreshold: 1,
+        isActive: true,
       },
     )
     expect(atFull.isAtFull).toBe(true)
@@ -1327,6 +1443,7 @@ describe('getStockPreview', () => {
         unpackedQuantity: 0.3,
         targetQuantity: 2.5,
         refillThreshold: 1,
+        isActive: true,
       },
     )
     expect(notAtFull.isAtFull).toBe(false)
@@ -1340,6 +1457,7 @@ describe('getStockPreview', () => {
         unpackedQuantity: 0,
         targetQuantity: 8,
         refillThreshold: 2,
+        isActive: true,
       },
     )
     expect(zero.isAtZero).toBe(true)
@@ -1351,6 +1469,7 @@ describe('getStockPreview', () => {
         unpackedQuantity: 1,
         targetQuantity: 8,
         refillThreshold: 2,
+        isActive: true,
       },
     )
     expect(notZero.isAtZero).toBe(false)
@@ -1519,6 +1638,7 @@ describe('getStockPreview unit word', () => {
         unpackedQuantity: 0,
         targetQuantity: 5,
         refillThreshold: 1,
+        isActive: true,
       },
     )
     expect(result.unitLabel).toBe('pack')
@@ -1532,6 +1652,7 @@ describe('getStockPreview unit word', () => {
         unpackedQuantity: 0,
         targetQuantity: 5,
         refillThreshold: 1,
+        isActive: true,
       },
     )
     expect(result.unitLabel).toBe('pack')
@@ -1550,9 +1671,73 @@ describe('getStockPreview unit word', () => {
         unpackedQuantity: 0,
         targetQuantity: 1000,
         refillThreshold: 0,
+        isActive: true,
       },
     )
     expect(result.unitLabel).toBe('g')
+  })
+})
+
+describe('getStockPreview with the "Active here" switch', () => {
+  const config = { targetUnit: 'package' as const, consumeAmount: 1 }
+
+  it('user sees the bar turn inactive when the switch is off, even with a target', () => {
+    // Given live values with a target of 5 and the switch off
+    const result = getStockPreview(config, {
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      targetQuantity: 5,
+      refillThreshold: 1,
+      isActive: false,
+    })
+
+    // Then the preview is inactive, and the label keeps the target
+    expect(result.status).toBe('inactive')
+    expect(result.quantityLabel).toBe('2 / 5')
+  })
+
+  it('user sees an active item with target 0 keep its status colour', () => {
+    // Given an active item with no target and stock above a refill of 0
+    const result = getStockPreview(config, {
+      packedQuantity: 3,
+      unpackedQuantity: 0,
+      targetQuantity: 0,
+      refillThreshold: 0,
+      isActive: true,
+    })
+
+    // Then it is not inactive
+    expect(result.status).toBe('ok')
+  })
+
+  it('reads the switch for a non-consumable item too', () => {
+    const result = getStockPreview(
+      { ...config, consumable: false },
+      {
+        packedQuantity: 2,
+        unpackedQuantity: 0,
+        targetQuantity: 5,
+        refillThreshold: 1,
+        isActive: false,
+      },
+    )
+    expect(result.status).toBe('inactive')
+  })
+
+  it('reads the switch, not the target, for the inactive status', () => {
+    // The same numbers with the switch on and off: only the switch decides.
+    const values = {
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      targetQuantity: 0,
+      refillThreshold: 0,
+    }
+    expect(getStockPreview(config, { ...values, isActive: true }).status).toBe(
+      'ok',
+    )
+    expect(getStockPreview(config, { ...values, isActive: false }).status).toBe(
+      'inactive',
+    )
   })
 })
 
@@ -1572,6 +1757,7 @@ describe('getStockPreview for a non-consumable item', () => {
         unpackedQuantity: 250,
         targetQuantity: 1200,
         refillThreshold: 200,
+        isActive: true,
       },
     )
     expect(result.unitLabel).toBe('cup')
@@ -1591,6 +1777,7 @@ describe('getStockPreview for a non-consumable item', () => {
         unpackedQuantity: 0.5,
         targetQuantity: 4,
         refillThreshold: 1,
+        isActive: true,
       },
     )
     expect(result.status).toBe('warning')
@@ -1602,7 +1789,7 @@ describe('getStockPreview for a non-consumable item', () => {
       consumeAmount: 1,
       consumable: false,
     }
-    const values = { targetQuantity: 4, refillThreshold: 1 }
+    const values = { targetQuantity: 4, refillThreshold: 1, isActive: true }
     expect(
       getStockPreview(config, {
         ...values,
@@ -1617,5 +1804,53 @@ describe('getStockPreview for a non-consumable item', () => {
         unpackedQuantity: 1,
       }).isAtFull,
     ).toBe(false)
+  })
+})
+
+describe('getGroupPackTotals', () => {
+  it("adds an inactive item's packed amount, and 0 to target and refill", () => {
+    // Given an active item and an item turned off here that keeps a target
+    // of 5 and a refill of 2
+    const active = makeStock({
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 1,
+    })
+    const off = makeStock({
+      isActive: false,
+      targetQuantity: 5,
+      refillThreshold: 2,
+      packedQuantity: 3,
+    })
+
+    // Then the stock of both counts, the target and refill of the active
+    // one only
+    expect(getGroupPackTotals([active, off])).toEqual({
+      totalPacked: 4,
+      totalTarget: 2,
+      totalRefill: 1,
+    })
+  })
+
+  it('adds the target of an active item with no target (0) as 0', () => {
+    const noTarget = makeStock({
+      isActive: true,
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 2,
+    })
+    expect(getGroupPackTotals([noTarget])).toEqual({
+      totalPacked: 2,
+      totalTarget: 0,
+      totalRefill: 0,
+    })
+  })
+
+  it('is all zero for an empty group', () => {
+    expect(getGroupPackTotals([])).toEqual({
+      totalPacked: 0,
+      totalTarget: 0,
+      totalRefill: 0,
+    })
   })
 })

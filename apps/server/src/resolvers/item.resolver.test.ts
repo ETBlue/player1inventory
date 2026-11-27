@@ -29,47 +29,53 @@ import type { Context } from '../context.js'
 // the events are tested in `catalog-live-publish.resolver.test.ts`. A
 // reinstated stock mirror in `updateItem` would write, not read, so it still
 // throws here.
+//
+// `$transaction` runs its callback with this same object as `tx`, and keeps
+// nothing aside: there is no store to roll back. `updateItem` writes the item
+// and both junction lists in one transaction (owner answer 7A, 2026-11-27).
+// The rollback is tested against stateful stores in
+// `catalog-live-publish.resolver.test.ts`.
 vi.mock('../lib/prisma.js', async () => {
   const echoIds = async ({ where }: { where: { id: { in: string[] } } }) =>
     where.id.in.map((id) => ({ id }))
-  return {
-    prisma: {
-      // `ensureHousehold` (via `requireHousehold`) reads the caller's household
-      // through their `User` row (decision T14 of the H5b plan).
-      user: {
-        findUnique: vi.fn(async () => ({ activeHouseholdId: null, householdMemberships: [{ householdId: 'hh_test' }] })),
-      },
-      householdMember: {
-        findUnique: vi.fn(async () => ({ role: 'owner' })),
-      },
-      tag: { findMany: vi.fn(echoIds) },
-      vendor: { findMany: vi.fn(echoIds) },
-      item: {
-        findMany: vi.fn(),
-        findFirst: vi.fn(),
-        findUniqueOrThrow: vi.fn(),
-        create: vi.fn(),
-        update: vi.fn(),
-        delete: vi.fn(),
-      },
-      itemTag: {
-        count: vi.fn(),
-        createMany: vi.fn(),
-        deleteMany: vi.fn(),
-      },
-      itemVendor: {
-        count: vi.fn(),
-        createMany: vi.fn(),
-        deleteMany: vi.fn(),
-      },
-      recipeItem: {
-        count: vi.fn(),
-      },
-      itemStock: { findMany: vi.fn(async () => []) },
-      inventoryLog: { findMany: vi.fn(async () => []) },
-      cartItem: { findMany: vi.fn(async () => []) },
+  const client: Record<string, unknown> = {
+    // `ensureHousehold` (via `requireHousehold`) reads the caller's household
+    // through their `User` row (decision T14 of the H5b plan).
+    user: {
+      findUnique: vi.fn(async () => ({ activeHouseholdId: null, householdMemberships: [{ householdId: 'hh_test' }] })),
     },
+    householdMember: {
+      findUnique: vi.fn(async () => ({ role: 'owner' })),
+    },
+    tag: { findMany: vi.fn(echoIds) },
+    vendor: { findMany: vi.fn(echoIds) },
+    item: {
+      findMany: vi.fn(),
+      findFirst: vi.fn(),
+      findUniqueOrThrow: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+    },
+    itemTag: {
+      count: vi.fn(),
+      createMany: vi.fn(),
+      deleteMany: vi.fn(),
+    },
+    itemVendor: {
+      count: vi.fn(),
+      createMany: vi.fn(),
+      deleteMany: vi.fn(),
+    },
+    recipeItem: {
+      count: vi.fn(),
+    },
+    itemStock: { findMany: vi.fn(async () => []) },
+    inventoryLog: { findMany: vi.fn(async () => []) },
+    cartItem: { findMany: vi.fn(async () => []) },
   }
+  client.$transaction = async (fn: (tx: unknown) => Promise<unknown>) => fn(client)
+  return { prisma: client }
 })
 
 import { prisma } from '../lib/prisma.js'

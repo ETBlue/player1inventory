@@ -11,6 +11,8 @@ const {
   OutOfStock,
   LowStock,
   Unsorted,
+  ActiveNoTarget,
+  AllInactive,
 } = composeStories(stories)
 
 describe('GroupCard stories smoke tests', () => {
@@ -47,5 +49,21 @@ describe('GroupCard stories smoke tests', () => {
   it('Unsorted renders without icon', () => {
     render(<Unsorted />)
     expect(screen.getByText('Unsorted')).toBeInTheDocument()
+  })
+
+  it('ActiveNoTarget renders a bar in the ok colour, not grey', () => {
+    const { container } = render(<ActiveNoTarget />)
+    expect(screen.getByText('2 / 2 active')).toBeInTheDocument()
+    expect(
+      container.querySelector('.bg-status-ok-background-muted'),
+    ).toBeInTheDocument()
+  })
+
+  it('AllInactive renders a grey bar', () => {
+    const { container } = render(<AllInactive />)
+    expect(screen.getByText('0 / 2 active')).toBeInTheDocument()
+    expect(
+      container.querySelector('.bg-status-inactive-background-muted'),
+    ).toBeInTheDocument()
   })
 })

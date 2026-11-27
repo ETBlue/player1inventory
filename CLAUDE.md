@@ -547,9 +547,12 @@ production** (2026-11-23, release #403, merge `16929909`). Where a paragraph bel
 >
 > **Every `Mutation` field must be in one of two lists** in
 > `apps/server/src/resolvers/live-publish.guard.test.ts`: `publishes` (with its kinds) or
-> `publishesNothing` (with a reason). A new mutation in no list fails the test. Today: 84
-> fields, 77 in `publishes` and 7 in `publishesNothing` (measured 2026-11-22 after
-> households H7b; count with the two commands in the H6b *Counts* table above). H7b added
+> `publishesNothing` (with a reason). A new mutation in no list fails the test. Today: 85
+> fields, 78 in `publishes` and 7 in `publishesNothing` (measured 2026-11-27 on
+> `feature/item-relations-save-server`; count with the two commands in the H6b *Counts*
+> table above). The item relations Save PR A added `setItemRecipes` to `publishes`
+> (household-level `CATALOG`, only when the list changed something). Before it: 84, 77
+> and 7, measured 2026-11-22 after households H7b. H7b added
 > `markLocationVisited` and `setLocationSort` to `publishesNothing`, and moved
 > `reorderLocations` there from `publishes`: the order is the person's own, so a
 > household-level `LOCATION` would make every member refetch for a change only one person
@@ -806,9 +809,11 @@ skips half the work. Nothing else in the gate checks `e2e/` formatting: `pnpm li
 `apps/server`'s build already carries a second pass for `scripts/`.
 
 **`pnpm test` runs both workspaces.** The root script is `pnpm -r test`, which recurses into
-every workspace package that defines a `test` script — today `apps/web` (**3899 tests**
-across 378 files) and `apps/server` (**2834** across 89). Measured 2026-11-22 on
-`feature/households-h7b`, after households H7b task M.6 (it said 3840 / 373 and 2767 / 87
+every workspace package that defines a `test` script — today `apps/web` (**4403 tests**
+across 407 files) and `apps/server` (**3026** across 94). Measured 2026-11-27 on
+`feature/item-stock-active-web`, after task W.7 of the "Active here" switch (it said 3899 /
+378 and 2834 / 89 on 2026-11-22 on `feature/households-h7b`, after households H7b task
+M.6, 3840 / 373 and 2767 / 87
 on 2026-11-21 on `feature/households-h7a`, 3729 / 364 and 2689 / 85 on 2026-11-20 on
 `feature/households-h6b`, after households H6b task K.9, and 3607 / 360 and 2563 / 83
 the same day on `feature/households-h6a`, after households H6a task J.9, 3454 / 347 and 2401 / 78 on
@@ -821,7 +826,7 @@ earlier that day on `feature/households-h4`, after households H4, 2586 / 281 and
 after H3c-1 the same day, 2543 / 276 and 1274 / 52 on
 2026-11-15 on `feature/households-h3b`, 2549 / 277 and 1244 / 51 earlier that
 day, 2529 / 275 and 1161 / 47 on 2026-11-11, on H3a, and
-2321 / 251 and 522 / 32 on 2026-10-28, before households H3a), plus **70** in `scripts/spec` from `pnpm test:spec`.
+2321 / 251 and 522 / 32 on 2026-10-28, before households H3a), plus **80** in `scripts/spec` from `pnpm test:spec` (70 on 2026-11-22).
 
 A short history of these numbers, because they move almost every week and briefs keep
 quoting them: they said ~1700 and ~100 until 2026-09-29; `apps/server` said 259 across 20
@@ -2120,8 +2125,9 @@ test runs against a hand-written stateful Prisma fake. Cloud **E2E** does hit re
 Postgres (`E2E_TEST_MODE=true` routes `prisma.ts` at the local E2E database, or at
 `TEST_DATABASE_URL`, a dedicated Neon branch, with `E2E_DATABASE=neon`; see `e2e/CLAUDE.md`,
 *The local E2E database*), but only for the spec files in `CLOUD_SPECS` in
-`e2e/playwright.config.ts` (the `cloud` project's `testMatch`) — that list is opt-in and covers **40 of the 44 spec files in
-`e2e/tests/`** (measured 2026-11-22, after households H7b task M.5 added
+`e2e/playwright.config.ts` (the `cloud` project's `testMatch`) — that list is opt-in and covers **44 of the 48 spec files in
+`e2e/tests/`** (measured 2026-11-27, after the "Active here" switch task W.6 added
+`item-stock-active.spec.ts`; 40 of 44 on 2026-11-22, after households H7b task M.5 added
 `location-sort.spec.ts`; 39 of 43 on 2026-11-21, after households H7a task L.6 added
 `household-switch.spec.ts`; 38 of 42 on 2026-11-20, after households H6b task K.8 added
 `household-ownership.spec.ts`; 37 of 41 earlier that day, after households H6a task J.8 added
@@ -2142,7 +2148,7 @@ awk '/^const CLOUD_SPECS = \[/,/^\]/' e2e/playwright.config.ts \
 find e2e/tests -name '*.spec.ts' | wc -l              # every spec file
 ```
 
-Measured 2026-11-23: **40** and **44**. **The `awk` range changed on 2026-11-23** (E2E speed
+Measured 2026-11-27: **44** and **48** (40 and 44 on 2026-11-23). **The `awk` range changed on 2026-11-23** (E2E speed
 plan task S.8). The cloud list moved out of the `cloud` project into `const CLOUD_SPECS`, so
 the `cloud` and `cloud-neon` projects can share it. The command this block gave before,
 `awk "/name: 'cloud'/,/name: 'pwa'/" … | grep -c "spec\.ts'"`, prints 0 since then.

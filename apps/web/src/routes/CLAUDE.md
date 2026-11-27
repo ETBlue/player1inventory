@@ -326,8 +326,10 @@ Row 2 (ItemListToolbar):
 - **Location gate (R4):** the vendor/no-vendor filter above is then narrowed to items
   stocked in the **active location** via `isStockedHere`. `useItems()` joins every global
   item against the active location's `ItemStock`, so an item assigned to this vendor but
-  not stocked here arrives as ZERO_STOCK (`targetQuantity: 0`, no `stockId`) —
-  indistinguishable from a genuinely inactive item unless `stockId` is checked first. This
+  not stocked here arrives as ZERO_STOCK (`targetQuantity: 0`, no `isActive`, no `stockId`).
+  With no stored `isActive`, `isStockActive` falls back to the old rule (target 0 = off), so
+  `isInactive` reads such a row as inactive. It cannot be told apart from an item whose
+  "Active here" switch is off unless `stockId` is checked first. This
   keeps the page in sync with the `VendorCartCard`'s count (`useVendorCartCounts()`) and
   the pantry (`getStockedItems`), both of which already exclude not-stocked-here items.
   **Both modes since PR 3b.** Cloud used to bypass this gate because of the **cart**,
@@ -426,7 +428,7 @@ Row 3:            [A / T here · N empty · N low stock]
 - **Chevron** — toggles expand/collapse of the item list; purely layout, no effect on check state
 - **Serving stepper** (`− N +`) — absolutely positioned to the right of the card; visible when recipe is checked; min = 1
 - **Subtitle** (Row 2) — always visible; shows `N items`, `, M selected` when M > 0, and `, × S` when recipe is checked (even at S = 1)
-- **Stock status** (Row 3) — always visible; the `GroupCard` row-3 idiom (muted `·` separators, `text-status-error-foreground` for empty, `text-status-warning-foreground` for low stock). Clause 1 is availability, `A / T here` (`cooking.recipe.availableHere`), where `A = availableRecipeItems.length` and `T = recipe.items.length`. Clauses 2 and 3 are health over the **available** items only — `isEmptyStock` / `isLowStock` from `quantityUtils` (shared with the pantry group cards, see `components/CLAUDE.md`) — each rendered only when its count is non-zero. Computing health over the available subset is what keeps a not-stocked-here item out of the counts: its `ZERO_STOCK` join (`targetQuantity: 0`) reads as inactive, so it is absent rather than reported as empty. The row carries `id="recipe-status-{recipe.id}"` and the row-1 checkbox references it via `aria-describedby`, so a screen reader announces *why* a disabled recipe is disabled (`0 / 2 here`) rather than just "checkbox, disabled" — the association a sighted user makes spatially. Neither axe nor Biome has a rule for this, so it must be kept wired by hand; the id must stay unique per recipe because the cards render in a list
+- **Stock status** (Row 3) — always visible; the `GroupCard` row-3 idiom (muted `·` separators, `text-status-error-foreground` for empty, `text-status-warning-foreground` for low stock). Clause 1 is availability, `A / T here` (`cooking.recipe.availableHere`), where `A = availableRecipeItems.length` and `T = recipe.items.length`. Clauses 2 and 3 are health over the **available** items only — `isEmptyStock` / `isLowStock` from `quantityUtils` (shared with the pantry group cards, see `components/CLAUDE.md`) — each rendered only when its count is non-zero. Computing health over the available subset is what keeps a not-stocked-here item out of the counts: its `ZERO_STOCK` join (`targetQuantity: 0`, no `isActive`) reads as inactive, so it is absent rather than reported as empty. The row carries `id="recipe-status-{recipe.id}"` and the row-1 checkbox references it via `aria-describedby`, so a screen reader announces *why* a disabled recipe is disabled (`0 / 2 here`) rather than just "checkbox, disabled" — the association a sighted user makes spatially. Neither axe nor Biome has a rule for this, so it must be kept wired by hand; the id must stay unique per recipe because the cards render in a list
 
 **Expand/collapse:** Layout only — does not affect check state or amounts. Items show as unchecked when first expanded (before the recipe checkbox is clicked). Expand/collapse state is preserved when Done or Cancel is confirmed — only session interaction state (servings, amounts, checked items) is reset.
 

@@ -162,6 +162,11 @@ export async function upsertItemStock(
   const stock: ItemStock = {
     ...ZERO_STOCK,
     ...fields,
+    // A new row is active unless the caller says otherwise (owner answer Q1),
+    // also with target 0. `ZERO_STOCK` carries no `isActive`, so without this
+    // a target-0 row would read as inactive through `isStockActive`'s
+    // fallback. A caller that says `false` keeps it.
+    isActive: fields.isActive ?? true,
     id: crypto.randomUUID(),
     itemId,
     locationId,
@@ -173,13 +178,18 @@ export async function upsertItemStock(
 }
 
 // Copy-on-add: stock an existing item in a location, inheriting the per-location
-// stock STATE except packed/unpacked quantities (which start at 0). Source row =
-// the active location's stock if present, else the item's most-recently-updated
-// stock. No-op (returns the existing row) if the item is already stocked there.
+// stock STATE except packed/unpacked quantities (which start at 0) and the
+// "Active here" switch (which starts on). Source row = the active location's
+// stock if present, else the item's most-recently-updated stock. No-op (returns
+// the existing row) if the item is already stocked there.
 //
 // Since v16 there is nothing to copy for units / packaging / expiration mode /
 // consume amount: those are global Item fields and the new location shares them
 // automatically. Only targetQuantity, refillThreshold and dueDate are inherited.
+//
+// `isActive` is NOT inherited (owner answer Q1, 2026-11-26): a new row is always
+// active, also when the source row is turned off. `pickStockFields` copies
+// `isActive` since it is a stock field, so it is set back to `true` here.
 export async function addItemToLocation(
   itemId: string,
   locationId: string,
@@ -198,8 +208,9 @@ export async function addItemToLocation(
         ...pickStockFields(source as unknown as Record<string, unknown>),
         packedQuantity: 0,
         unpackedQuantity: 0,
+        isActive: true,
       }
-    : { ...ZERO_STOCK }
+    : { ...ZERO_STOCK } // `upsertItemStock` writes `isActive: true` for it
 
   return upsertItemStock(itemId, locationId, fields)
 }
@@ -999,14 +1010,14 @@ export async function checkout(
     // most recently updated), and everything opens at 0 only when the item is
     // stocked nowhere at all. See `addItemToLocation` above.
     //
-    // The wording here used to be "copy-on-add semantics: start from zeroed
-    // stock", which described half of that and read as though the new row
-    // opened inactive. Inheriting is the point: `targetQuantity === 0` is what
-    // every reader treats as "not active at this location" (`isInactiveHere`,
-    // lib/quantityUtils.ts), so a row opened at 0 would hold stock the user can
-    // never be prompted to buy again. Cloud `checkout` DID open rows that way
-    // until 2026-10-07 — see `ensureStockAtLocation` in
-    // apps/server/src/lib/itemStockWrite.ts.
+    // The new row is always active (`isActive: true`, owner answer Q1), also
+    // when the source row is turned off and when no target is inherited.
+    // Inheriting the target still matters: without it the bought item would
+    // have no target here, so the user would never be prompted to buy it
+    // again. Cloud `checkout` opened rows at target 0 until 2026-10-07 — see
+    // `ensureStockAtLocation` in apps/server/src/lib/itemStockWrite.ts.
+    // (Until Dexie v22, `targetQuantity === 0` was itself the "inactive here"
+    // marker; since v22 the `isActive` switch is.)
     //
     // This keeps checkout robust even for items not previously stocked here.
     const base = stock ?? (await addItemToLocation(cartItem.itemId, locationId))
@@ -1301,6 +1312,8 @@ export async function consumeRecipesBatch(
         } else {
           await db.itemStocks.add({
             ...ZERO_STOCK,
+            // A new row is active (owner answer Q1); see `upsertItemStock`.
+            isActive: true,
             id: crypto.randomUUID(),
             itemId: item.itemId,
             locationId,

@@ -19,6 +19,7 @@ import {
   applyShelfFilterPicksBatch,
   applyUnitSwitchBatch,
   checkout,
+  consumeRecipesBatch,
   createItem,
   createLocation,
   createRecipe,
@@ -3201,5 +3202,181 @@ describe('getLastPurchaseDate counts every row that added stock', () => {
     // Then the stock count row is the newest row that added stock
     const date = await getLastPurchaseDate(item.id)
     expect(date?.getTime()).toBeGreaterThanOrEqual(before)
+  })
+})
+
+// The "Active here" switch (`ItemStock.isActive`, Dexie v22). Owner answer Q1:
+// a NEW stock row is always active, also when it copies an inactive row, and
+// also with target 0. `ZERO_STOCK` carries no `isActive`, so a writer that
+// forgot to write `true` would make a target-0 row read as inactive through
+// `isStockActive`'s fallback. Every fixture here uses target 0 for that
+// reason: with a target above 0 the fallback also says "active", and the test
+// could not tell a writer that writes `true` from one that writes nothing.
+describe('new stock rows are active (the Active here switch)', () => {
+  beforeEach(async () => {
+    await db.items.clear()
+    await db.itemStocks.clear()
+    await db.inventoryLogs.clear()
+    await db.locations.clear()
+  })
+
+  // The stored value itself, not `isStockActive(row)`: the fallback gives
+  // `false` for a target-0 row with no value, but reading the raw key also
+  // fails for a writer that writes nothing on a row with a target.
+  async function storedIsActive(itemId: string, locationId: string) {
+    return (await getItemStock(itemId, locationId))?.isActive
+  }
+
+  it('user’s new item with no target opens active', async () => {
+    // Given the Add dialog's input: target 0
+    const item = await createItem({
+      name: 'Tissue',
+      tagIds: [],
+      targetQuantity: 0,
+    })
+
+    // Then its stock row is active
+    expect(await storedIsActive(item.id, DEFAULT_LOCATION_ID)).toBe(true)
+  })
+
+  it('upsertItemStock opens a new row active unless the caller says otherwise', async () => {
+    const tissue = await createItem(
+      { name: 'Tissue', tagIds: [] },
+      DEFAULT_LOCATION_ID,
+      { catalogOnly: true },
+    )
+    const cups = await createItem(
+      { name: 'Cups', tagIds: [] },
+      DEFAULT_LOCATION_ID,
+      { catalogOnly: true },
+    )
+
+    await upsertItemStock(tissue.id, DEFAULT_LOCATION_ID, { packedQuantity: 1 })
+    await upsertItemStock(cups.id, DEFAULT_LOCATION_ID, { isActive: false })
+
+    expect(await storedIsActive(tissue.id, DEFAULT_LOCATION_ID)).toBe(true)
+    expect(await storedIsActive(cups.id, DEFAULT_LOCATION_ID)).toBe(false)
+  })
+
+  it('user adding an item stocked nowhere to a location gets an active row', async () => {
+    const cabin = await createLocation('Cabin')
+    const item = await createItem(
+      { name: 'Tissue', tagIds: [] },
+      DEFAULT_LOCATION_ID,
+      { catalogOnly: true },
+    )
+
+    await addItemToLocation(item.id, cabin.id)
+
+    expect(await storedIsActive(item.id, cabin.id)).toBe(true)
+  })
+
+  it('user adding an item inactive at home to another location gets an active row there, with the target copied', async () => {
+    // Given an item turned off at home, with target 5
+    const cabin = await createLocation('Cabin')
+    const item = await createItem({
+      name: 'Rice',
+      tagIds: [],
+      targetQuantity: 5,
+      refillThreshold: 1,
+    })
+    await updateItem(item.id, { isActive: false })
+    expect(await storedIsActive(item.id, DEFAULT_LOCATION_ID)).toBe(false)
+
+    // When the user stocks it at the cabin (copy-on-add from the home row)
+    const copied = await addItemToLocation(item.id, cabin.id)
+
+    // Then the cabin row is active, and the target and refill are copied
+    expect(copied.isActive).toBe(true)
+    expect(await storedIsActive(item.id, cabin.id)).toBe(true)
+    expect(copied.targetQuantity).toBe(5)
+    expect(copied.refillThreshold).toBe(1)
+    // And the home row stays off
+    expect(await storedIsActive(item.id, DEFAULT_LOCATION_ID)).toBe(false)
+  })
+
+  it('user buying an item not stocked at the cart’s location gets an active row there', async () => {
+    const cabin = await createLocation('Cabin')
+    const item = await createItem(
+      { name: 'Tissue', tagIds: [] },
+      DEFAULT_LOCATION_ID,
+      { catalogOnly: true },
+    )
+    await addToCart(cartIdFor(cabin.id, null), item.id, 2)
+
+    await checkout(cartIdFor(cabin.id, null))
+
+    expect(await storedIsActive(item.id, cabin.id)).toBe(true)
+  })
+
+  it('user cooking with an item not stocked at the location gets an active row there', async () => {
+    const cabin = await createLocation('Cabin')
+    const item = await createItem(
+      { name: 'Flour', tagIds: [] },
+      DEFAULT_LOCATION_ID,
+      { catalogOnly: true },
+    )
+
+    await consumeRecipesBatch({
+      occurredAt: new Date(),
+      locationId: cabin.id,
+      recipeIds: [],
+      items: [
+        {
+          itemId: item.id,
+          packedQuantity: 0,
+          unpackedQuantity: 0,
+          delta: -1,
+          quantity: 0,
+        },
+      ],
+    })
+
+    expect(await storedIsActive(item.id, cabin.id)).toBe(true)
+  })
+
+  it('user turning the switch off keeps the target and writes no stock count row', async () => {
+    // Given an active item with target 5 and 2 packs
+    const item = await createItem({
+      name: 'Rice',
+      tagIds: [],
+      targetQuantity: 5,
+      refillThreshold: 1,
+      packedQuantity: 2,
+    })
+
+    // When the user saves only the switch, off
+    await updateItem(item.id, { isActive: false })
+
+    // Then the row is off, the target and amount stay
+    const stock = await getItemStock(item.id, DEFAULT_LOCATION_ID)
+    expect(stock).toMatchObject({
+      isActive: false,
+      targetQuantity: 5,
+      refillThreshold: 1,
+      packedQuantity: 2,
+    })
+    // And no log row is written: the on-hand total did not change
+    expect(await getItemLogs(item.id)).toHaveLength(0)
+
+    // When the user turns it on again, still no row
+    await updateItem(item.id, { isActive: true })
+    expect(await storedIsActive(item.id, DEFAULT_LOCATION_ID)).toBe(true)
+    expect(await getItemLogs(item.id)).toHaveLength(0)
+  })
+
+  it('a save that turns the switch off and changes the amount writes one row, for the amount', async () => {
+    const item = await createItem({
+      name: 'Rice',
+      tagIds: [],
+      targetQuantity: 5,
+      packedQuantity: 2,
+    })
+
+    await updateItem(item.id, { isActive: false, packedQuantity: 3 })
+
+    expect(await getItemLogs(item.id)).toMatchObject([
+      { logKey: 'stockCount', delta: 1, quantity: 3 },
+    ])
   })
 })

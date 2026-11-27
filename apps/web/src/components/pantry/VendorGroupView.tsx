@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button'
 import { useItems, useStockedItems } from '@/hooks'
 import { useVendors } from '@/hooks/useVendors'
 import {
-  getItemPackUnits,
+  getGroupPackTotals,
   isEmptyStock,
   isInactive,
   isLowStock,
@@ -48,17 +48,7 @@ export function VendorGroupView() {
     getVendorItems(vendorId).filter((i) => !isInactive(i)).length
 
   const getPackTotals = (vendorId: string) =>
-    getVendorItems(vendorId).reduce(
-      (acc, item) => {
-        const { packed, target, refill } = getItemPackUnits(item)
-        return {
-          totalPacked: acc.totalPacked + packed,
-          totalTarget: acc.totalTarget + target,
-          totalRefill: acc.totalRefill + refill,
-        }
-      },
-      { totalPacked: 0, totalTarget: 0, totalRefill: 0 },
-    )
+    getGroupPackTotals(getVendorItems(vendorId))
 
   const unsortedItems = getVendorItems('unsorted')
 

@@ -190,6 +190,9 @@ describe('fetchLocalPayload — item stock and locations (v15 split)', () => {
         packedQuantity: 3,
         unpackedQuantity: 0,
         dueDate: new Date('2026-03-01T00:00:00.000Z'),
+        // Off here with a target of 4: the switch must travel in the file,
+        // because the old rule (target 0 is off) would read this row as on
+        isActive: false,
         createdAt: now,
         updatedAt: now,
       },
@@ -223,6 +226,7 @@ describe('fetchLocalPayload — item stock and locations (v15 split)', () => {
       locationId: 'local',
       packedQuantity: 3,
       targetQuantity: 4,
+      isActive: false,
     })
     expect(home?.dueDate).toBeInstanceOf(Date)
 
@@ -437,6 +441,10 @@ const CLOUD_ITEM_STOCKS = [
     packedQuantity: 3,
     unpackedQuantity: 0,
     dueDate: '2026-03-01T00:00:00.000Z',
+    // Off here with a target of 4. The old rule (target 0 is off) would read
+    // it as on, so the export test can tell "the switch was sent" from "the
+    // switch was dropped or rebuilt from the target".
+    isActive: false,
     createdAt: '2026-02-01T00:00:00.000Z',
     updatedAt: '2026-02-01T00:00:00.000Z',
   },
@@ -450,6 +458,7 @@ const CLOUD_ITEM_STOCKS = [
     packedQuantity: 2,
     unpackedQuantity: 0,
     dueDate: null,
+    isActive: true,
     createdAt: '2026-02-01T00:00:00.000Z',
     updatedAt: '2026-02-01T00:00:00.000Z',
   },
@@ -691,6 +700,7 @@ describe('fetchCloudPayload — the cloud backup is lossless', () => {
       locationId: 'loc-home',
       packedQuantity: 3,
       targetQuantity: 4,
+      isActive: false,
     })
     expect(office).toMatchObject({
       id: 'stock-office',
@@ -698,6 +708,7 @@ describe('fetchCloudPayload — the cloud backup is lossless', () => {
       locationId: 'loc-office',
       packedQuantity: 2,
       targetQuantity: 1,
+      isActive: true,
     })
 
     // And the two quantities differ, so a payload carrying one location's

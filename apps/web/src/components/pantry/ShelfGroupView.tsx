@@ -14,7 +14,7 @@ import { useShelvesQuery, useStockedItems } from '@/hooks'
 import { useRecipes } from '@/hooks/useRecipes'
 import { useTags } from '@/hooks/useTags'
 import {
-  getItemPackUnits,
+  getGroupPackTotals,
   isEmptyStock,
   isInactive,
   isLowStock,
@@ -81,17 +81,7 @@ export function ShelfGroupView() {
   }
 
   const getShelfPackTotals = (shelfId: string) => {
-    return getShelfItems(shelfId).reduce(
-      (acc, item) => {
-        const { packed, target, refill } = getItemPackUnits(item)
-        return {
-          totalPacked: acc.totalPacked + packed,
-          totalTarget: acc.totalTarget + target,
-          totalRefill: acc.totalRefill + refill,
-        }
-      },
-      { totalPacked: 0, totalTarget: 0, totalRefill: 0 },
-    )
+    return getGroupPackTotals(getShelfItems(shelfId))
   }
 
   const getUnsortedItems = (): PantryItem[] => {
@@ -133,17 +123,7 @@ export function ShelfGroupView() {
     getUnsortedItems().filter((item) => !isInactive(item)).length
 
   const getUnsortedPackTotals = () => {
-    return getUnsortedItems().reduce(
-      (acc, item) => {
-        const { packed, target, refill } = getItemPackUnits(item)
-        return {
-          totalPacked: acc.totalPacked + packed,
-          totalTarget: acc.totalTarget + target,
-          totalRefill: acc.totalRefill + refill,
-        }
-      },
-      { totalPacked: 0, totalTarget: 0, totalRefill: 0 },
-    )
+    return getGroupPackTotals(getUnsortedItems())
   }
 
   const isLoading = shelvesLoading || itemsLoading

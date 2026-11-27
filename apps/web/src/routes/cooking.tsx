@@ -548,7 +548,8 @@ function CookingPage() {
     // Stock status line — health is computed over the items that are
     // actually available here, so an item stocked only elsewhere is
     // absent from the counts rather than reported as empty (its
-    // ZERO_STOCK join would otherwise read as inactive).
+    // ZERO_STOCK join carries no switch and target 0, so it would
+    // otherwise read as inactive).
     const availablePantryItems = availableRecipeItems
       .map((ri) => items.find((i) => i.id === ri.itemId))
       .filter((i): i is (typeof items)[number] => i !== undefined)

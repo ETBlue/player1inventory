@@ -121,7 +121,8 @@ Three rules, all four tabs alike
 
 2. **Two buckets, not four.** Rows are ordered *assigned, then unassigned*, each
    keeping the toolbar's sort order. There is deliberately **no** active/inactive
-   split: "inactive" is `targetQuantity === 0`, which stayed per-location after
+   split: "inactive" is the per-location "Active here" switch (`ItemStock.isActive`),
+   per-location like the target, which stayed on `ItemStock` after
    the v16 field move (see `src/db/CLAUDE.md`), so it has no global meaning here.
    Worse, `useItems()` joins the **active** location, so an item stocked only
    elsewhere arrives zeroed and a bare `isInactive()` would sink it — the

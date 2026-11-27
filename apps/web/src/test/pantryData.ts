@@ -1,3 +1,4 @@
+import { isStockActive } from '@p1i/types'
 import { DEFAULT_LOCATION_ID } from '@/types'
 
 // Adapts a hand-written `GetItems` cloud fixture to the `PantryData` shape the
@@ -33,6 +34,12 @@ function stockRowFor(item: CloudItemFixture, locationId: string) {
     packedQuantity: item.packedQuantity ?? 0,
     unpackedQuantity: item.unpackedQuantity ?? 0,
     dueDate: item.dueDate ?? null,
+    // A real row always carries the "Active here" switch. A fixture that does
+    // not set it keeps the old meaning of its target (target 0 = inactive).
+    isActive:
+      typeof item.isActive === 'boolean'
+        ? item.isActive
+        : isStockActive({ targetQuantity: Number(item.targetQuantity ?? 0) }),
     createdAt: item.createdAt ?? '2026-01-01T00:00:00.000Z',
     updatedAt: item.updatedAt ?? '2026-01-01T00:00:00.000Z',
   }

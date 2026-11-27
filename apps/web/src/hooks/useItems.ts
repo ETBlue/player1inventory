@@ -218,7 +218,7 @@ export function toUpdateItemInput(
   }
 }
 
-// The five per-location state fields, as the cloud `ItemStockInput` wants them.
+// The per-location state fields, as the cloud `ItemStockInput` wants them.
 //
 // Cloud mode routes these to `upsertItemStock(itemId, locationId)` instead of
 // leaving them inline on `updateItem`, so the write lands where PR 2's reads
@@ -232,6 +232,9 @@ export function toUpdateItemInput(
 //     undefined, because that is how the form clears an expiry. The server
 //     tests `'dueDate' in input`, so a present-but-null value clears the date
 //     and an absent key preserves it.
+//   - `isActive` (the "Active here" switch) is emitted only when it is a
+//     boolean. The server column is NOT NULL and reads `null` and a missing
+//     key alike as "leave it", so there is no "clear" to send.
 export function toStockInput(
   updates: Partial<Item> & Partial<StockFields>,
 ): ItemStockInput {
@@ -252,6 +255,9 @@ export function toStockInput(
     ...('dueDate' in updates && {
       dueDate: dueDate instanceof Date ? dueDate.toISOString() : null,
     }),
+    ...(typeof updates.isActive === 'boolean' && {
+      isActive: updates.isActive,
+    }),
   }
 }
 
@@ -260,13 +266,19 @@ export function toStockInput(
 // existing row whose values an absent key could preserve, and `pickStockFields`
 // already defaults them to `ZERO_STOCK` — the same values `db/operations.ts`'s
 // `createItem` writes.
-function toCreateStockInput(input: ItemMutationInput): ItemStockInput {
+//
+// `isActive` defaults to `true`: a new item is active, also with target 0
+// ("no target"; owner answer Q2 of the 2026-11-26 design). It is sent
+// explicitly, not left to the server's default, so the row says what it is.
+// Exported for its tests only.
+export function toCreateStockInput(input: ItemMutationInput): ItemStockInput {
   const fields = pickStockFields(input as unknown as Record<string, unknown>)
   return {
     targetQuantity: fields.targetQuantity,
     refillThreshold: fields.refillThreshold,
     packedQuantity: fields.packedQuantity,
     unpackedQuantity: fields.unpackedQuantity,
+    isActive: fields.isActive ?? true,
     ...(fields.dueDate instanceof Date
       ? { dueDate: fields.dueDate.toISOString() }
       : {}),

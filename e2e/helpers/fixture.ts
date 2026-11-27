@@ -161,6 +161,22 @@ export type FixtureStock = {
   refillThreshold?: number
   packedQuantity?: number
   unpackedQuantity?: number
+  /**
+   * The "Active here" switch (`ItemStock.isActive`). OPTIONAL, and existing
+   * fixtures leave it out ON PURPOSE.
+   *
+   * Omitted, the two modes write DIFFERENT rows:
+   * - LOCAL: `seedLocalFixture` writes the row with no `isActive` key. The
+   *   app reads a missing value with the old rule (`isStockActive` in
+   *   @p1i/types): target 0 is inactive, any other target is active.
+   * - CLOUD: `seedCloudFixture` sends no `isActive`, and `upsertItemStock`
+   *   opens a NEW row active (`isActive ?? true`, owner question Q1). So a
+   *   target-0 row is ACTIVE in cloud and INACTIVE in local.
+   *
+   * A spec that cares whether a row is active must set this, so both modes
+   * seed the same row.
+   */
+  isActive?: boolean
 }
 
 export type Fixture = {

@@ -5,7 +5,7 @@ import { useItems } from './index'
 export interface VendorCartCounts {
   // Items with this vendor id stocked in the active location.
   count: number
-  // Of those, items whose targetQuantity is 0.
+  // Of those, items whose "Active here" switch is off (isInactiveHere).
   inactiveCount: number
 }
 

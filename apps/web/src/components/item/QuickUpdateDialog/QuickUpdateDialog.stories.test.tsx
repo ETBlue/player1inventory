@@ -11,6 +11,7 @@ const {
   AtZero,
   FullStock,
   Inactive,
+  InactiveWithTarget,
   NearRefillThreshold,
   WithExpirationDate,
   NotConsumable,
@@ -243,9 +244,24 @@ describe('QuickUpdateDialog — stock settings row', () => {
     ).toHaveValue(1)
   })
 
+  it('InactiveWithTarget shows the Active here switch off and the target kept', () => {
+    render(<InactiveWithTarget />)
+    expect(
+      screen.getByRole('switch', { name: 'Active here' }),
+    ).not.toBeChecked()
+    expect(
+      screen.getByRole('spinbutton', { name: 'Target quantity (gallon)' }),
+    ).toHaveValue(2)
+  })
+
+  it('Default shows the Active here switch on', () => {
+    render(<Default />)
+    expect(screen.getByRole('switch', { name: 'Active here' })).toBeChecked()
+  })
+
   it('hints explain what each stock setting does', () => {
     render(<Default />)
-    expect(screen.getByText('Inactive when 0')).toBeInTheDocument()
+    expect(screen.getByText('0 means no target')).toBeInTheDocument()
     expect(screen.getByText('Warns on low stock')).toBeInTheDocument()
   })
 

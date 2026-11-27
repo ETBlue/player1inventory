@@ -41,8 +41,13 @@ export function GroupCard({
   nameClassName = 'capitalize',
 }: GroupCardProps) {
   const displayActiveCount = activeCount ?? itemCount
+  // The group is grey ("inactive") only when NO item of it is active here.
+  // A group of active items with no target (target 0) keeps its status
+  // colour. It used to be grey whenever the summed target was 0, which was
+  // the same thing while target 0 meant "inactive"; since the "Active here"
+  // switch, it is not.
   const progressStatus =
-    totalTargetInPacks === 0
+    displayActiveCount === 0
       ? 'inactive'
       : getStockStatus(totalPackedQuantity, totalRefillInPacks)
 

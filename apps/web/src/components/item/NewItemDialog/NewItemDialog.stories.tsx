@@ -223,6 +223,7 @@ function CloudDialogHarness({ initialName }: { initialName?: string }) {
               packedQuantity: 2,
               unpackedQuantity: 0,
               dueDate: null,
+              isActive: true,
               createdAt: '2026-01-01T00:00:00.000Z',
               updatedAt: '2026-01-01T00:00:00.000Z',
             },

@@ -31,6 +31,7 @@ query PantryData($locationId: ID!) {
     packedQuantity
     unpackedQuantity
     dueDate
+    isActive
     createdAt
     updatedAt
   }
@@ -47,6 +48,7 @@ query ItemStocksForItem($itemId: ID!) {
     packedQuantity
     unpackedQuantity
     dueDate
+    isActive
     createdAt
     updatedAt
   }
@@ -62,6 +64,7 @@ mutation UpsertItemStock($itemId: ID!, $locationId: ID!, $input: ItemStockInput!
     packedQuantity
     unpackedQuantity
     dueDate
+    isActive
     createdAt
     updatedAt
   }
@@ -77,6 +80,7 @@ mutation AddItemToLocation($itemId: ID!, $locationId: ID!, $sourceLocationId: ID
     packedQuantity
     unpackedQuantity
     dueDate
+    isActive
     createdAt
     updatedAt
   }
