@@ -208,6 +208,8 @@ test.describe('vendor item count after vendor assignment', () => {
     await expect(
       page.getByRole('button', { name: /test shop/i, pressed: true }),
     ).toBeVisible()
+    // A press changes only the screen; the top bar Save writes the vendor
+    await item.saveRelations()
 
     // Then: navigate to settings vendors page — the cached count must have been invalidated
     // and reflect the assignment (count=1), not the stale count=0
@@ -259,6 +261,8 @@ test.describe('vendor item count after item deletion', () => {
       await expect(
         page.getByRole('button', { name: /test market/i, pressed: true }),
       ).toBeVisible()
+      // A press changes only the screen; the top bar Save writes the vendor
+      await item.saveRelations()
     } else {
       // Local: seed vendor, then seed item with vendor already assigned
       const vendorId = await seedVendor(page, 'Test Market')

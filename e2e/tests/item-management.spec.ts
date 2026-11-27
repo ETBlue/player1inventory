@@ -250,16 +250,16 @@ test('user can assign a tag to an item', async ({ page }) => {
   await item.fillName('Tagged Item')
   await item.save()
 
-  // When user creates and assigns a tag inline
+  // When user creates a tag inline and presses the top bar Save
+  // (`createAndAssignTag` waits for the "Saved" toast)
   await item.createAndAssignTag('Dairy')
 
   // Then the assigned tag badge is visible (aria-pressed="true" = assigned state)
   const badge = page.getByRole('button', { name: 'Dairy', pressed: true })
   await expect(badge).toBeVisible()
-  // The badge shows as selected while the assign is still being saved
-  // (issue #402), with aria-busy="true". Wait until it is saved, then read it
-  // again after a reload: that proves the item really has the tag.
-  await expect(badge).not.toHaveAttribute('aria-busy', 'true')
+  // A pressed badge alone proves nothing: a new tag shows as pressed before
+  // Save too. Read it again after a reload: that proves the item really has
+  // the tag.
   await page.reload()
   await expect(
     page.getByRole('button', { name: 'Dairy', pressed: true }),
@@ -276,17 +276,16 @@ test('user can assign a vendor to an item', async ({ page }) => {
   await item.fillName('Vendor Item')
   await item.save()
 
-  // When user creates and assigns a vendor
+  // When user creates a vendor and presses the top bar Save
+  // (`createAndAssignVendor` waits for the "Saved" toast)
   await item.createAndAssignVendor('Costco')
 
   // Then the vendor badge is visible on the vendors tab, selected
   // (aria-pressed="true")
   const badge = page.getByRole('button', { name: 'Costco', pressed: true })
   await expect(badge).toBeVisible()
-  // The badge shows as selected while the assign is still being saved
-  // (issue #402), with aria-busy="true". Wait until it is saved, then read it
-  // again after a reload: that proves the item really has the vendor.
-  await expect(badge).not.toHaveAttribute('aria-busy', 'true')
+  // A new vendor shows as pressed before Save too. Read it again after a
+  // reload: that proves the item really has the vendor.
   await page.reload()
   await expect(
     page.getByRole('button', { name: 'Costco', pressed: true }),
