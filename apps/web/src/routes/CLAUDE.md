@@ -326,8 +326,10 @@ Row 2 (ItemListToolbar):
 - **Location gate (R4):** the vendor/no-vendor filter above is then narrowed to items
   stocked in the **active location** via `isStockedHere`. `useItems()` joins every global
   item against the active location's `ItemStock`, so an item assigned to this vendor but
-  not stocked here arrives as ZERO_STOCK (`targetQuantity: 0`, no `isActive`, no `stockId`) —
-  indistinguishable from a genuinely inactive item unless `stockId` is checked first. This
+  not stocked here arrives as ZERO_STOCK (`targetQuantity: 0`, no `isActive`, no `stockId`).
+  With no stored `isActive`, `isStockActive` falls back to the old rule (target 0 = off), so
+  `isInactive` reads such a row as inactive. It cannot be told apart from an item whose
+  "Active here" switch is off unless `stockId` is checked first. This
   keeps the page in sync with the `VendorCartCard`'s count (`useVendorCartCounts()`) and
   the pantry (`getStockedItems`), both of which already exclude not-stocked-here items.
   **Both modes since PR 3b.** Cloud used to bypass this gate because of the **cart**,

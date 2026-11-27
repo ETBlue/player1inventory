@@ -922,18 +922,19 @@ reconcile finds nothing to remove and creates every row the fixture lists. No ed
 loop was needed in 4b or in PR 5 — which is the whole argument for reading state back
 instead of predicting it.
 
-**The cloud list (`CLOUD_SPECS`) is 40 files today** (`e2e/playwright.config.ts`,
-measured 2026-11-23; 40 after households H7b task M.5, 39 on 2026-11-21 after households H7
+**The cloud list (`CLOUD_SPECS`) is 44 files today** (`e2e/playwright.config.ts`,
+measured 2026-11-27 after the "Active here" switch task W.6 added `item-stock-active.spec.ts`;
+40 on 2026-11-23, 40 after households H7b task M.5, 39 on 2026-11-21 after households H7
 task L.6; 38 after H6b task K.8, 37 on 2026-11-20
 after households H6 task J.8; 36 on 2026-11-19, 35 on 2026-11-18, 29
-on 2026-11-04 and 13 on 2026-09-23). **Count the array rather than reusing that 40** — it
+on 2026-11-04 and 13 on 2026-09-23). **Count the array rather than reusing that 44** — it
 grows most weeks:
 
 ```bash
 awk '/^const CLOUD_SPECS = \[/,/^\]/' e2e/playwright.config.ts | grep -c "spec\.ts'"
 ```
 
-It gave **40** on 2026-11-23. The `awk` range matters: the file holds more than one such
+It gave **44** on 2026-11-27 (40 on 2026-11-23). The `awk` range matters: the file holds more than one such
 list (`local`'s `testIgnore`, `CLOUD_SPECS`, `pwa`'s `testMatch`), and a grep over the
 whole file counts them all (56 instead of 37 on 2026-11-20). **The range changed on
 2026-11-23** (E2E speed plan task S.8): the cloud list moved into `const CLOUD_SPECS`, so
@@ -1466,7 +1467,8 @@ What the number has been, so you can see how fast it moves rather than reuse a f
 | 2026-11-20 | `feature/households-h6a`, after task J.8 (`household-activity-purges.spec.ts`, 7; `purge-two-households.spec.ts`, 2 more). `local` still collects 189 in 23 files | 195 |
 | 2026-11-20 | `feature/households-h6b`, after task K.8 (`household-ownership.spec.ts`, 9). `local` still collects 189 in 23 files | 204 (38 files) |
 | 2026-11-21 | `feature/households-h7a`, after task L.6 (`household-switch.spec.ts`, 6). `local` still collects 189 in 23 files | 210 (39 of 43 files) |
-| 2026-11-22 | `feature/households-h7b`, after task M.5 (`location-sort.spec.ts`, 7; 1 more in `settings/locations.spec.ts`, which runs in `local` only). `local` collects 190 in 23 files, `pwa` 73 in 2 | **218** (40 of 44 files) |
+| 2026-11-22 | `feature/households-h7b`, after task M.5 (`location-sort.spec.ts`, 7; 1 more in `settings/locations.spec.ts`, which runs in `local` only). `local` collects 190 in 23 files, `pwa` 73 in 2 | 218 (40 of 44 files) |
+| 2026-11-27 | `feature/item-stock-active-web`, after task W.6 (`item-stock-active.spec.ts`, 4). `local` collects 226 in 27 files, `pwa` 77 in 2 | **252** (44 of 48 files) |
 
 H5a added 9 tests and removed 1. All of them RUN only in `cloud`; the six in the two
 shared spec files are also collected (and skipped) in `local`, which went 184 → 189: 3 in `location-switcher.spec.ts` (task
@@ -1689,6 +1691,50 @@ A spec that needs an OLD purchase date in cloud seeds the stock with `bulkCreate
 in the past). `expiry-from-restock.spec.ts` does this. It runs in `local` and `cloud`: a
 Quick update that raises Yogurt's amount moves its "Expires in" from 10 to 30 days and its
 place in the Purchased sort, with no reload.
+
+### `isActive` — the "Active here" switch on a stock row (2026-11-27)
+
+Added for `item-stock-active.spec.ts` (the "Active here" switch, PR 2). `FixtureStock.isActive`
+is optional. `seedLocalFixture`, `seedCloudFixture` and `splitInlineStock` (`locationSeed.ts`)
+write it only when the fixture sets it. `readStocksForItem` / `readStockAt` return it.
+
+**Trap: with no `isActive`, the two modes seed DIFFERENT rows.** A stock row with target 0
+and no `isActive` key is:
+
+| Mode | What the seed writes | What the app reads |
+|---|---|---|
+| `local` | a Dexie row with no `isActive` key. The seed writes IndexedDB directly, so the Dexie v22 upgrade never runs on it | INACTIVE: `isStockActive` falls back to the old rule, target 0 = off |
+| `cloud` | `upsertItemStock` with no `isActive` | ACTIVE: the server opens a new row with `isActive ?? true` (owner answer Q1) |
+
+A row with a target above 0 and no key is active in both modes. So a spec that cares whether
+a target-0 row is active MUST set `isActive`. Existing fixtures leave it out on purpose:
+they were written for the old rule, and in `local` they still read the old way. The three
+backup fixtures in `e2e/fixtures/` have no `isActive` either, on purpose: they prove that an
+old file still imports with the old meaning.
+
+`readStockAt` in `local` gives `isActive: undefined` for such a seeded row until a write
+touches it. Cloud always answers a boolean (`ItemStock.isActive: Boolean!`).
+
+**`item-stock-active.spec.ts`** runs in `local` and `cloud` (it is in `CLOUD_SPECS`). In
+cloud it is the first real-SQL run of `ItemStock.isActive` through `upsertItemStock` and
+`itemStocksForItem`. 4 tests:
+
+| Test | What it proves |
+|---|---|
+| quick edit dialog | Rice (3 of 5) turned off goes to the inactive section and still reads `3 / 5 pack`; the target stays editable at 5; Salt, active with target 0, stays in the active section and reads `2 / 0 pack`; turned on again, Rice is back with target 5. The stored row is read back each time |
+| Stock tab, two locations | Rice turned off on the Office page of the Stock tab: Office's row is off with target 5, My Home's row is still on, and the My Home pantry shows Rice active. After a new page load the Office page shows the switch off |
+| axe, light and dark (2 tests) | the pantry with the inactive section, the quick edit dialog with the switch off (`checkDialogA11y`) and the Stock tab with the switch off |
+
+What lets it fail: Rice keeps a TARGET while it is off, so the old rule (target 0 =
+inactive) would keep it in the active section. Salt has target 0 and is active, so the old
+rule would put it in the inactive section. Salt's row sets `isActive: true` on purpose,
+because of the trap above. The Stock tab test turns the switch off at ONE of two locations,
+so code that wrote or read it for the whole item would turn both off.
+
+**It is NOT in `NEON_SPECS` (`e2e/neonSpecs.ts`).** That list holds the files where the Neon
+pooler, the 52 ms per query or a lock race can change the result. This spec makes one
+`upsertItemStock` at a time and waits for each, so it has none of the three. It runs on Neon
+only in the checkpoint gate (`pnpm test:e2e:all:neon`).
 
 ### Location order is assigned differently in the two modes — keep the default first
 
