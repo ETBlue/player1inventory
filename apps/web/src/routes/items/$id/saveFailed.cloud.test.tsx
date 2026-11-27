@@ -39,6 +39,10 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
 })
 
 const SAVE_FAILED = 'Could not save the change. Please try again.'
+// The stub refuses with `FORBIDDEN`. A catalog write passes
+// `{ catalog: true }` to `showSaveError`, so it says why (owner answer 6A of
+// `docs/features/items/2026-11-27-item-relations-save-design.md`)
+const CATALOG_FORBIDDEN = 'Only a household owner or manager can change this.'
 
 const FLOUR = cloudItem('item-flour', 'Flour', { consumeAmount: 2 })
 const FLOUR_A = cloudStock('stock-flour-a', 'item-flour', LOC_A, {
@@ -194,8 +198,9 @@ describe('Item pages - a failed cloud save', () => {
   })
 
   // The Tags, Vendors and Recipes tabs (under a "Relation" tab until
-  // 2026-11-24). Each badge press and each "New …" dialog is a separate
-  // write, so each gets its own test.
+  // 2026-11-24). Each "New …" dialog is its own write. Since the item
+  // relations Save the badge presses of the Tags tab are written by its
+  // top bar Save, so a refused Save keeps the presses on screen.
   describe('Tags, Vendors and Recipes tabs', () => {
     beforeEach(() => {
       cloudServer.queries.useGetTagTypesQuery = {
@@ -212,28 +217,34 @@ describe('Item pages - a failed cloud save', () => {
       }
     })
 
-    async function expectSaveFailedAndNoRejection() {
-      expect(await screen.findByText(SAVE_FAILED)).toBeInTheDocument()
+    async function expectSaveFailedAndNoRejection(message = SAVE_FAILED) {
+      expect(await screen.findByText(message)).toBeInTheDocument()
       await rejections.settle()
       expect(rejections.list).toEqual([])
     }
 
-    it('user sees a message when the server refuses a tag assignment', async () => {
+    it('user sees a message when the server refuses the Tags Save, and the press is kept', async () => {
       const user = userEvent.setup()
       // Given a server that refuses the item write
       cloudServer.failing.add('useUpdateItemMutation')
-      renderPage('/items/item-flour/tags')
+      const router = renderPage('/items/item-flour/tags')
 
-      // When the user presses the tag badge
+      // When the user presses the tag badge and Save
       await user.click(await screen.findByRole('button', { name: /frozen/i }))
+      await user.click(screen.getByRole('button', { name: /^save$/i }))
 
-      // Then the write was sent, a message shows, and the badge is unpressed
-      await expectSaveFailedAndNoRejection()
-      expect(cloudServer.calls.useUpdateItemMutation).toHaveLength(1)
+      // Then the write was sent, and a message says why it was refused
+      await expectSaveFailedAndNoRejection(CATALOG_FORBIDDEN)
+      expect(cloudServer.calls.useUpdateItemMutation).toEqual([
+        { id: 'item-flour', input: { tagIds: ['tag-frozen'] } },
+      ])
+      // And the page stays, the badge is still pressed, and Save is on again
+      expect(router.state.location.pathname).toBe('/items/item-flour/tags')
+      expect(
+        screen.getByRole('button', { name: /frozen/i, pressed: true }),
+      ).toBeInTheDocument()
       await waitFor(() =>
-        expect(
-          screen.getByRole('button', { name: /frozen/i, pressed: false }),
-        ).toBeInTheDocument(),
+        expect(screen.getByRole('button', { name: /^save$/i })).toBeEnabled(),
       )
     })
 
@@ -248,8 +259,8 @@ describe('Item pages - a failed cloud save', () => {
       await user.type(screen.getByLabelText(/name/i), 'dairy')
       await user.click(screen.getByRole('button', { name: /^add tag$/i }))
 
-      // Then the write was sent, a message shows, and the dialog stays open
-      await expectSaveFailedAndNoRejection()
+      // Then the write was sent, a message says why, and the dialog stays open
+      await expectSaveFailedAndNoRejection(CATALOG_FORBIDDEN)
       expect(cloudServer.calls.useCreateTagMutation).toHaveLength(1)
       expect(screen.getByRole('dialog')).toBeInTheDocument()
       expect(screen.getByLabelText(/name/i)).toHaveValue('dairy')
@@ -258,33 +269,6 @@ describe('Item pages - a failed cloud save', () => {
           screen.getByRole('button', { name: /^add tag$/i }),
         ).toBeEnabled(),
       )
-    })
-
-    it('user sees a message when the server refuses to assign a new tag, and the dialog closes', async () => {
-      const user = userEvent.setup()
-      // Given a server that creates the tag but refuses the item write
-      cloudServer.results.useCreateTagMutation = (vars) => ({
-        createTag: cloudTag('tag-dairy', String(vars.name), 'type-label'),
-      })
-      cloudServer.failing.add('useUpdateItemMutation')
-      renderPage('/items/item-flour/tags')
-
-      // When the user adds a tag named "dairy"
-      await user.click(await screen.findByRole('button', { name: /new tag$/i }))
-      await user.type(screen.getByLabelText(/name/i), 'dairy')
-      await user.click(screen.getByRole('button', { name: /^add tag$/i }))
-
-      // Then both writes were sent, and a message says the assign failed
-      await expectSaveFailedAndNoRejection()
-      expect(cloudServer.calls.useCreateTagMutation).toHaveLength(1)
-      expect(cloudServer.calls.useUpdateItemMutation).toEqual([
-        expect.objectContaining({
-          input: expect.objectContaining({ tagIds: ['tag-dairy'] }),
-        }),
-      ])
-      // And the dialog has closed: the tag exists now, so trying again would
-      // create it a second time
-      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     })
 
     it('user sees a message when the server refuses a new tag type, and the dialog keeps the name', async () => {
@@ -303,8 +287,8 @@ describe('Item pages - a failed cloud save', () => {
       await user.type(screen.getByLabelText(/name/i), 'Season')
       await user.click(screen.getByRole('button', { name: /^add$/i }))
 
-      // Then the write was sent, a message shows, and the dialog stays open
-      await expectSaveFailedAndNoRejection()
+      // Then the write was sent, a message says why, and the dialog stays open
+      await expectSaveFailedAndNoRejection(CATALOG_FORBIDDEN)
       expect(cloudServer.calls.useCreateTagTypeMutation).toHaveLength(1)
       expect(screen.getByRole('dialog')).toBeInTheDocument()
       expect(screen.getByLabelText(/name/i)).toHaveValue('Season')

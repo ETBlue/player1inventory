@@ -7,6 +7,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
+import { expect, userEvent, waitFor, within } from 'storybook/test'
 import { db } from '@/db'
 import { createItem, createTag, createTagType } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
@@ -266,6 +267,25 @@ function WithNestedTagsStory() {
 
 export const Default: Story = {
   render: () => <DefaultStory />,
+}
+
+// A pressed badge that is not saved yet: the top bar Save is on (item
+// relations Save, design
+// `docs/features/items/2026-11-27-item-relations-save-design.md`). The
+// `play` presses "Summer"; the smoke test presses it the same way.
+export const PressedUnsaved: Story = {
+  name: 'Pressed, not saved yet',
+  render: () => <DefaultStory />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const user = userEvent.setup()
+
+    await user.click(await canvas.findByRole('button', { name: 'Summer' }))
+
+    await waitFor(() =>
+      expect(canvas.getByRole('button', { name: /^save$/i })).toBeEnabled(),
+    )
+  },
 }
 
 export const WithAssignedTags: Story = {

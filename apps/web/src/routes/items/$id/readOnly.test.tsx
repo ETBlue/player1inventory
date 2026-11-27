@@ -166,6 +166,9 @@ describe.each(people)('$who on the item page', (person) => {
       badge: /Dairy/,
       newButton: 'New Tag',
       stored: async (id: string) => (await db.items.get(id))?.tagIds ?? [],
+      // Since the item relations Save a press changes only the screen, and
+      // the top bar Save writes it
+      hasSave: true,
     },
     {
       tab: 'recipes',
@@ -185,7 +188,9 @@ describe.each(people)('$who on the item page', (person) => {
     badge,
     newButton,
     stored,
+    ...rest
   }) => {
+    const hasSave = 'hasSave' in rest && rest.hasSave
     // Given Milk, and one row it is not assigned to
     await seed()
     const milk = await makeMilk()
@@ -202,8 +207,14 @@ describe.each(people)('$who on the item page', (person) => {
     if (person.canEdit) expect(add).toBeInTheDocument()
     else expect(add).toBeNull()
 
-    // When the person presses the badge
-    await userEvent.setup().click(row)
+    // When the person presses the badge (and Save, on a tab that has one)
+    const user = userEvent.setup()
+    await user.click(row)
+    const save = within(main).queryByRole('button', { name: /^save$/i })
+    if (hasSave && person.canEdit) {
+      expect(save).toBeEnabled()
+      await user.click(save as HTMLElement)
+    }
 
     // Then only a manager's press assigns it
     if (person.canEdit) {
@@ -211,7 +222,11 @@ describe.each(people)('$who on the item page', (person) => {
         expect(await stored(milk.id)).toHaveLength(1),
       )
     } else {
+      // A member gets no Save, and the press changes nothing on screen
+      expect(save).toBeNull()
       expect(row).toHaveAttribute('aria-disabled', 'true')
+      expect(row).toHaveAttribute('aria-pressed', 'false')
+      expect(row).not.toHaveAttribute('tabindex')
       await new Promise((resolve) => setTimeout(resolve, 50))
       expect(await stored(milk.id)).toHaveLength(0)
     }
