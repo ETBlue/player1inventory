@@ -197,16 +197,34 @@ describe('useRelationDraft', () => {
     expect(result.current.dirty).toBe(false)
   })
 
-  it('add puts a new row in added, and reset empties the draft', () => {
-    const { result } = setup({ saved: ['a'], existingIds: ['a'] })
+  it('add puts a new row in added, and reset with the sent list empties the draft', () => {
+    const { result } = setup({ saved: ['a'], existingIds: ['a', 'b'] })
 
     act(() => result.current.add('new'))
-    expect(result.current.shown).toEqual(['a', 'new'])
+    act(() => result.current.press('a'))
+    expect(result.current.shown).toEqual(['new'])
     expect(result.current.dirty).toBe(true)
 
-    act(() => result.current.reset())
-    expect(result.current.shown).toEqual(['a'])
+    act(() => result.current.reset(['new']))
+    expect(result.current.added).toEqual([])
+    expect(result.current.removed).toEqual([])
     expect(result.current.dirty).toBe(false)
+  })
+
+  it('reset keeps a row added after the list was sent', () => {
+    // Given a draft with "b" pressed, and a Save that sent ['a', 'b']
+    const { result } = setup({ saved: ['a'], existingIds: ['a', 'b'] })
+    act(() => result.current.press('b'))
+    const sent = result.current.shown
+    // And a row created while that Save ran
+    act(() => result.current.add('new'))
+
+    // When the Save answers
+    act(() => result.current.reset(sent))
+
+    // Then only what was sent leaves the draft
+    expect(result.current.added).toEqual(['new'])
+    expect(result.current.dirty).toBe(true)
   })
 
   it('another tab saving the same press makes the draft clean again', () => {

@@ -146,8 +146,13 @@ export interface RelationDraft extends RelationDraftSets {
   press: (id: string) => void
   /** A row created from the tab: shown as selected, saved by Save. */
   add: (id: string) => void
-  /** Empties the draft (after a Save that worked). */
-  reset: () => void
+  /**
+   * After a Save that worked: takes out of the draft what the Save sent.
+   * `sent` is the `shown` list the Save sent. An id in `added` that is not
+   * in `sent` stays: a row created while the Save ran ("New …" is not turned
+   * off then) is still to be saved.
+   */
+  reset: (sent: readonly string[]) => void
 }
 
 /**
@@ -232,7 +237,12 @@ export function useRelationDraft(
   )
 
   const reset = useCallback(
-    () => setState((s) => ({ ...s, added: [], removed: [] })),
+    (sent: readonly string[]) =>
+      setState((s) => ({
+        ...s,
+        added: s.added.filter((id) => !sent.includes(id)),
+        removed: s.removed.filter((id) => sent.includes(id)),
+      })),
     [],
   )
 

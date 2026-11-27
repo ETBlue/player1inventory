@@ -50,12 +50,15 @@ function VendorsTab() {
 
   const save = async (): Promise<boolean> => {
     if (!item) return false
+    // The list on screen now. Kept, so the end of the Save takes out of the
+    // draft only what was sent: a row created while the Save runs stays.
+    const sent = draft.shown
     try {
       // Cloud: a vendor list is configuration, so no location is resolved
       // and this works in a household with no location
       await updateItem.mutateAsync({
         id,
-        updates: { vendorIds: draft.shown },
+        updates: { vendorIds: sent },
       })
     } catch (err) {
       // The draft stays, so the person can press Save again
@@ -65,7 +68,7 @@ function VendorsTab() {
     // The item already has the saved list here: local `mutateAsync` waits
     // for the refetch, and Apollo writes the answer to its cache first. So
     // emptying the draft does not flicker the badges back.
-    draft.reset()
+    draft.reset(sent)
     toast.success(t('items.detail.saved'))
     return true
   }

@@ -64,11 +64,14 @@ function RecipesTab() {
 
   const save = async (): Promise<boolean> => {
     if (!item) return false
+    // The list on screen now. Kept, so the end of the Save takes out of the
+    // draft only what was sent: a row created while the Save runs stays.
+    const sent = draft.shown
     try {
       // The FULL list on screen, in one write. The server (or the local
       // batch) adds the item to the recipes that do not have it, with
       // `consumeAmount` (or 1), and takes it out of the others.
-      await setItemRecipes.mutateAsync({ itemId: id, recipeIds: draft.shown })
+      await setItemRecipes.mutateAsync({ itemId: id, recipeIds: sent })
     } catch (err) {
       // The draft stays, so the person can press Save again. A
       // `NOT_CONSUMABLE` refusal (the item was turned off meanwhile) shows
@@ -78,7 +81,7 @@ function RecipesTab() {
     }
     // The recipes already have the saved list here: both modes wait for the
     // refetch. So emptying the draft does not flicker the badges back.
-    draft.reset()
+    draft.reset(sent)
     toast.success(t('items.detail.saved'))
     return true
   }

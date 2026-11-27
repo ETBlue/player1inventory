@@ -253,6 +253,75 @@ describe('Item Tags tab - the Save (cloud)', () => {
     await rejections.settle()
     expect(rejections.list).toEqual([])
   })
+
+  // "New Tag" stays on while a Save runs. A tag created during the Save is
+  // not in the list the Save sent, so the end of the Save must not take it
+  // out of the draft.
+  it('user sees a tag created during a Save stay selected after the Save', async () => {
+    const user = userEvent.setup()
+    // Given a server that holds the write, and creates "dairy"
+    const write = holdMutation('useUpdateItemMutation')
+    cloudServer.results.useCreateTagMutation = () => ({ createTag: DAIRY })
+    renderPage()
+
+    // When the user presses "fresh" and Save
+    await user.click(await screen.findByRole('button', { name: 'fresh' }))
+    await user.click(saveButton())
+    await waitFor(() =>
+      expect(cloudServer.calls.useUpdateItemMutation).toHaveLength(1),
+    )
+
+    // And adds a tag named "dairy" before the Save is answered
+    cloudServer.queries.useGetTagsQuery = { tags: [FROZEN, FRESH, DRY, DAIRY] }
+    await user.click(screen.getByRole('button', { name: /new tag$/i }))
+    await user.type(screen.getByLabelText(/name/i), 'dairy')
+    await user.click(screen.getByRole('button', { name: /^add tag$/i }))
+    expect(
+      await screen.findByRole('button', { name: 'dairy', pressed: true }),
+    ).toBeInTheDocument()
+
+    // When the server answers the Save
+    write.release()
+    expect(await screen.findByText('Saved')).toBeInTheDocument()
+
+    // Then "dairy" is still selected, and Save is on to give it to the item
+    await waitFor(() => expect(saveButton()).toBeEnabled())
+    expect(
+      screen.getByRole('button', { name: 'dairy', pressed: true }),
+    ).toBeInTheDocument()
+    expect(cloudServer.calls.useUpdateItemMutation).toEqual([
+      { id: 'item-flour', input: { tagIds: ['tag-frozen', 'tag-fresh'] } },
+    ])
+    await rejections.settle()
+    expect(rejections.list).toEqual([])
+  })
+
+  it('user sees a new tag still selected after a failed Save', async () => {
+    const user = userEvent.setup()
+    // Given a server that creates "dairy" and refuses the Save
+    cloudServer.results.useCreateTagMutation = () => ({ createTag: DAIRY })
+    cloudServer.queries.useGetTagsQuery = { tags: [FROZEN, FRESH, DRY, DAIRY] }
+    cloudServer.failing.add('useUpdateItemMutation')
+    renderPage()
+
+    // When the user adds a tag named "dairy" and presses Save
+    await user.click(await screen.findByRole('button', { name: /new tag$/i }))
+    await user.type(screen.getByLabelText(/name/i), 'dairy')
+    await user.click(screen.getByRole('button', { name: /^add tag$/i }))
+    await screen.findByRole('button', { name: 'dairy', pressed: true })
+    await user.click(saveButton())
+    await waitFor(() =>
+      expect(cloudServer.calls.useUpdateItemMutation).toHaveLength(1),
+    )
+
+    // Then "dairy" is still selected, and Save is on again
+    await waitFor(() => expect(saveButton()).toBeEnabled())
+    expect(
+      screen.getByRole('button', { name: 'dairy', pressed: true }),
+    ).toBeInTheDocument()
+    await rejections.settle()
+    expect(rejections.list).toEqual([])
+  })
 })
 
 const COSTCO = cloudVendor('vendor-costco', 'Costco')
@@ -445,6 +514,82 @@ describe('Item Vendors tab - the Save (cloud)', () => {
         { id: 'item-rice', input: { vendorIds: ['vendor-aldi'] } },
       ]),
     )
+    await rejections.settle()
+    expect(rejections.list).toEqual([])
+  })
+
+  // "New Vendor" stays on while a Save runs. A vendor created during the
+  // Save is not in the list the Save sent, so the end of the Save must not
+  // take it out of the draft.
+  it('user sees a vendor created during a Save stay selected after the Save', async () => {
+    const user = userEvent.setup()
+    // Given a server that holds the write, and creates "Aldi"
+    const write = holdMutation('useUpdateItemMutation')
+    cloudServer.results.useCreateVendorMutation = () => ({ createVendor: ALDI })
+    renderPage()
+
+    // When the user presses "Lidl" and Save
+    await user.click(await screen.findByRole('button', { name: 'Lidl' }))
+    await user.click(saveButton())
+    await waitFor(() =>
+      expect(cloudServer.calls.useUpdateItemMutation).toHaveLength(1),
+    )
+
+    // And adds a vendor named "Aldi" before the Save is answered
+    cloudServer.queries.useGetVendorsQuery = {
+      vendors: [COSTCO, LIDL, IHERB, ALDI],
+    }
+    await user.click(screen.getByRole('button', { name: /new vendor/i }))
+    await user.type(screen.getByLabelText(/name/i), 'Aldi')
+    await user.click(screen.getByRole('button', { name: /add vendor/i }))
+    expect(
+      await screen.findByRole('button', { name: 'Aldi', pressed: true }),
+    ).toBeInTheDocument()
+
+    // When the server answers the Save
+    write.release()
+    expect(await screen.findByText('Saved')).toBeInTheDocument()
+
+    // Then "Aldi" is still selected, and Save is on to give it to the item
+    await waitFor(() => expect(saveButton()).toBeEnabled())
+    expect(
+      screen.getByRole('button', { name: 'Aldi', pressed: true }),
+    ).toBeInTheDocument()
+    expect(cloudServer.calls.useUpdateItemMutation).toEqual([
+      {
+        id: 'item-rice',
+        input: { vendorIds: ['vendor-costco', 'vendor-lidl'] },
+      },
+    ])
+    await rejections.settle()
+    expect(rejections.list).toEqual([])
+  })
+
+  it('user sees a new vendor still selected after a failed Save', async () => {
+    const user = userEvent.setup()
+    // Given a server that creates "Aldi" and refuses the Save
+    cloudServer.results.useCreateVendorMutation = () => ({ createVendor: ALDI })
+    cloudServer.queries.useGetVendorsQuery = {
+      vendors: [COSTCO, LIDL, IHERB, ALDI],
+    }
+    cloudServer.failing.add('useUpdateItemMutation')
+    renderPage()
+
+    // When the user adds a vendor named "Aldi" and presses Save
+    await user.click(await screen.findByRole('button', { name: /new vendor/i }))
+    await user.type(screen.getByLabelText(/name/i), 'Aldi')
+    await user.click(screen.getByRole('button', { name: /add vendor/i }))
+    await screen.findByRole('button', { name: 'Aldi', pressed: true })
+    await user.click(saveButton())
+    await waitFor(() =>
+      expect(cloudServer.calls.useUpdateItemMutation).toHaveLength(1),
+    )
+
+    // Then "Aldi" is still selected, and Save is on again
+    await waitFor(() => expect(saveButton()).toBeEnabled())
+    expect(
+      screen.getByRole('button', { name: 'Aldi', pressed: true }),
+    ).toBeInTheDocument()
     await rejections.settle()
     expect(rejections.list).toEqual([])
   })
@@ -700,6 +845,106 @@ describe('Item Recipes tab - the Save (cloud)', () => {
         },
       ]),
     )
+    await rejections.settle()
+    expect(rejections.list).toEqual([])
+  })
+
+  // "New Recipe" stays on while a Save runs. A recipe created during the
+  // Save is not in the list the Save sent, so the end of the Save must not
+  // take it out of the draft.
+  it('user sees a recipe created during a Save stay selected after the Save', async () => {
+    const user = userEvent.setup()
+    // Given a server that holds the write, and creates "Omelette"
+    const write = holdMutation('useSetItemRecipesMutation')
+    cloudServer.results.useCreateRecipeMutation = () => ({
+      createRecipe: OMELETTE,
+    })
+    // The write's answer has no "Omelette": it was created after the list
+    // was sent
+    cloudServer.results.useSetItemRecipesMutation = () => {
+      const recipes = [BREAD, CAKE, SOUP, OMELETTE].map((recipe) =>
+        recipe.id === 'recipe-soup'
+          ? {
+              ...recipe,
+              items: [
+                {
+                  __typename: 'RecipeItem' as const,
+                  itemId: 'item-eggs',
+                  defaultAmount: 1,
+                },
+              ],
+            }
+          : recipe,
+      )
+      cloudServer.queries.useGetRecipesQuery = { recipes }
+      return { setItemRecipes: recipes }
+    }
+    renderPage()
+
+    // When the user presses "Soup" and Save
+    await user.click(await screen.findByRole('button', { name: 'Soup' }))
+    await user.click(saveButton())
+    await waitFor(() =>
+      expect(cloudServer.calls.useSetItemRecipesMutation).toHaveLength(1),
+    )
+
+    // And adds a recipe named "Omelette" before the Save is answered
+    cloudServer.queries.useGetRecipesQuery = {
+      recipes: [BREAD, CAKE, SOUP, OMELETTE],
+    }
+    await user.click(screen.getByRole('button', { name: /new recipe/i }))
+    await user.type(screen.getByLabelText(/name/i), 'Omelette')
+    await user.click(screen.getByRole('button', { name: /add recipe/i }))
+    expect(
+      await screen.findByRole('button', { name: 'Omelette', pressed: true }),
+    ).toBeInTheDocument()
+
+    // When the server answers the Save
+    write.release()
+    expect(await screen.findByText('Saved')).toBeInTheDocument()
+
+    // Then "Omelette" is still selected, and Save is on to give it the item
+    await waitFor(() => expect(saveButton()).toBeEnabled())
+    expect(
+      screen.getByRole('button', { name: 'Omelette', pressed: true }),
+    ).toBeInTheDocument()
+    expect(cloudServer.calls.useSetItemRecipesMutation).toEqual([
+      {
+        itemId: 'item-eggs',
+        recipeIds: ['recipe-bread', 'recipe-cake', 'recipe-soup'],
+      },
+    ])
+    await rejections.settle()
+    expect(rejections.list).toEqual([])
+  })
+
+  it('user sees a new recipe still selected after a failed Save', async () => {
+    const user = userEvent.setup()
+    // Given a server that creates "Omelette" and refuses the Save
+    cloudServer.results.useCreateRecipeMutation = () => ({
+      createRecipe: OMELETTE,
+    })
+    cloudServer.queries.useGetRecipesQuery = {
+      recipes: [BREAD, CAKE, SOUP, OMELETTE],
+    }
+    cloudServer.failing.add('useSetItemRecipesMutation')
+    renderPage()
+
+    // When the user adds a recipe named "Omelette" and presses Save
+    await user.click(await screen.findByRole('button', { name: /new recipe/i }))
+    await user.type(screen.getByLabelText(/name/i), 'Omelette')
+    await user.click(screen.getByRole('button', { name: /add recipe/i }))
+    await screen.findByRole('button', { name: 'Omelette', pressed: true })
+    await user.click(saveButton())
+    await waitFor(() =>
+      expect(cloudServer.calls.useSetItemRecipesMutation).toHaveLength(1),
+    )
+
+    // Then "Omelette" is still selected, and Save is on again
+    await waitFor(() => expect(saveButton()).toBeEnabled())
+    expect(
+      screen.getByRole('button', { name: 'Omelette', pressed: true }),
+    ).toBeInTheDocument()
     await rejections.settle()
     expect(rejections.list).toEqual([])
   })
