@@ -22,6 +22,14 @@ export type StockRow = {
   unpackedQuantity: number
   targetQuantity: number
   refillThreshold: number
+  /**
+   * The "Active here" switch. Cloud always answers a boolean
+   * (`ItemStock.isActive: Boolean!`). Local gives `undefined` for a row no
+   * write has touched since it was seeded without the key (a seed writes
+   * IndexedDB directly, so the Dexie v22 upgrade never ran on it); the app
+   * reads that with the old rule, `targetQuantity !== 0`.
+   */
+  isActive?: boolean
 }
 
 const STOCKS_FOR_ITEM = `query ($itemId: ID!) {
@@ -32,6 +40,7 @@ const STOCKS_FOR_ITEM = `query ($itemId: ID!) {
     unpackedQuantity
     targetQuantity
     refillThreshold
+    isActive
   }
 }`
 

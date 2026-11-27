@@ -275,7 +275,12 @@ export async function seedCloudFixture(
     await gql(UPSERT_STOCK, {
       itemId: stock.itemId,
       locationId: resolveLocation(stock.location),
-      input: stockQuantities(stock),
+      // `isActive` only when the fixture sets it. With no key the server
+      // opens a new row ACTIVE, whatever the target (see `FixtureStock`).
+      input: {
+        ...stockQuantities(stock),
+        ...(stock.isActive === undefined ? {} : { isActive: stock.isActive }),
+      },
     })
   }
 

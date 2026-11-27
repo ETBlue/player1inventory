@@ -161,6 +161,9 @@ export async function seedLocalFixture(
           // Only the per-location STATE lives here. The global configuration
           // fields have been Item fields since schema v16.
           ...stockQuantities(stock),
+          // Only when the fixture sets it. A row with no key is read with the
+          // old rule (target 0 is inactive), which existing fixtures rely on.
+          ...(stock.isActive === undefined ? {} : { isActive: stock.isActive }),
           createdAt: now,
           updatedAt: now,
         }
