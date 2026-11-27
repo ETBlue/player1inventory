@@ -41,6 +41,7 @@ import { db } from './index'
 // | Write | A non-consumable item |
 // |---|---|
 // | `createRecipe`, `updateRecipe`, `applyShelfFilterPicksBatch`, the recipe lists of `applyUnitSwitchBatch` | refused with `NotConsumableError`, nothing written |
+// | `setItemRecipesBatch` | an ADD is refused the same way; a remove is allowed |
 // | `consumeRecipesBatch` | refused the same way |
 // | import (`importLocalData`) | its recipe links are dropped (`removeNonConsumableRecipeLinks`) |
 // | `updateItem`, `applyUnitSwitchBatch` turning an item off | its recipe links are deleted, in the same transaction |
@@ -653,6 +654,75 @@ export async function applyShelfFilterPicksBatch(
         })
       }
     }
+  })
+}
+
+/**
+ * The item Recipes tab's Save in local mode: make `recipeIds` the exact set of
+ * recipes that hold `itemId`, in ONE transaction. The local twin of the
+ * server's `setItemRecipes` (`apps/server/src/resolvers/recipe.resolver.ts`),
+ * with the same answers:
+ *
+ * | Case | Answer |
+ * |---|---|
+ * | a recipe not in the list holds the item | the item is removed from it |
+ * | a recipe in the list does not hold it | the item is added, `defaultAmount` = `consumeAmount`, or 1 when that is not above 0 |
+ * | a recipe in the list already holds it | not written; its amount stays |
+ * | a missing item, a missing recipe id | throws; nothing is written |
+ * | an ADD of a non-consumable item | throws `NotConsumableError`; nothing is written. A remove is allowed |
+ * | nothing to add or remove | nothing is written; answers `[]` |
+ *
+ * Returns the recipes it changed, as written. Repeated ids are folded. Like
+ * `applyShelfFilterPicksBatch` it reads the rows INSIDE the transaction, so a
+ * stale render cannot add the item twice. Every await is a Dexie promise.
+ */
+export async function setItemRecipesBatch(
+  itemId: string,
+  recipeIds: readonly string[],
+): Promise<Recipe[]> {
+  const now = new Date()
+  return db.transaction('rw', [db.items, db.recipes], async () => {
+    const item = await db.items.get(itemId)
+    if (!item) throw new Error(`Item not found: ${itemId}`)
+
+    // The argument is a set: a repeated id is folded, not refused.
+    const ids = [...new Set(recipeIds)]
+    const wanted = await db.recipes.bulkGet(ids)
+    const missing = ids.filter((_, i) => !wanted[i])
+    if (missing.length > 0) {
+      throw new Error(`Recipe not found: ${missing.join(', ')}`)
+    }
+
+    const holds = (recipe: Recipe) =>
+      recipe.items.some((ri) => ri.itemId === itemId)
+    const current = await db.recipes.filter(holds).toArray()
+    const wantedIds = new Set(ids)
+    const toRemove = current.filter((recipe) => !wantedIds.has(recipe.id))
+    const toAdd = wanted.filter(
+      (recipe): recipe is Recipe => !!recipe && !holds(recipe),
+    )
+
+    // Only an ADD is refused: a non-consumable item can still leave an old
+    // recipe. Thrown before the first write.
+    if (toAdd.length > 0 && !isConsumable(item)) {
+      throw new NotConsumableError([itemId])
+    }
+
+    // The same rule as the server (owner answer 4A): the amount per use, or
+    // 1 when that is 0. NOT `??`: 0 would make the link "optional" in cooking.
+    const defaultAmount = item.consumeAmount > 0 ? item.consumeAmount : 1
+    const changed: Recipe[] = []
+    for (const recipe of toRemove) {
+      const items = recipe.items.filter((ri) => ri.itemId !== itemId)
+      await db.recipes.update(recipe.id, { items, updatedAt: now })
+      changed.push({ ...recipe, items, updatedAt: now })
+    }
+    for (const recipe of toAdd) {
+      const items = [...recipe.items, { itemId, defaultAmount }]
+      await db.recipes.update(recipe.id, { items, updatedAt: now })
+      changed.push({ ...recipe, items, updatedAt: now })
+    }
+    return changed
   })
 }
 
