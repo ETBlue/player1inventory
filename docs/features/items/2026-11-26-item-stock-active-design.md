@@ -392,7 +392,15 @@ row*, and in `e2e/helpers/fixture.ts`.
   needs `isStockedHere` / `isInactiveHere` (the `stockId` check). This is the design's
   rule, stated so nobody reads it as a bug.
 
-_E2E gate: pending, filled in by the main session._
+E2E gate, 2026-11-27, `pnpm test:e2e:all` at `7569e21f`, load average 5.6 at the start:
+`local` 214 passed, 12 skipped (4m37s); `cloud` 243 passed, 8 skipped, **1 failed** (4m40s);
+`cloud-neon` 40 passed (13m04s); `pwa` 77 passed (1m42s). The failure was
+`item-list-state-restore.spec.ts:470` (scroll position restored with the filter panel open):
+`Expected: >= 2692, Received: 2058`. It is a load phantom: the file passed alone twice (4 of
+4, load 2), and the whole `cloud` row run again right after passed (244 passed, 8 skipped,
+4.7m, load 2 to 4). The value it checks is a scroll position set while the list is still
+loading, so it depends on timing. The error text is kept in the scratchpad copy of
+`e2e-results/`.
 
 ## Interactions
 
