@@ -46,8 +46,8 @@ import { makeGql } from '../utils/cloud'
 // A pressed badge on screen proves nothing: a press shows as pressed before
 // Save too.
 //
-// The Tags tab scans allow two known tag badge defects (light-mode contrast
-// and target size), from those two axe rules only: see
+// The Tags tab scans allow one known tag badge defect (light-mode contrast,
+// waiting for an owner decision), from that axe rule only: see
 // `KNOWN_TAG_BADGE_DEFECTS` in e2e/helpers/axe.ts.
 //
 // Runs in `local` and `cloud` (`CLOUD_SPECS` in e2e/playwright.config.ts).
@@ -485,8 +485,8 @@ async function scanRelationTabs(page: Page): Promise<void> {
     await page.waitForLoadState('networkidle')
     await injectAxe(page)
     if (tab === 'tags') {
-      // Tag badges fail color-contrast (light) and target-size today; see
-      // KNOWN_TAG_BADGE_DEFECTS in e2e/helpers/axe.ts
+      // Tag badges fail color-contrast in light mode today (a known defect);
+      // see KNOWN_TAG_BADGE_DEFECTS in e2e/helpers/axe.ts
       await checkA11yAllowingKnownTagBadgeDefects(page)
     } else {
       await checkA11y(page, undefined, AXE_OPTIONS)

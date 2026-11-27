@@ -116,7 +116,12 @@ function TagTypeSection({
           <Button
             variant="neutral-ghost"
             size="sm"
-            className="px-0 py-0 gap-1 text-xs -my-1"
+            // `-mb-1`, not `-my-1` (the Vendors and Recipes tabs): here the
+            // button sits BELOW the last tag badge, and a top margin of -4px
+            // left no gap. The badge is 20px high, so it needs 4px of clear
+            // space to meet axe's target-size rule (24px). The badges are
+            // focusable since owner answer 8A, so the rule checks them.
+            className="px-0 py-0 gap-1 text-xs -mb-1"
             onClick={() => onAddTag(tagType.id)}
           >
             <Plus />

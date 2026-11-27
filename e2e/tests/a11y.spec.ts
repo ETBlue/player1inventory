@@ -974,8 +974,8 @@ test.describe('detail page a11y', () => {
     await openItemTabWithPress(page, itemId, 'tags')
     await injectAxe(page)
 
-    // Then there should be no violations beyond the two known tag badge
-    // defects (KNOWN_TAG_BADGE_DEFECTS in e2e/helpers/axe.ts)
+    // Then there should be no violations beyond the known tag badge
+    // contrast defect (KNOWN_TAG_BADGE_DEFECTS in e2e/helpers/axe.ts)
     await checkA11yAllowingKnownTagBadgeDefects(page)
   })
 
@@ -1506,8 +1506,8 @@ test.describe('dark mode a11y', () => {
     await openItemTabWithPress(page, itemId, 'tags')
     await injectAxe(page)
 
-    // Then there should be no violations beyond the two known tag badge
-    // defects (KNOWN_TAG_BADGE_DEFECTS in e2e/helpers/axe.ts)
+    // Then there should be no violations beyond the known tag badge
+    // contrast defect (KNOWN_TAG_BADGE_DEFECTS in e2e/helpers/axe.ts)
     await checkA11yAllowingKnownTagBadgeDefects(page)
   })
 
