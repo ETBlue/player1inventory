@@ -199,8 +199,8 @@ describe('Item pages - a failed cloud save', () => {
 
   // The Tags, Vendors and Recipes tabs (under a "Relation" tab until
   // 2026-11-24). Each "New …" dialog is its own write. Since the item
-  // relations Save the badge presses of the Tags and Vendors tabs are written
-  // by their top bar Save, so a refused Save keeps the presses on screen.
+  // relations Save the badge presses of the three tabs are written by their
+  // top bar Save, so a refused Save keeps the presses on screen.
   describe('Tags, Vendors and Recipes tabs', () => {
     beforeEach(() => {
       cloudServer.queries.useGetTagTypesQuery = {
@@ -319,24 +319,30 @@ describe('Item pages - a failed cloud save', () => {
       )
     })
 
-    it('user sees a message when the server refuses a recipe assignment', async () => {
+    it('user sees a message when the server refuses the Recipes Save, and the press is kept', async () => {
       const user = userEvent.setup()
       // Given a server that refuses the recipe write
-      cloudServer.failing.add('useUpdateRecipeMutation')
-      renderPage('/items/item-flour/recipes')
+      cloudServer.failing.add('useSetItemRecipesMutation')
+      const router = renderPage('/items/item-flour/recipes')
 
-      // When the user presses the recipe badge
+      // When the user presses the recipe badge and Save
       await user.click(
         await screen.findByRole('button', { name: /pasta sauce/i }),
       )
+      await user.click(screen.getByRole('button', { name: /^save$/i }))
 
-      // Then the write was sent, a message shows, and the badge is unpressed
-      await expectSaveFailedAndNoRejection()
-      expect(cloudServer.calls.useUpdateRecipeMutation).toHaveLength(1)
+      // Then the write was sent, and a message says why it was refused
+      await expectSaveFailedAndNoRejection(CATALOG_FORBIDDEN)
+      expect(cloudServer.calls.useSetItemRecipesMutation).toEqual([
+        { itemId: 'item-flour', recipeIds: ['recipe-sauce'] },
+      ])
+      // And the page stays, the badge is still pressed, and Save is on again
+      expect(router.state.location.pathname).toBe('/items/item-flour/recipes')
+      expect(
+        screen.getByRole('button', { name: /pasta sauce/i, pressed: true }),
+      ).toBeInTheDocument()
       await waitFor(() =>
-        expect(
-          screen.getByRole('button', { name: /pasta sauce/i, pressed: false }),
-        ).toBeInTheDocument(),
+        expect(screen.getByRole('button', { name: /^save$/i })).toBeEnabled(),
       )
     })
 
@@ -353,9 +359,11 @@ describe('Item pages - a failed cloud save', () => {
       await user.type(screen.getByLabelText(/name/i), 'Soup')
       await user.click(screen.getByRole('button', { name: /add recipe/i }))
 
-      // Then the write was sent, a message shows, and the dialog stays open
-      await expectSaveFailedAndNoRejection()
-      expect(cloudServer.calls.useCreateRecipeMutation).toHaveLength(1)
+      // Then the write was sent, a message says why, and the dialog stays open
+      await expectSaveFailedAndNoRejection(CATALOG_FORBIDDEN)
+      expect(cloudServer.calls.useCreateRecipeMutation).toEqual([
+        { name: 'Soup', items: [] },
+      ])
       expect(screen.getByRole('dialog')).toBeInTheDocument()
       expect(screen.getByLabelText(/name/i)).toHaveValue('Soup')
       await waitFor(() =>

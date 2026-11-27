@@ -1,7 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { Loader2, Plus, X } from 'lucide-react'
-import { useEffect, useId, useState } from 'react'
+import { Plus, X } from 'lucide-react'
+import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
+import { TopBarSaveButton } from '@/components/item/TopBarSaveButton'
 import { AddNameDialog } from '@/components/shared/AddNameDialog'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { Badge } from '@/components/ui/badge'
@@ -11,10 +13,13 @@ import { usePermissions } from '@/hooks/usePermissions'
 import {
   useCreateRecipe,
   useRecipes,
-  useUpdateRecipe,
+  useSetItemRecipes,
 } from '@/hooks/useRecipes'
+import { useRelationDraft } from '@/hooks/useRelationDraft'
+import { useRelationTabSave } from '@/hooks/useRelationTabSave'
+import { pressOnEnterOrSpace } from '@/lib/pressKeys'
 import { showSaveError } from '@/lib/saveError'
-import { isConsumable, type RecipeItem } from '@/types'
+import { isConsumable } from '@/types'
 
 export const Route = createFileRoute('/items/$id/recipes')({
   component: RecipesTab,
@@ -24,64 +29,98 @@ function RecipesTab() {
   const { t } = useTranslation()
   const { id } = Route.useParams()
   const { data: item } = useItem(id)
-  const { data: recipes = [] } = useRecipes()
-  const updateRecipe = useUpdateRecipe()
+  const { data: recipesData } = useRecipes()
+  const recipes = recipesData ?? []
+  const setItemRecipes = useSetItemRecipes()
   const createRecipe = useCreateRecipe()
   // A household member sees what is assigned and cannot change it
-  // (households H5 task F.5): presses write nothing, the badges are
-  // aria-disabled, and there is no "New …" button.
+  // (households H5 task F.5): presses do nothing, the badges are
+  // aria-disabled, and there is no "New …" button and no Save.
   const { canEditCatalog } = usePermissions()
   const notConsumableNoteId = useId()
   const [showDialog, setShowDialog] = useState(false)
   const [newRecipeName, setNewRecipeName] = useState('')
-  const [togglingRecipeId, setTogglingRecipeId] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!updateRecipe.isPending) setTogglingRecipeId(null)
-  }, [updateRecipe.isPending])
+  // Cooking is only for consumable items (owner decision 2026-11-26), so a
+  // non-consumable item cannot join a recipe. An old link can be removed.
+  // Before the item has loaded nothing can be pressed, so `true` is safe.
+  const consumable = item ? isConsumable(item) : true
 
-  const toggleRecipe = (recipe: { id: string; items: RecipeItem[] }) => {
-    if (!item || !canEditCatalog) return
+  // A press changes only the screen; the top bar Save writes the list (item
+  // relations Save, design
+  // `docs/features/items/2026-11-27-item-relations-save-design.md`). The
+  // draft replaces the press spinner (`togglingRecipeId`). `canAdd: false`
+  // for a non-consumable item: a press that adds does nothing, and when the
+  // item turns non-consumable (in another tab) the draft drops its adds,
+  // because the server would refuse them. Removes stay.
+  const draft = useRelationDraft(
+    recipes
+      .filter((recipe) => recipe.items.some((ri) => ri.itemId === id))
+      .map((recipe) => recipe.id),
+    recipesData?.map((recipe) => recipe.id),
+    { canEdit: canEditCatalog, canAdd: consumable },
+  )
+  const saving = setItemRecipes.isPending
 
-    const isAssigned = recipe.items.some((ri) => ri.itemId === id)
-    // Cooking is only for consumable items (owner decision 2026-11-26), so a
-    // non-consumable item cannot join a recipe. An old link can be removed.
-    if (!isAssigned && !isConsumable(item)) return
-    const newItems = isAssigned
-      ? recipe.items.filter((ri) => ri.itemId !== id)
-      : [...recipe.items, { itemId: id, defaultAmount: 0 }]
-
-    setTogglingRecipeId(recipe.id)
-    // `mutate` never rejects, so the failure comes in through `onError`.
-    // Before, it was ignored and a failed save showed nothing.
-    updateRecipe.mutate(
-      { id: recipe.id, updates: { items: newItems } },
-      { onError: (err) => showSaveError(err) },
-    )
+  const save = async (): Promise<boolean> => {
+    if (!item) return false
+    try {
+      // The FULL list on screen, in one write. The server (or the local
+      // batch) adds the item to the recipes that do not have it, with
+      // `consumeAmount` (or 1), and takes it out of the others.
+      await setItemRecipes.mutateAsync({ itemId: id, recipeIds: draft.shown })
+    } catch (err) {
+      // The draft stays, so the person can press Save again. A
+      // `NOT_CONSUMABLE` refusal (the item was turned off meanwhile) shows
+      // `common.notConsumable`.
+      showSaveError(err, { catalog: true })
+      return false
+    }
+    // The recipes already have the saved list here: both modes wait for the
+    // refetch. So emptying the draft does not flicker the badges back.
+    draft.reset()
+    toast.success(t('items.detail.saved'))
+    return true
   }
 
-  const handleAddRecipe = () => {
-    if (!newRecipeName.trim()) return
+  const { canSave, saveSlot } = useRelationTabSave({
+    dirty: draft.dirty,
+    isPending: saving,
+    canEdit: canEditCatalog,
+    save,
+  })
 
-    createRecipe.mutate(
-      { name: newRecipeName.trim(), items: [{ itemId: id, defaultAmount: 0 }] },
-      {
-        onSuccess: () => {
-          setNewRecipeName('')
-          setShowDialog(false)
-        },
-        // The dialog stays open with the name, so the user can try again.
-        // Before, the error was ignored and nothing on screen said so.
-        onError: (err) => showSaveError(err),
-      },
-    )
+  const toggleRecipe = (recipeId: string) => {
+    // No press while a Save runs (owner answer 9A): the list sent is the
+    // list on screen. The non-consumable rule is in the draft (`canAdd`).
+    if (!item || !canEditCatalog || saving) return
+    draft.press(recipeId)
+  }
+
+  const handleAddRecipe = async () => {
+    const name = newRecipeName.trim()
+    if (!name) return
+
+    let newRecipe: Awaited<ReturnType<typeof createRecipe.mutateAsync>>
+    try {
+      // NO items (owner answer 1A): the recipe is created at once, but only
+      // Save gives it the item. `mutateAsync`, not `mutate`: the cloud
+      // `mutate` calls `onSuccess` with no argument, so the tab would not
+      // learn the new id.
+      newRecipe = await createRecipe.mutateAsync({ name, items: [] })
+    } catch (err) {
+      // The dialog stays open with the name, so the user can try again
+      showSaveError(err, { catalog: true })
+      return
+    }
+    setNewRecipeName('')
+    setShowDialog(false)
+    // Shown as selected until Save. Discard keeps the recipe, without the
+    // item.
+    if (newRecipe?.id) draft.add(newRecipe.id)
   }
 
   if (!item) return null
-
-  // A non-consumable item cannot be added to a recipe: the unassigned badges
-  // are disabled, there is no New Recipe button, and a note says why.
-  const consumable = isConsumable(item)
 
   const sortedRecipes = [...recipes].sort((a, b) =>
     a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
@@ -89,9 +128,16 @@ function RecipesTab() {
 
   return (
     <div className="p-4 space-y-6 max-w-2xl mx-auto">
+      <TopBarSaveButton
+        saveSlot={saveSlot}
+        onClick={save}
+        disabled={!canSave}
+        isLoading={saving}
+      />
       <div className="flex flex-wrap gap-2">
         {sortedRecipes.map((recipe) => {
-          const isAssigned = recipe.items.some((ri) => ri.itemId === id)
+          const isAssigned = draft.shown.includes(recipe.id)
+          // A non-consumable item can only leave a recipe
           const canPress = canEditCatalog && (consumable || isAssigned)
 
           return (
@@ -99,18 +145,22 @@ function RecipesTab() {
               key={recipe.id}
               role="button"
               aria-pressed={isAssigned}
-              aria-disabled={!canPress || undefined}
+              aria-disabled={!canPress || saving || undefined}
               aria-describedby={consumable ? undefined : notConsumableNoteId}
+              // Reached by Tab and pressed with Enter or Space (owner answer
+              // 8A). A badge that cannot be pressed is not in the Tab order.
+              tabIndex={canPress ? 0 : undefined}
               variant={isAssigned ? 'neutral' : 'neutral-outline'}
-              className={`${canPress ? 'cursor-pointer' : 'cursor-default'} ${canPress || isAssigned ? '' : 'opacity-50'} capitalize ${updateRecipe.isPending && togglingRecipeId === recipe.id ? 'pointer-events-none' : ''}`}
-              onClick={() => toggleRecipe(recipe)}
+              className={`${canPress ? 'cursor-pointer' : 'cursor-default'} ${canPress || isAssigned ? '' : 'opacity-50'} capitalize`}
+              onClick={() => toggleRecipe(recipe.id)}
+              onKeyDown={
+                canPress
+                  ? pressOnEnterOrSpace(() => toggleRecipe(recipe.id))
+                  : undefined
+              }
             >
               {recipe.name}
-              {updateRecipe.isPending && togglingRecipeId === recipe.id ? (
-                <Loader2 className="ml-1 h-3 w-3 animate-spin [transform-box:fill-box]" />
-              ) : (
-                isAssigned && <X className="ml-1 h-3 w-3" />
-              )}
+              {isAssigned && <X className="ml-1 h-3 w-3" />}
             </Badge>
           )
         })}
@@ -134,9 +184,7 @@ function RecipesTab() {
         </p>
       )}
 
-      {!sortedRecipes.some((recipe) =>
-        recipe.items.some((ri) => ri.itemId === id),
-      ) && (
+      {draft.shown.length === 0 && (
         <EmptyState
           title={t('items.recipes.assignEmpty.title')}
           description={t('items.recipes.assignEmpty.description')}
