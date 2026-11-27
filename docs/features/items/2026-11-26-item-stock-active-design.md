@@ -209,6 +209,62 @@ almost nothing needs new code:
 with `GRAPHQL_VALIDATION_FAILED`: a blank pantry. That is why PR 2 merges into `develop` only
 after Railway shows PR 1 deployed.
 
+### As built: PR 1
+
+Branch `feature/item-stock-active-server`, from `develop` at `f9639847`. Migration folder
+`20261126000000_add_item_stock_is_active`. **Built on the branch, not merged, not
+deployed.** The web is not changed: `pnpm codegen` adds the field to the web types, and no
+web document selects it yet.
+
+| Part | Commit | As built |
+|---|---|---|
+| `isStockActive` | `30f57bc4` | in `@p1i/types` (`packages/types/src/index.ts`), with a structural parameter. A boolean `isActive` decides; a missing or `null` value keeps the old rule (`targetQuantity !== 0`). The `ItemStock.isActive?` field of the interface waits for PR 2, as planned. Tests in `apps/server/src/lib/isStockActive.test.ts` (5), because `packages/types` has no test runner |
+| Prisma and migration | `f78c3991` | `isActive Boolean @default(true)`; the two statements of the table above, written by hand. The named exception is in `apps/server/prisma/CLAUDE.md`. The folder is in the `last` group of `scripts/migrationDeploys.ts` |
+| `verify-migration.ts` | `f78c3991` | `seedItemStockIsActiveBackfill` writes three stock rows (target 0, 5 and 0.5) with raw SQL before the last deploy; `assertItemStockIsActive` reads them back after it, and checks the type, `NOT NULL`, `DEFAULT true`, a new row with no value, and `23502` for an explicit `NULL` |
+| `stockFake` | `db28577c` | keeps `isActive` like any other column, with NO default, and refuses `null`. 4 new tests in `stockFake.test.ts` |
+| GraphQL, `toData`, `writeStock`, copy-on-add | `b2490d6d` | as in the table above. `ItemStock.isActive: Boolean!`, optional `ItemStockInput.isActive`. `writeStock` creates with `isActive: data.isActive ?? true`; `ensureStockAtLocation` always opens a new row active (owner answer 1A) |
+| The two stock imports | `b5ecc6c6` | optional `ItemStockImportInput.isActive`. Both take `isActive` out of the `...quantities` spread and write `isStockActive({ isActive, targetQuantity })`. `bulkUpsertItemStocks` writes it in `create` AND `update` |
+| Export | `dfb96193` | no resolver code: `toGraphQL` spreads the row. One test pins it |
+
+**What differs from the design and the plan:**
+
+| Design or plan said | As built | Why |
+|---|---|---|
+| the imports write `isActive ?? targetQuantity !== 0` inline | they call `isStockActive` | one rule in one place. Same result: `isStockActive` treats `null` like a missing value |
+| tests in `itemStock.resolver.test.ts` "or a new file" | all S.3 resolver tests in ONE new file, `itemStock-active.resolver.test.ts` (14 tests: `upsertItemStock`, copy-on-add, checkout, cooking, `applyUnitSwitch`) | the existing files use different fakes; one file with one mock factory covers every path |
+| (not in the design) | three `ItemStock` Prisma calls in `verify-migration.ts` got a `select` (two in `assertLocationMigrationsBeforeDrop`, one in `assertDropUserScope`) | **trap:** they run BEFORE the last deploy, and the Prisma client is built from the FINAL schema, so it asks for the missing `isActive` column and fails with `P2022`. For the `create` this is worse: the "duplicate is refused with `P2002`" check would read `P2022` and fail for the wrong reason |
+| "the stock fake must keep `isActive`. Check that it does not invent a default" | the fake did NOT keep it at all before `db28577c`: its `create` and `update` copied only the columns they knew, so `isActive` was dropped | without the fix, every "the row is written active / inactive" test would have read `undefined` |
+| (not in the design) | `allItemStocks` got its own test (`dfb96193`) | the design said "no resolver code" for export, but nothing tested it. The test seeds an inactive row with target 9 and an active row with target 0, so a field rebuilt from the target fails too |
+
+**Tests.** Server **2987 / 92 files** before the branch (at `f9639847`), **3026 / 94**
+after. The S.3 commit (`b2490d6d`) records that its tests were checked by mutation;
+the list of mutations is in the S.3 task report, not in the repo. The export test
+(`dfb96193`) went red on two mutations of `toGraphQL`: `isActive` set to `undefined`
+("Cannot return null for non-nullable field ItemStock.isActive.") and `isActive` rebuilt as
+`targetQuantity !== 0`.
+
+**Real SQL.**
+
+- `verify:migration` on the Neon test branch: _Pending: filled in by the main session._
+- `pnpm test:e2e:all`: _Pending: filled in by the main session._
+
+**Known gaps of PR 1:**
+
+- **`applyUnitSwitch` can write `isActive`.** `UnitSwitchStockConversionInput.quantities` is
+  an `ItemStockInput`, so it has the new optional field, and the resolver passes it through
+  `toData` to `writeStock`. A client that sends `isActive` inside `stockConversions` changes
+  the switch. The web never sends it there (its conversions carry target, refill and the
+  unpacked amount only), and the caller already needs `participant` on that location, the
+  same right `upsertItemStock` needs. So it is not a new right, only a second path. No test
+  pins it either way.
+- **A replace import of an old file sets the switch from the target**, also on a row that
+  exists: `bulkUpsertItemStocks` writes `isStockActive` in `update`. A stored `true` on a
+  row with target 0 becomes `false`. This is the design's rule ("an old backup restores with
+  the old meaning"); it is named here so nobody reads it as a bug.
+- **No real-SQL test of the new code paths** besides `verify:migration` and the existing
+  E2E specs. No E2E spec reads `isActive` until PR 2.
+- The old-web drift in the window between the two releases (see above).
+
 ## Web (PR 2)
 
 | Part | Change |
