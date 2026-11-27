@@ -134,6 +134,10 @@ input ItemStockImportInput {
   packedQuantity: Float!
   unpackedQuantity: Float!
   dueDate: String
+  # The "Active here" switch. Optional, so a backup written before the switch
+  # existed still imports. Omitted or null: the old meaning, active when
+  # targetQuantity is not 0 (`isStockActive` in @p1i/types).
+  isActive: Boolean
   createdAt: String!
   updatedAt: String!
 }

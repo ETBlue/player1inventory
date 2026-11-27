@@ -311,6 +311,14 @@ model ItemStock {
   packedQuantity   Float     @default(0)
   unpackedQuantity Float     @default(0)
   dueDate          DateTime?
+  // Is the item active at THIS location? `true` means active whatever the
+  // target is (target 0 = "no target"). `false` means inactive whatever the
+  // target is. Until 2026-11-26 "inactive" was `targetQuantity == 0`; the
+  // migration add_item_stock_is_active wrote `false` for exactly those rows.
+  // Every writer still writes the value itself: the Prisma fakes do not apply
+  // column defaults. Read the rule through `isStockActive` in `@p1i/types`.
+  // Design: docs/features/items/2026-11-26-item-stock-active-design.md.
+  isActive         Boolean   @default(true)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 

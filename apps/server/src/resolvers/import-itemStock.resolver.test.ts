@@ -773,6 +773,102 @@ describe('bulkUpsertItemStocks', () => {
   })
 })
 
+// ─── The "Active here" switch (item stock active, task S.4) ──────────────────
+//
+// A backup file carries `isActive` since the switch exists. An OLD file has no
+// value at all, and GraphQL hands the resolver `null` or a missing key. Both
+// must give the OLD meaning, `targetQuantity !== 0` (`isStockActive` in
+// `@p1i/types`), or a restored old backup would show items active that the
+// person had turned off with a target of 0.
+//
+// Every fixture is chosen so the right rule and a wrong rule give DIFFERENT
+// answers:
+//
+//   - `true` with target 0 and `false` with target 5: the file wins over the
+//     target, so a resolver that ignores the file's value is caught.
+//   - missing with target 0: a fallback of `true` (the Prisma column default)
+//     is caught.
+//   - missing with target 5: a fallback of `false` is caught.
+//   - `null` with target 0: passing `null` through is caught (the fake refuses
+//     `null` on this NOT NULL column, the same as Prisma), and so is `?? true`.
+//
+// The update path of the upsert gets a stored row whose `isActive` is the
+// OPPOSITE of the expected answer, so an `update` that leaves `isActive` out
+// keeps the stored value and is caught.
+
+type ActiveCase = {
+  name: string
+  isActive: boolean | null | undefined
+  targetQuantity: number
+  expected: boolean
+}
+
+const ACTIVE_CASES: ActiveCase[] = [
+  { name: 'true, target 0', isActive: true, targetQuantity: 0, expected: true },
+  { name: 'false, target 5', isActive: false, targetQuantity: 5, expected: false },
+  { name: 'missing, target 0', isActive: undefined, targetQuantity: 0, expected: false },
+  { name: 'missing, target 5', isActive: undefined, targetQuantity: 5, expected: true },
+  { name: 'null, target 0', isActive: null, targetQuantity: 0, expected: false },
+]
+
+/** A payload row with the case's `isActive`; `undefined` leaves the key out. */
+function activeInput(id: string, c: ActiveCase) {
+  const row = input(id, ITEM_A, LOC_OTHER, { targetQuantity: c.targetQuantity, refillThreshold: 0 })
+  return c.isActive === undefined ? row : { ...row, isActive: c.isActive }
+}
+
+describe('isActive in the stock imports', () => {
+  for (const c of ACTIVE_CASES) {
+    it(`bulkCreateItemStocks writes isActive ${c.expected} for a new row (${c.name})`, async () => {
+      // Given no stored row, and a file row with the case's isActive
+      // When the "skip conflicts" import runs
+      const result = await exec(BULK_CREATE, [activeInput('stock_active', c)])
+
+      // Then the new row has the file's value, or the old meaning
+      expect(result.errors).toBeUndefined()
+      expect(storedRow('stock_active')?.isActive).toBe(c.expected)
+    })
+
+    it(`bulkUpsertItemStocks writes isActive ${c.expected} for a new row (${c.name})`, async () => {
+      // Given no stored row
+      // When the "replace conflicts" import runs
+      const result = await exec(BULK_UPSERT, [activeInput('stock_active', c)])
+
+      // Then the created row has the file's value, or the old meaning
+      expect(result.errors).toBeUndefined()
+      expect(storedRow('stock_active')?.isActive).toBe(c.expected)
+    })
+
+    it(`bulkUpsertItemStocks sets isActive ${c.expected} on a stored row (${c.name})`, async () => {
+      // Given a stored row under the same id whose isActive is the OPPOSITE
+      // of the expected answer
+      mockPrisma.$stockFake.reset(mockPrisma.$stockFake.state.locations, [
+        {
+          id: 'stock_active',
+          itemId: ITEM_A,
+          locationId: LOC_OTHER,
+          targetQuantity: 3,
+          refillThreshold: 1,
+          packedQuantity: 1,
+          unpackedQuantity: 0,
+          dueDate: null,
+          isActive: !c.expected,
+          createdAt: TS,
+          updatedAt: TS,
+        },
+      ])
+
+      // When the "replace conflicts" import names it
+      const result = await exec(BULK_UPSERT, [activeInput('stock_active', c)])
+
+      // Then the replace takes the file's value, or the old meaning
+      expect(result.errors).toBeUndefined()
+      expect(storedRow('stock_active')?.isActive).toBe(c.expected)
+      expect(stored()).toHaveLength(1)
+    })
+  }
+})
+
 // ─── The input shape itself ──────────────────────────────────────────────────
 
 describe('ItemStockImportInput is not ItemStockInput', () => {

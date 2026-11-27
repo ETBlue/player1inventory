@@ -118,6 +118,9 @@ export type StockWrite = {
   packedQuantity?: NumberWrite
   unpackedQuantity?: NumberWrite
   dueDate?: Date | null
+  // The "Active here" switch. Absent = leave an existing row alone, and open a
+  // new row active (see `writeStock`).
+  isActive?: boolean
 }
 
 // The value a brand-new row should open at. An increment applied to a row that
@@ -156,6 +159,11 @@ export async function writeStock(
       packedQuantity: seed(data.packedQuantity),
       unpackedQuantity: seed(data.unpackedQuantity),
       dueDate: data.dueDate ?? null,
+      // EXPLICIT, not left to the column's `DEFAULT true`. The Prisma fakes
+      // apply no column default, so a value left to the database is one no
+      // test can see. A new row is active unless the caller says otherwise
+      // (2026-11-26 design, owner answer 2A).
+      isActive: data.isActive ?? true,
     },
   })
 }
@@ -165,10 +173,12 @@ export async function writeStock(
  * row. The cloud counterpart of local `addItemToLocation`
  * (apps/web/src/db/operations.ts).
  *
- * Already stocked there -> returns the existing row UNTOUCHED. Not stocked ->
- * creates it, INHERITING `targetQuantity`, `refillThreshold` and `dueDate`
- * from a source row and opening both on-hand quantities at 0. No source row at
- * all -> everything opens at 0.
+ * Already stocked there -> returns the existing row UNTOUCHED, an inactive one
+ * too. Not stocked -> creates it, INHERITING `targetQuantity`,
+ * `refillThreshold` and `dueDate` from a source row, opening both on-hand
+ * quantities at 0, and opening it ACTIVE (`isActive: true`, never copied from
+ * the source; owner answer 1A of the 2026-11-26 design). No source row at
+ * all -> every number opens at 0, and the row is still active.
  *
  * Since the v16 split there is nothing to copy for units, packaging,
  * expiration mode or consume amount: those are global `Item` fields the new
@@ -183,10 +193,15 @@ export async function writeStock(
  *   - `checkout` (resolvers/cart.resolver.ts) did NOT. It called `writeStock`
  *     with `packedQuantity: { increment }` alone, so a cart bought at a
  *     location the item was not yet stocked at opened the row with
- *     `targetQuantity: 0` — which every reader treats as "not active at this
- *     location" (see `isInactiveHere` in apps/web/src/lib/quantityUtils.ts).
- *     Local `checkout` has always called `addItemToLocation` here. Fixed
- *     2026-10-07; the divergence is the thing being removed, not a feature.
+ *     `targetQuantity: 0` — which, at that time, every reader treated as "not
+ *     active at this location". Local `checkout` has always called
+ *     `addItemToLocation` here. Fixed 2026-10-07; the divergence is the thing
+ *     being removed, not a feature.
+ *
+ *     Since the "Active here" switch (2026-11-26 design) the target no longer
+ *     decides that: `ItemStock.isActive` does, read through `isStockActive`
+ *     (@p1i/types). This function opens every new row with `isActive: true`.
+ *     It still inherits the target, so a bought item keeps its target too.
  *
  * ── WHICH SOURCE ROW ──
  *
@@ -257,6 +272,10 @@ export async function ensureStockAtLocation(
       dueDate: source?.dueDate ?? null,
       packedQuantity: 0,
       unpackedQuantity: 0,
+      // Always active, NOT copied from the source (owner answer 1A, 2026-11-26
+      // design): adding or buying an item at a location is a choice to use it
+      // there. Explicit for the same reason as in `writeStock`.
+      isActive: true,
     },
   })
 }
