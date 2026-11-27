@@ -140,8 +140,12 @@ function RecipesTab() {
       <div className="flex flex-wrap gap-2">
         {sortedRecipes.map((recipe) => {
           const isAssigned = draft.shown.includes(recipe.id)
-          // A non-consumable item can only leave a recipe
-          const canPress = canEditCatalog && (consumable || isAssigned)
+          // A non-consumable item can only leave a recipe. A recipe the
+          // person pressed off can also be pressed back (undo the remove),
+          // by mouse and by keyboard alike.
+          const canPress =
+            canEditCatalog &&
+            (consumable || isAssigned || draft.removed.includes(recipe.id))
 
           return (
             <Badge

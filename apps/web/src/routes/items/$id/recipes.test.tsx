@@ -599,6 +599,35 @@ describe('Recipes Tab', () => {
       )
     })
 
+    it('user can undo a remove on a non-consumable item with the keyboard', async () => {
+      // Given a recipe that already links the non-consumable item
+      const cup = await makeTestItem({ consumable: false })
+      await addRecipeWithOldLinks({
+        name: 'Tea',
+        items: [{ itemId: cup.id, defaultAmount: 1 }],
+      })
+      renderRecipesTab(cup.id)
+      const user = userEvent.setup()
+      const badge = await screen.findByRole('button', { name: 'Tea' })
+
+      // When the user presses it off
+      badge.focus()
+      await user.keyboard('{Enter}')
+      expect(badge).toHaveAttribute('aria-pressed', 'false')
+
+      // Then the badge can still be pressed: the press would undo the remove
+      expect(badge).not.toHaveAttribute('aria-disabled')
+      expect(badge).toHaveAttribute('tabindex', '0')
+
+      // When the user presses it back with Enter
+      badge.focus()
+      await user.keyboard('{Enter}')
+
+      // Then the remove is undone, and there is nothing to save
+      expect(badge).toHaveAttribute('aria-pressed', 'true')
+      expect(saveButton()).toBeDisabled()
+    })
+
     it('user who pressed a recipe on sees the press dropped when the item turns non-consumable', async () => {
       // Given a consumable item, and the user pressed "Tea" on
       const item = await makeTestItem()
