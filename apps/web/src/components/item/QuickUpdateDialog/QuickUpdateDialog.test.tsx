@@ -47,6 +47,7 @@ interface QuickUpdatePayload {
   unpackedQuantity: number
   targetQuantity: number
   refillThreshold: number
+  isActive: boolean
   dueDate?: Date | undefined
 }
 
@@ -166,7 +167,7 @@ describe('QuickUpdateDialog — stock settings row', () => {
     // Then both stock settings are shown, labelled with the tracking unit
     expect(targetInput()).toHaveValue(4)
     expect(refillInput()).toHaveValue(1)
-    expect(screen.getByText('Inactive when 0')).toBeInTheDocument()
+    expect(screen.getByText('0 means no target')).toBeInTheDocument()
     expect(screen.getByText('Warns on low stock')).toBeInTheDocument()
   })
 
@@ -193,12 +194,13 @@ describe('QuickUpdateDialog — stock settings row', () => {
     await user.type(refillInput(), '2')
     await user.click(screen.getByRole('button', { name: 'Update' }))
 
-    // Then all four values travel in one submit
+    // Then all four values travel in one submit, with the switch as it was
     expect(onSubmit).toHaveBeenCalledWith({
       packedQuantity: 1,
       unpackedQuantity: 1,
       targetQuantity: 6,
       refillThreshold: 2,
+      isActive: true,
     })
   })
 })
@@ -327,8 +329,10 @@ describe('QuickUpdateDialog — live preview of stock settings', () => {
     expect(progressStatus()).toBe('warning')
   })
 
-  it('user sees the progress status turn inactive as soon as the target reaches 0', async () => {
-    // Given an active item with a target of 1 and 1 pack in stock
+  it('user sees an active item keep its colour when the target reaches 0', async () => {
+    // Given an active item with a target of 1 and 1 pack in stock. Before
+    // the "Active here" switch, target 0 meant inactive; now only the switch
+    // does (owner answer Q4: an active item with no target reads `1 / 0`).
     const user = userEvent.setup()
     renderDialog(
       makeItem({
@@ -336,6 +340,7 @@ describe('QuickUpdateDialog — live preview of stock settings', () => {
         refillThreshold: 0,
         packedQuantity: 1,
         unpackedQuantity: 0,
+        isActive: true,
       }),
     )
     expect(progressStatus()).toBe('ok')
@@ -345,8 +350,10 @@ describe('QuickUpdateDialog — live preview of stock settings', () => {
       screen.getByRole('button', { name: 'Decrease target quantity' }),
     )
 
-    // Then the preview reads inactive before anything is saved
-    expect(progressStatus()).toBe('inactive')
+    // Then the preview is still not grey, and the switch is still on
+    expect(targetInput()).toHaveValue(0)
+    expect(progressStatus()).toBe('ok')
+    expect(screen.getByRole('switch', { name: 'Active here' })).toBeChecked()
   })
 
   it('user sees the progress bar re-scale to the edited target', async () => {
@@ -959,5 +966,143 @@ describe('QuickUpdateDialog — a non-consumable item', () => {
     renderDialog(makeItem({ consumable: true }))
     expect(screen.queryAllByTestId('count-square')).toHaveLength(0)
     expect(screen.getByTestId('refill-marker')).toBeInTheDocument()
+  })
+})
+
+describe('QuickUpdateDialog — the Active here switch', () => {
+  const activeSwitch = () => screen.getByRole('switch', { name: 'Active here' })
+
+  it('user sees the switch on for an active item and off for an inactive item with a target', () => {
+    // Given an inactive item that keeps a target of 4
+    const { unmount } = renderDialog(makeItem({ isActive: false }))
+
+    // Then the switch is off, and the target is still shown
+    expect(activeSwitch()).not.toBeChecked()
+    expect(targetInput()).toHaveValue(4)
+    unmount()
+
+    // Given the same item, active
+    renderDialog(makeItem({ isActive: true }))
+
+    // Then the switch is on
+    expect(activeSwitch()).toBeChecked()
+  })
+
+  it('user sees the switch named and described for a screen reader', () => {
+    // Given the dialog is open
+    renderDialog(makeItem())
+
+    // Then the switch has a visible label as its name, and the hint as its
+    // description
+    expect(activeSwitch()).toHaveAccessibleDescription(
+      'Off: the item shows as inactive at this location. Its target and refill stay.',
+    )
+  })
+
+  it('user can turn an item off here and keep its target and refill', async () => {
+    // Given an active item with target 4 and refill 1
+    const user = userEvent.setup()
+    const onSubmit = submitSpy()
+    renderDialog(makeItem({ isActive: true }), onSubmit)
+    expect(screen.getByRole('button', { name: 'Update' })).toBeDisabled()
+
+    // When the user turns the switch off and changes nothing else
+    await user.click(activeSwitch())
+
+    // Then Update is enabled by the switch alone
+    expect(screen.getByRole('button', { name: 'Update' })).not.toBeDisabled()
+
+    // When the user presses Update
+    await user.click(screen.getByRole('button', { name: 'Update' }))
+
+    // Then the save carries the switch off, and the target and refill as
+    // they were
+    expect(onSubmit).toHaveBeenCalledWith({
+      packedQuantity: 1,
+      unpackedQuantity: 1,
+      targetQuantity: 4,
+      refillThreshold: 1,
+      isActive: false,
+    })
+  })
+
+  it('user can turn an inactive item on again with its target', async () => {
+    // Given an inactive item that kept a target of 4
+    const user = userEvent.setup()
+    const onSubmit = submitSpy()
+    renderDialog(makeItem({ isActive: false }), onSubmit)
+
+    // When the user turns the switch on and presses Update
+    await user.click(activeSwitch())
+    await user.click(screen.getByRole('button', { name: 'Update' }))
+
+    // Then the save carries the switch on and the same target
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ isActive: true, targetQuantity: 4 }),
+    )
+  })
+
+  it('user sees the bar turn grey before Update when the switch is turned off', async () => {
+    // Given an active item with 2 packs against a target of 4 — healthy
+    const user = userEvent.setup()
+    renderDialog(
+      makeItem({ isActive: true, packedQuantity: 2, unpackedQuantity: 0 }),
+    )
+    expect(progressStatus()).toBe('ok')
+
+    // When the user turns the switch off
+    await user.click(activeSwitch())
+
+    // Then the bar is grey before anything is saved, and the label keeps
+    // the target
+    expect(progressStatus()).toBe('inactive')
+    expect(screen.getByText('2 / 4 gallon')).toBeInTheDocument()
+
+    // When the user turns it on again
+    await user.click(activeSwitch())
+
+    // Then the colour comes back
+    expect(progressStatus()).toBe('ok')
+  })
+
+  it('user can still edit the target and refill while the switch is off', async () => {
+    // Given an inactive item
+    const user = userEvent.setup()
+    const onSubmit = submitSpy()
+    renderDialog(makeItem({ isActive: false }), onSubmit)
+
+    // When the user raises the target and the refill threshold
+    await user.click(
+      screen.getByRole('button', { name: 'Increase target quantity' }),
+    )
+    await user.click(
+      screen.getByRole('button', { name: 'Increase refill threshold' }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Update' }))
+
+    // Then both are saved, and the switch stays off (owner answer 2)
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetQuantity: 5,
+        refillThreshold: 2,
+        isActive: false,
+      }),
+    )
+  })
+
+  it('user sees the switch between the progress bar and the target, like on the Stock tab', () => {
+    // Given the dialog is open
+    renderDialog(makeItem())
+
+    // Then the switch is the first stock setting, above the target
+    expectDocumentOrder([
+      [
+        'progress bar (Fill to Full)',
+        screen.getByRole('button', { name: 'Fill to Full' }),
+      ],
+      ['Active here', activeSwitch()],
+      ['Target', targetInput()],
+      ['Refill below', refillInput()],
+    ])
   })
 })

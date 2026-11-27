@@ -53,6 +53,7 @@ query AllItemStocks {
     packedQuantity
     unpackedQuantity
     dueDate
+    isActive
     createdAt
     updatedAt
   }

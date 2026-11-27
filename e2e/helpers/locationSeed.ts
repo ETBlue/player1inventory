@@ -118,6 +118,9 @@ export async function splitInlineStock(page: Page): Promise<void> {
       'packedQuantity',
       'unpackedQuantity',
       'dueDate',
+      // The "Active here" switch, copied only when the inline seed sets it.
+      // No existing seed does: a row with no key keeps the old rule.
+      'isActive',
     ]
 
     const items = await getAll('items')

@@ -213,7 +213,7 @@ after Railway shows PR 1 deployed.
 
 Branch `feature/item-stock-active-server`, from `develop` at `f9639847`. Migration folder
 `20261126000000_add_item_stock_is_active`. **Built on the branch, not merged, not
-deployed.** The web is not changed: `pnpm codegen` adds the field to the web types, and no
+deployed.** (Since 2026-11-27: merged into `develop` as #445 and deployed in release #446.) The web is not changed: `pnpm codegen` adds the field to the web types, and no
 web document selects it yet.
 
 | Part | Commit | As built |
@@ -347,6 +347,60 @@ database. `upgradeV21.test.ts` must check `verno` is at least 21, not exactly 21
   switch names in `aria-describedby`, the same as the Consumable switch. The state is the
   switch's own `aria-checked`; no extra live region. Axe scans of the dialog and the Stock
   tab, light and dark.
+
+### As built: PR 2
+
+Branch `feature/item-stock-active-web`, from `develop` at `20356e96` (after PR 1, #445, and
+the release #446 that deployed it). **Built on the branch, not merged, not deployed.**
+
+| Task | Commit | As built |
+|---|---|---|
+| W.1 the predicate, documents, inputs | `bc72878f` | `ItemStock.isActive?` in `@p1i/types`; `'isActive'` in `STOCK_FIELD_KEYS`; `isInactive` is `!isStockActive(item)`; the five documents select `isActive`; `toStockInput` sends it when it is a boolean, `toCreateStockInput` sends `isActive ?? true`. `ZERO_STOCK` is unchanged |
+| W.2 group cards | `0830ef0b` | `getGroupPackTotals` (`lib/quantityUtils.ts`) replaces four copies of the group sum: an inactive item adds its packed amount and 0 to the target and the refill. `GroupCard` is grey only when `activeCount === 0` |
+| W.3 Dexie v22 and new local rows | `8c88df44` | version 22 derives `isActive = targetQuantity !== 0` where it is not a boolean. Every new local row opens active. Five older tests that made an "inactive" item with target 0 now turn the switch off instead |
+| W.4 import and export | `051c17b3` | `deserializeItemStock` and `toItemStockInput` write `isStockActive(raw)`. Also fixed the cloud export (see below) |
+| W.5 the switch | `cfb644f4` | the switch in `QuickUpdateDialog` and on the Stock tab, directly below the progress bar and above the target, on both surfaces. Stories `InactiveWithTarget` |
+| W.6 E2E | `9897f1cf` | `e2e/tests/item-stock-active.spec.ts`, 4 tests, in `local` and `CLOUD_SPECS`, not in `NEON_SPECS`. `FixtureStock.isActive` (optional); `readStockAt` returns `isActive` |
+| W.7 docs | this commit | the area `CLAUDE.md` files, this section, `docs/INDEX.md` |
+
+**What differs from the design and the plan:**
+
+| Design or plan said | As built | Why |
+|---|---|---|
+| `StockPreviewValues` gains `isActive: boolean` | optional in W.1, required in W.5 | W.1 had no caller that passed it yet. Once both callers passed it (W.5), it was made required, so `tsc` finds a caller that forgets it |
+| export: "cloud export selects the field. A new backup carries `isActive` in both modes" | a cloud backup DROPPED it before W.4, although `AllItemStocks` selected it | **bug, fixed in W.4:** a cloud export goes through `toItemStockInput` too (`sanitiseCloudPayload`), and that allow-list did not name `isActive`. The export test now seeds an inactive row with target 4 |
+| i18n: one hint changes (`items.form.targetQuantity.hint`) | two hints change: also `pantry.quickUpdate.targetHint` ("Inactive when 0" → "0 means no target"; 「0 表示暫時不用」 → 「0 表示沒有目標數量」) | the dialog's own target hint stated the old rule too. The design's i18n table missed it |
+| the all-locations pager in `routes/items/$id/index.tsx`: its values and its "same stock" compare must include `isActive` | no change there | that file is the Info tab, and it has no pager. `itemToFormValues` sets `isActive` from the active location only, so the form value equals the stored row and is never a change. `buildInfoUpdates` sends no stock field. On the Stock tab, `ItemForm`'s dirty check includes `isActive` (W.5), so a switch change on one location counts as a change there |
+| four local writers create a row: `upsertItemStock`, `addItemToLocation`, `createItem`, `consumeRecipesBatch` | three writers. `createItem` creates through `upsertItemStock`, and so does `updateItem` on a location where the item is not stocked yet | the design's table listed `createItem` as its own writer. The `isActive ?? true` in `upsertItemStock`'s create branch covers both callers (`apps/web/src/db/CLAUDE.md`, v22) |
+| the quick edit dialog "follows whatever it does for a viewer today" | a location viewer never sees the dialog | the pantry views pass `onQuickUpdate` only when `canEditHere`. On the Stock tab the switch is disabled in `readOnly` mode |
+
+**Trap found in W.6: with no `isActive`, the two modes seed different rows.** A seeded
+stock row with target 0 and no `isActive` is INACTIVE in local (the seed writes IndexedDB
+directly, the Dexie upgrade never runs on it, and `isStockActive` falls back to the old
+rule) but ACTIVE in cloud (`upsertItemStock` creates with `isActive ?? true`). Existing
+fixtures leave the key out on purpose. A spec that cares whether a target-0 row is active
+must set it. Recorded in `e2e/CLAUDE.md`, *`isActive` — the "Active here" switch on a stock
+row*, and in `e2e/helpers/fixture.ts`.
+
+**Known gaps of PR 2:**
+
+- No test pins the switch's place on the Stock tab. The two row-order tests in
+  `ItemForm.test.tsx` list six rows and leave Active here out. Only the dialog's place is
+  pinned (`QuickUpdateDialog.test.tsx`).
+- `ZERO_STOCK` has no `isActive`, so an item not stocked here still reads as inactive by
+  the fallback. Every list that must tell "not stocked here" from "turned off here" still
+  needs `isStockedHere` / `isInactiveHere` (the `stockId` check). This is the design's
+  rule, stated so nobody reads it as a bug.
+
+E2E gate, 2026-11-27, `pnpm test:e2e:all` at `7569e21f`, load average 5.6 at the start:
+`local` 214 passed, 12 skipped (4m37s); `cloud` 243 passed, 8 skipped, **1 failed** (4m40s);
+`cloud-neon` 40 passed (13m04s); `pwa` 77 passed (1m42s). The failure was
+`item-list-state-restore.spec.ts:470` (scroll position restored with the filter panel open):
+`Expected: >= 2692, Received: 2058`. It is a load phantom: the file passed alone twice (4 of
+4, load 2), and the whole `cloud` row run again right after passed (244 passed, 8 skipped,
+4.7m, load 2 to 4). The value it checks is a scroll position set while the list is still
+loading, so it depends on timing. The error text is kept in the scratchpad copy of
+`e2e-results/`.
 
 ## Interactions
 

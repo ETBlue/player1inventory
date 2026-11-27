@@ -44,6 +44,9 @@ export type ItemFormValues = {
   unpackedQuantity: number
   targetQuantity: number
   refillThreshold: number
+  // The "Active here" switch of THIS location. Off makes the item inactive
+  // here; the target and refill keep their values (owner answer 2).
+  isActive: boolean
   dueDate: string
   // Item identity (rendered by the 'info' section)
   name: string
@@ -91,6 +94,8 @@ const DEFAULT_VALUES: ItemFormValues = {
   packageUnit: '',
   targetQuantity: 0,
   refillThreshold: 0,
+  // A new item opens active (owner question 2).
+  isActive: true,
   consumeAmount: 1,
   expirationMode: 'disabled',
   expirationThreshold: '',
@@ -190,6 +195,7 @@ export function ItemForm({
   const [packageUnit, setPackageUnit] = useState(merged.packageUnit)
   const [targetQuantity, setTargetQuantity] = useState(merged.targetQuantity)
   const [refillThreshold, setRefillThreshold] = useState(merged.refillThreshold)
+  const [isActive, setIsActive] = useState(merged.isActive)
   const [consumeAmount, setConsumeAmount] = useState(merged.consumeAmount)
   const [expirationMode, setExpirationMode] = useState<ExpirationMode>(
     merged.expirationMode,
@@ -235,6 +241,7 @@ export function ItemForm({
     packageUnit,
     targetQuantity,
     refillThreshold,
+    isActive,
     consumeAmount,
     expirationMode,
     expirationThreshold,
@@ -256,6 +263,7 @@ export function ItemForm({
     packageUnit !== baseValues.packageUnit ||
     targetQuantity !== baseValues.targetQuantity ||
     refillThreshold !== baseValues.refillThreshold ||
+    isActive !== baseValues.isActive ||
     consumeAmount !== baseValues.consumeAmount ||
     expirationMode !== baseValues.expirationMode ||
     expirationThreshold !== baseValues.expirationThreshold ||
@@ -299,6 +307,7 @@ export function ItemForm({
     setPackageUnit(next.packageUnit)
     setTargetQuantity(next.targetQuantity)
     setRefillThreshold(next.refillThreshold)
+    setIsActive(next.isActive)
     setConsumeAmount(next.consumeAmount)
     setExpirationMode(next.expirationMode)
     setExpirationThreshold(next.expirationThreshold)
@@ -495,6 +504,8 @@ export function ItemForm({
       unpackedQuantity,
       targetQuantity,
       refillThreshold,
+      // The live switch, so the bar turns grey before Save.
+      isActive,
     },
   )
   const currentStockQuantity = preview.current
@@ -877,8 +888,9 @@ export function ItemForm({
       {showStock && (
         <div className="space-y-2">
           {/* Row order (designer ruling, 2026-09-22): Packed → Unpacked →
-              Expires on (date mode only) → progress bar → Target Quantity →
-              Refill When Below. Packed and Unpacked are the values edited most
+              Expires on (date mode only) → progress bar → Active here →
+              Target Quantity → Refill When Below. Active here is the first
+              stock setting, above the target, in both places (2026-11-27). Packed and Unpacked are the values edited most
               often, so they lead, and "Expires on" is per-location state
               updated at the same time. Target and Refill configure the bar —
               `getStockPreview` (`lib/quantityUtils.ts`) passes
@@ -1089,6 +1101,30 @@ export function ItemForm({
             clearLabel={t('common.clear')}
             fillLabel={t('common.fillToFull')}
           />
+
+          {/* The "Active here" switch. Off: the item shows as inactive at
+              this location. Target and Refill stay editable and keep their
+              values (owner answer 2). A location viewer sees it disabled. */}
+          <div>
+            <div className="flex items-center gap-3">
+              <Switch
+                id="isActive"
+                checked={isActive}
+                onCheckedChange={setIsActive}
+                disabled={readOnly}
+                aria-describedby={`${formId}-isActive-hint`}
+              />
+              <Label htmlFor="isActive" className="cursor-pointer">
+                {t('items.form.isActive.label')}
+              </Label>
+            </div>
+            <p
+              id={`${formId}-isActive-hint`}
+              className="text-xs text-foreground-muted"
+            >
+              {t('items.form.isActive.hint')}
+            </p>
+          </div>
 
           <div>
             <Label htmlFor="targetQuantity">

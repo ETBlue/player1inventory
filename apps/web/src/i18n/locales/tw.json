@@ -233,7 +233,7 @@
       "targetField": "目標數量（{{unit}}）",
       "decreaseTarget": "減少目標數量",
       "increaseTarget": "增加目標數量",
-      "targetHint": "0 表示暫時不用",
+      "targetHint": "0 表示沒有目標數量",
       "refillLabel": "補貨門檻",
       "refillField": "補貨門檻（{{unit}}）",
       "decreaseRefill": "減少補貨門檻",
@@ -386,9 +386,13 @@
         "label": "提前提醒",
         "hint": "即將到期時顯示警示"
       },
+      "isActive": {
+        "label": "在這裡使用中",
+        "hint": "關閉後，這個品項在這個地點會顯示為暫時沒在用。目標數量和補貨點都會保留。"
+      },
       "targetQuantity": {
         "label": "目標數量",
-        "hint": "設為 0 時，這個品項會變成暫時沒在用",
+        "hint": "設為 0 表示沒有目標數量",
         "decrease": "減少目標數量",
         "increase": "增加目標數量"
       },

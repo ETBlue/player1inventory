@@ -50,9 +50,14 @@ describe('Dual-unit tracking integration', () => {
     expect(item.unpackedQuantity).toBe(0)
     expect(item.dueDate).toBeUndefined() // Cleared
 
-    // Set target and threshold to 0 → becomes inactive
+    // Set target and threshold to 0 → still active: a new item is active,
+    // and target 0 now means "no target", not "inactive"
     item.targetQuantity = 0
     item.refillThreshold = 0
+    expect(isInactive(item)).toBe(false)
+
+    // Turn the Active here switch off → becomes inactive
+    item.isActive = false
     expect(isInactive(item)).toBe(true)
   })
 })

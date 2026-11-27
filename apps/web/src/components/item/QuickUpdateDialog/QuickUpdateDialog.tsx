@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import {
   computeFillToFull,
   computePack,
@@ -22,7 +23,7 @@ import {
   roundToStep,
 } from '@/lib/quantityUtils'
 import type { PantryItem } from '@/types'
-import { DEFAULT_PACKAGE_UNIT, isConsumable } from '@/types'
+import { DEFAULT_PACKAGE_UNIT, isConsumable, isStockActive } from '@/types'
 
 // `dueDate` is deliberately OPTIONAL, not always-present: the field only
 // renders when `item.expirationMode === 'date'` (see the render block below),
@@ -42,6 +43,9 @@ interface QuickUpdateDialogProps {
     unpackedQuantity: number
     targetQuantity: number
     refillThreshold: number
+    // The "Active here" switch. Always sent, so a save that only flips the
+    // switch writes it.
+    isActive: boolean
     dueDate?: Date | undefined
   }) => Promise<void>
 }
@@ -60,6 +64,10 @@ export function QuickUpdateDialog({
   const consumable = isConsumable(item)
   const [localTarget, setLocalTarget] = useState(item.targetQuantity)
   const [localRefill, setLocalRefill] = useState(item.refillThreshold)
+  // The "Active here" switch. A row with no stored value reads through
+  // `isStockActive`'s fallback (target 0 = off), the same as the card.
+  const storedActive = isStockActive(item)
+  const [localActive, setLocalActive] = useState(storedActive)
   // `YYYY-MM-DD` string an `<input type="date">` needs — same conversion
   // `itemToFormValues` uses in `routes/items/$id/stock.tsx`.
   const itemDueDateString = item.dueDate
@@ -79,6 +87,7 @@ export function QuickUpdateDialog({
       setLocalUnpacked(item.unpackedQuantity)
       setLocalTarget(item.targetQuantity)
       setLocalRefill(item.refillThreshold)
+      setLocalActive(storedActive)
       setLocalDueDate(itemDueDateString)
     }
   }, [
@@ -87,6 +96,7 @@ export function QuickUpdateDialog({
     item.unpackedQuantity,
     item.targetQuantity,
     item.refillThreshold,
+    storedActive,
     itemDueDateString,
   ])
 
@@ -173,6 +183,8 @@ export function QuickUpdateDialog({
       unpackedQuantity: localUnpacked,
       targetQuantity: localTarget,
       refillThreshold: localRefill,
+      // The live switch, so the bar turns grey before Update is pressed.
+      isActive: localActive,
     },
   )
   const localDisplayPacked = preview.displayPacked
@@ -199,6 +211,7 @@ export function QuickUpdateDialog({
     localUnpacked === item.unpackedQuantity &&
     localTarget === item.targetQuantity &&
     localRefill === item.refillThreshold &&
+    localActive === storedActive &&
     localDueDate === itemDueDateString
 
   // Unpack: open one package → unpacked. Mirrors item info tab exactly.
@@ -244,6 +257,7 @@ export function QuickUpdateDialog({
         unpackedQuantity: consumable ? localUnpacked : 0,
         targetQuantity: localTarget,
         refillThreshold: localRefill,
+        isActive: localActive,
         // The `dueDate` key is included ONLY when the field is actually
         // rendered (`expirationMode === 'date'`) — see the doc comment on
         // `QuickUpdateDialogProps.onSubmit` above. An item in another mode
@@ -282,9 +296,12 @@ export function QuickUpdateDialog({
                 independently — so the bar joins this grid as a `col-span-3`
                 row instead of sitting outside it as a sibling. Column 3
                 carries Unpack on row 1, Pack on row 2, the "Expires on" hint
-                on row 3, and the two muted stock-setting hints on rows 5-6.
+                on row 3, nothing on the Active here row, and the two muted
+                stock-setting hints on the Target and Refill rows. The Active
+                here hint has its own row across columns 2-3.
 
-                Row order (designer ruling, 2026-09-22): Packed and Unpacked
+                Row order (designer ruling, 2026-09-22; Active here added
+                2026-11-27 as the first stock setting): Packed and Unpacked
                 are the values edited most often, so they lead, and "Expires
                 on" is per-location state updated at the same time. Target and
                 Refill below configure the bar — `getStockPreview`
@@ -478,6 +495,33 @@ export function QuickUpdateDialog({
                 fillLabel={t('common.fillToFull')}
               />
             </div>
+
+            {/* Active here row — the first stock setting, above Target, the
+                same place as on the Stock tab (`ItemForm`). Off makes the
+                item inactive at this location. Target and Refill stay
+                editable and keep their values (owner answer 2). The hint
+                spans columns 2-3, below the switch, because it is longer
+                than the other hints and would widen column 3. */}
+            <Label
+              htmlFor="quickUpdateIsActive"
+              className="text-sm text-foreground-muted shrink-0"
+            >
+              {t('items.form.isActive.label')}
+            </Label>
+            <Switch
+              id="quickUpdateIsActive"
+              checked={localActive}
+              onCheckedChange={setLocalActive}
+              disabled={isPending}
+              aria-describedby="quickUpdateIsActiveHint"
+            />
+            <span />
+            <span
+              id="quickUpdateIsActiveHint"
+              className="col-start-2 col-span-2 text-xs text-foreground-muted"
+            >
+              {t('items.form.isActive.hint')}
+            </span>
 
             {/* Stock settings — the same per-location target/refill pair the
                 item form owns, editable here so a low-stock warning can be

@@ -27,6 +27,7 @@ import {
 } from '@/generated/graphql'
 import { routeTree } from '@/routeTree.gen'
 import { noopApolloClient } from '@/test/apolloStub'
+import { DEFAULT_LOCATION_ID } from '@/types'
 
 const meta = {
   title: 'Pages/Item/Stock',
@@ -198,6 +199,19 @@ const seedNotConsumableItem = async () => {
   return item.id
 }
 
+// Turned off here with the "Active here" switch, but it keeps its target of
+// 4: the switch is off, the bar is grey, and Target still reads 4.
+const seedInactiveWithTarget = async () => {
+  const id = await seedSingleLocation()
+  await upsertItemStock(id, DEFAULT_LOCATION_ID, { isActive: false })
+  return id
+}
+
+export const InactiveWithTarget: Story = {
+  name: 'Inactive here — switch off, target kept',
+  render: () => <LocalStockHarness seed={seedInactiveWithTarget} />,
+}
+
 export const PackageItem: Story = {
   name: 'Single location — no pager chrome',
   render: () => <LocalStockHarness seed={seedSingleLocation} />,
@@ -337,6 +351,8 @@ const CLOUD_STOCKS = [
     packedQuantity: 2,
     unpackedQuantity: 0,
     dueDate: null,
+    // `ItemStocksForItem` selects it; a mock without it is incomplete.
+    isActive: true,
     createdAt: '2026-08-01T10:00:00.000Z',
     updatedAt: '2026-08-01T10:00:00.000Z',
   },

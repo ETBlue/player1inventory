@@ -70,7 +70,7 @@ describe('v20 → v21 upgrade (Item.consumable)', () => {
   it('user’s old items become consumable, and an item already marked not consumable stays so', async () => {
     // When the app opens the version-20 database
     await db.open()
-    expect(db.verno).toBe(21)
+    expect(db.verno).toBeGreaterThanOrEqual(21)
 
     // Then the item with no value is consumable
     expect((await db.items.get('tissue'))?.consumable).toBe(true)
@@ -93,7 +93,7 @@ describe('a fresh database at version 21', () => {
 
   it('user’s new item is consumable unless they say otherwise', async () => {
     await db.open()
-    expect(db.verno).toBe(21)
+    expect(db.verno).toBeGreaterThanOrEqual(21)
 
     const plain = await createItem({ name: 'Tissue', tagIds: [] })
     const cups = await createItem({

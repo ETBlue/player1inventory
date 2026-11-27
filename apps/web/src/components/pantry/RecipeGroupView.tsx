@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button'
 import { useItems, useStockedItems } from '@/hooks'
 import { useRecipes } from '@/hooks/useRecipes'
 import {
-  getItemPackUnits,
+  getGroupPackTotals,
   isEmptyStock,
   isInactive,
   isLowStock,
@@ -67,17 +67,7 @@ export function RecipeGroupView() {
     getRecipeItems(recipeId).filter((i) => !isInactive(i)).length
 
   const getPackTotals = (recipeId: string) =>
-    getRecipeItems(recipeId).reduce(
-      (acc, item) => {
-        const { packed, target, refill } = getItemPackUnits(item)
-        return {
-          totalPacked: acc.totalPacked + packed,
-          totalTarget: acc.totalTarget + target,
-          totalRefill: acc.totalRefill + refill,
-        }
-      },
-      { totalPacked: 0, totalTarget: 0, totalRefill: 0 },
-    )
+    getGroupPackTotals(getRecipeItems(recipeId))
 
   const unsortedItems = getRecipeItems('unsorted')
 

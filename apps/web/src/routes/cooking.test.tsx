@@ -1894,6 +1894,7 @@ describe('Use (Cooking) Page', () => {
       targetQuantity: number
       refillThreshold: number
       packedQuantity: number
+      isActive?: boolean
     },
   ) =>
     createItem({
@@ -2020,18 +2021,23 @@ describe('Use (Cooking) Page', () => {
       refillThreshold: 2,
       packedQuantity: 5,
     })
-    // Two inactive items (targetQuantity 0), one below its refill threshold and
-    // one exactly at it. Neither may be counted — the same exclusion the pantry
-    // group cards apply — so each guards one of the two health predicates.
+    // Two inactive items (the Active here switch off), one below its refill
+    // threshold and one exactly at it. Neither may be counted — the same
+    // exclusion the pantry group cards apply — so each guards one of the two
+    // health predicates. They keep a target of 4: an inactive item keeps its
+    // target, and with target 0 the test could not tell the switch from the
+    // old "target 0 is inactive" rule.
     const inactiveEmpty = await makeStockedItem('Vanilla', {
-      targetQuantity: 0,
+      targetQuantity: 4,
       refillThreshold: 2,
       packedQuantity: 0,
+      isActive: false,
     })
     const inactiveLow = await makeStockedItem('Nutmeg', {
-      targetQuantity: 0,
+      targetQuantity: 4,
       refillThreshold: 2,
       packedQuantity: 2,
+      isActive: false,
     })
     // Not stocked here at all — must not count towards the availability total.
     const saffron = await makeUnstockedItem('Saffron')

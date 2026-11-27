@@ -343,6 +343,7 @@ describe('Item stock tab', () => {
       packedQuantity: number
       unpackedQuantity: number
       dueDate?: string | null
+      isActive?: boolean
     },
   ) => {
     localStorage.setItem(activeLocationStorageKey('cloud'), LOC_A)
@@ -1658,6 +1659,202 @@ describe('Item stock tab', () => {
       cloudItem.id,
     )
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  })
+
+  // The "Active here" switch (design 2026-11-26, *The switch*). Every
+  // fixture keeps a target of 4, so "off" and "target 0" give different
+  // answers: a test that passed by reading the target would fail here.
+  describe('the Active here switch', () => {
+    const activeSwitch = () =>
+      screen.getByRole('switch', { name: 'Active here' })
+    const barIsInactive = () =>
+      document.body.querySelector('.bg-status-inactive-background-muted') !==
+      null
+
+    const makeMilk = () =>
+      createItem({
+        name: 'Milk',
+        packageUnit: 'bottle',
+        targetUnit: 'package',
+        targetQuantity: 4,
+        refillThreshold: 2,
+        packedQuantity: 2,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        tagIds: [],
+      })
+
+    it('user can turn an item off on the Stock tab and keep its target and refill', async () => {
+      const user = userEvent.setup()
+
+      // Given an active item with target 4 and refill 2
+      const item = await makeMilk()
+      renderStockTab(item.id)
+      await screen.findByLabelText(/^packed/i)
+      expect(activeSwitch()).toBeChecked()
+      expect(barIsInactive()).toBe(false)
+      const save = screen.getByRole('button', { name: /save/i })
+      expect(save).toBeDisabled()
+
+      // When the user turns the switch off and changes nothing else
+      await user.click(activeSwitch())
+
+      // Then the bar is grey before Save, Target and Refill stay editable,
+      // and Save is enabled by the switch alone
+      expect(barIsInactive()).toBe(true)
+      expect(screen.getByLabelText(/^target quantity/i)).not.toHaveAttribute(
+        'readonly',
+      )
+      expect(screen.getByLabelText(/^refill when below/i)).toHaveValue(2)
+      expect(save).toBeEnabled()
+
+      // When the user saves
+      await user.click(save)
+
+      // Then the row is off here, with its target and refill kept
+      await waitFor(async () => {
+        expect((await getItemStock(item.id))?.isActive).toBe(false)
+      })
+      const stock = await getItemStock(item.id)
+      expect(stock?.targetQuantity).toBe(4)
+      expect(stock?.refillThreshold).toBe(2)
+    })
+
+    it('user can turn an inactive item on again on the Stock tab', async () => {
+      const user = userEvent.setup()
+
+      // Given an item turned off here that kept its target of 4
+      const item = await makeMilk()
+      await upsertItemStock(item.id, DEFAULT_LOCATION_ID, { isActive: false })
+      renderStockTab(item.id)
+      await screen.findByLabelText(/^packed/i)
+      expect(activeSwitch()).not.toBeChecked()
+      expect(barIsInactive()).toBe(true)
+      expect(screen.getByLabelText(/^target quantity/i)).toHaveValue(4)
+
+      // When the user turns the switch on and saves
+      await user.click(activeSwitch())
+      expect(barIsInactive()).toBe(false)
+      await user.click(screen.getByRole('button', { name: /save/i }))
+
+      // Then the row is active again, with the same target
+      await waitFor(async () => {
+        expect((await getItemStock(item.id))?.isActive).toBe(true)
+      })
+      expect((await getItemStock(item.id))?.targetQuantity).toBe(4)
+    })
+
+    it('user can turn an item off at one location and keep it active at another', async () => {
+      const user = userEvent.setup()
+
+      // Given an item stocked here and at the Cabin, active in both
+      const cabin = await createLocation('Cabin')
+      const item = await makeMilk()
+      await addItemToLocation(item.id, cabin.id)
+      renderStockTab(item.id)
+      await screen.findByLabelText(/^packed/i)
+
+      // When the user pages to the Cabin, turns the switch off and saves
+      await user.click(screen.getByRole('tab', { name: 'Cabin' }))
+      await waitFor(() => expect(activeSwitch()).toBeChecked())
+      await user.click(activeSwitch())
+      await user.click(screen.getByRole('button', { name: /save/i }))
+
+      // Then only the Cabin is off
+      await waitFor(async () => {
+        expect((await getItemStock(item.id, cabin.id))?.isActive).toBe(false)
+      })
+      expect((await getItemStock(item.id, DEFAULT_LOCATION_ID))?.isActive).toBe(
+        true,
+      )
+    })
+
+    it('user can turn an item off in cloud mode, and the save sends the switch', async () => {
+      const user = userEvent.setup()
+
+      // Given a cloud item, active, with target 4 and refill 2
+      localStorage.setItem('data-mode', 'cloud')
+      const cloudItem = {
+        id: 'item-cloud-active',
+        name: 'Cloud Milk',
+        tagIds: [],
+        packageUnit: 'bottle',
+        targetUnit: 'package',
+        consumeAmount: 1,
+        consumable: true,
+        createdAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
+        updatedAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
+      }
+      mockUseGetItemQuery.mockReturnValue({
+        data: { item: cloudItem },
+        loading: false,
+        error: undefined,
+      })
+      seedCloud(cloudItem.id, {
+        targetQuantity: 4,
+        refillThreshold: 2,
+        packedQuantity: 2,
+        unpackedQuantity: 0,
+        isActive: true,
+      })
+      const mockCloudUpsertStock = vi.fn().mockResolvedValue({
+        data: { upsertItemStock: null },
+      })
+      mockUseUpsertItemStockMutation.mockReturnValue([mockCloudUpsertStock, {}])
+      renderStockTab(cloudItem.id)
+      await screen.findByLabelText(/^packed/i)
+      expect(activeSwitch()).toBeChecked()
+
+      // When the user turns the switch off and saves
+      await user.click(activeSwitch())
+      await user.click(screen.getByRole('button', { name: /save/i }))
+
+      // Then `upsertItemStock` carries `isActive: false`, and the target and
+      // refill as they were
+      await waitFor(() => expect(mockCloudUpsertStock).toHaveBeenCalled())
+      expect(
+        elementAt(mockCloudUpsertStock.mock.calls)[0].variables.input,
+      ).toMatchObject({
+        isActive: false,
+        targetQuantity: 4,
+        refillThreshold: 2,
+      })
+    })
+
+    it('user sees an inactive cloud item with its switch off', async () => {
+      // Given a cloud row turned off that kept a target of 4
+      localStorage.setItem('data-mode', 'cloud')
+      const cloudItem = {
+        id: 'item-cloud-inactive',
+        name: 'Cloud Milk',
+        tagIds: [],
+        packageUnit: 'bottle',
+        targetUnit: 'package',
+        consumeAmount: 1,
+        consumable: true,
+        createdAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
+        updatedAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
+      }
+      mockUseGetItemQuery.mockReturnValue({
+        data: { item: cloudItem },
+        loading: false,
+        error: undefined,
+      })
+      seedCloud(cloudItem.id, {
+        targetQuantity: 4,
+        refillThreshold: 2,
+        packedQuantity: 2,
+        unpackedQuantity: 0,
+        isActive: false,
+      })
+      renderStockTab(cloudItem.id)
+
+      // Then the switch is off, the target is shown, and the bar is grey
+      await screen.findByLabelText(/^packed/i)
+      expect(activeSwitch()).not.toBeChecked()
+      expect(screen.getByLabelText(/^target quantity/i)).toHaveValue(4)
+      expect(barIsInactive()).toBe(true)
+    })
   })
 
   // Issue #261. The Stock tab renders the "Expires on" field ONLY when the

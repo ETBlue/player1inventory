@@ -174,6 +174,8 @@ const CLOUD_SPECS = [
   '**/consumable-items.spec.ts',
   // Expiry from the last restock (2026-11-26). Runs in local too.
   '**/expiry-from-restock.spec.ts',
+  // The "Active here" switch, PR 2 (2026-11-27). Runs in local too.
+  '**/item-stock-active.spec.ts',
 ]
 
 // A `NEON_SPECS` entry that is not in the list above throws here, at load, so

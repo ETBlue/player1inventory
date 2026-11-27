@@ -331,7 +331,9 @@ export function ItemProgressBar({
   const { t } = useTranslation()
 
   // Use continuous bar when tracking in measurement units
-  // Guard: target=0 means inactive item
+  // Guard: target=0 means "no target". The item may be active (an active item
+  // with no target) or inactive; `status` says which, and colours the bar. A
+  // full bar when there is stock, an empty outlined bar when there is none.
   if (target === 0) {
     if (current > 0) {
       const fillColor =

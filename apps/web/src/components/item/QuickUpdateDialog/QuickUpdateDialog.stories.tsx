@@ -97,6 +97,21 @@ export const Inactive: Story = {
   },
 }
 
+// Turned off here with the "Active here" switch, but it keeps its target:
+// the switch is off and the bar is grey, while Target still reads 2.
+export const InactiveWithTarget: Story = {
+  name: 'Inactive here — switch off, target kept',
+  args: {
+    item: {
+      ...mockItem,
+      packedQuantity: 1,
+      unpackedQuantity: 0,
+      isActive: false,
+    },
+    isOpen: true,
+  },
+}
+
 export const NearRefillThreshold: Story = {
   name: 'Near Refill Threshold — Fractional Steps',
   args: {

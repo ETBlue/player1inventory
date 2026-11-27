@@ -248,4 +248,51 @@ describe('ShelfGroupView location partition', () => {
     expect(isBefore(divider(), unsorted)).toBe(true)
     expect(divider()).toHaveTextContent('1 not stocked here')
   })
+
+  it('user sees an item turned off here add its stock but not its target to a shelf card', async () => {
+    // Given two items stocked here: Milk is active (target 2, refill 1), and
+    // Oil is turned off here but keeps its target of 5 and refill of 2
+    const milk = await createItem(
+      {
+        name: 'Milk',
+        tagIds: [],
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 1,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      },
+      DEFAULT_LOCATION_ID,
+    )
+    const oil = await createItem(
+      {
+        name: 'Oil',
+        tagIds: [],
+        targetUnit: 'package',
+        targetQuantity: 5,
+        refillThreshold: 2,
+        packedQuantity: 1,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        isActive: false,
+      },
+      DEFAULT_LOCATION_ID,
+    )
+    await createShelf({
+      name: 'Kitchen',
+      type: 'selection',
+      order: 0,
+      itemIds: [milk.id, oil.id],
+    })
+
+    renderShelfGroupView()
+
+    // Then the card counts Oil's stock, but not its target: 1 + 1 packed,
+    // and only Milk's target of 2. With Oil's target the card would read
+    // "2 / 7 pack".
+    const card = await screen.findByRole('button', { name: 'Kitchen' })
+    expect(card).toHaveTextContent('2 / 2 pack')
+    expect(card).toHaveTextContent('1 / 2 active')
+  })
 })

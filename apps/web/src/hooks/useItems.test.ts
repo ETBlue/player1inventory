@@ -11,7 +11,12 @@ import {
 } from '@/generated/graphql'
 import { callArgs } from '@/test/narrow'
 import type { Item, StockFields } from '@/types'
-import { toUpdateItemInput, useDeleteItem } from './useItems'
+import {
+  toCreateStockInput,
+  toStockInput,
+  toUpdateItemInput,
+  useDeleteItem,
+} from './useItems'
 
 // `toUpdateItemInput` accepts `Partial<Item> & Partial<StockFields>` — the
 // joined shape a `PantryItem` edit produces (src/hooks/useItems.ts:165-167).
@@ -315,5 +320,52 @@ describe('toUpdateItemInput', () => {
     // goes through `toHaveProperty`, which checks the same exact value and
     // matches the sibling test at line 195.
     expect(result).toHaveProperty('dueDate', dueDate.toISOString())
+  })
+})
+
+// ─── the "Active here" switch in the two stock input builders ─────────────────
+
+describe('toStockInput and the "Active here" switch', () => {
+  it('sends isActive false, and keeps the target the person set', () => {
+    // Given a save that turns the item off here and keeps target 5
+    const result = toStockInput({ isActive: false, targetQuantity: 5 })
+
+    // Then both reach the server
+    expect(result).toEqual({ isActive: false, targetQuantity: 5 })
+  })
+
+  it('sends isActive true', () => {
+    expect(toStockInput({ isActive: true })).toEqual({ isActive: true })
+  })
+
+  it('leaves isActive out when the update does not set it', () => {
+    // A quantity save must not touch the switch: the server keeps the stored
+    // value only when the key is missing
+    expect(Object.keys(toStockInput({ packedQuantity: 3 }))).not.toContain(
+      'isActive',
+    )
+  })
+})
+
+describe('toCreateStockInput and the "Active here" switch', () => {
+  const newItem = {
+    name: 'Milk',
+    tagIds: [],
+    targetUnit: 'package' as const,
+  }
+
+  it('user creates a new item that is active with no target', () => {
+    // Given a new item from the Add dialog: no target, no switch set
+    const result = toCreateStockInput(newItem)
+
+    // Then its first stock row is sent active, with target 0 ("no target")
+    expect(result.isActive).toBe(true)
+    expect(result.targetQuantity).toBe(0)
+  })
+
+  it('sends the switch the caller gave', () => {
+    expect(toCreateStockInput({ ...newItem, isActive: false }).isActive).toBe(
+      false,
+    )
   })
 })

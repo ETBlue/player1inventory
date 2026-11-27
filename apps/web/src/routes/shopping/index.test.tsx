@@ -537,6 +537,8 @@ describe('Shopping index page', () => {
         tagIds: [],
         vendorIds: [vendor.id],
         targetUnit: 'package',
+        // Inactive: the Active here switch is off
+        isActive: false,
         targetQuantity: 0,
         refillThreshold: 0,
         packedQuantity: 0,
@@ -666,6 +668,8 @@ describe('Shopping index page', () => {
         name: 'Expired Coupon',
         tagIds: [],
         targetUnit: 'package',
+        // Inactive: the Active here switch is off
+        isActive: false,
         targetQuantity: 0,
         refillThreshold: 0,
         packedQuantity: 0,

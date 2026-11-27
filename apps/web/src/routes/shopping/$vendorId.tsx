@@ -188,8 +188,8 @@ function VendorCart() {
   // both the vendor cart card and the pantry (getStockedItems). useItems()
   // joins every global item against the active location's ItemStock, so an
   // item not stocked here arrives as ZERO_STOCK (targetQuantity: 0, no
-  // stockId) — indistinguishable from a real inactive item unless stockId is
-  // checked. An item with no ItemStock row here has nothing to check out
+  // `isActive`, no stockId) — it reads as inactive, so it is
+  // indistinguishable from a real inactive item unless stockId is checked. An item with no ItemStock row here has nothing to check out
   // against, so listing it on this page was always the anomaly.
   //
   // BOTH MODES since PR 3b. Cloud used to bypass this gate because of the
