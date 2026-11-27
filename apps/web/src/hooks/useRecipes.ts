@@ -7,6 +7,7 @@ import {
   getItemCountByRecipe,
   getRecipe,
   getRecipes,
+  setItemRecipesBatch,
   updateRecipe,
   updateRecipeLastCookedAt,
 } from '@/db/operations'
@@ -19,6 +20,7 @@ import {
   useGetRecipeQuery,
   useGetRecipesQuery,
   useItemCountByRecipeQuery,
+  useSetItemRecipesMutation,
   useUpdateRecipeLastCookedAtMutation,
   useUpdateRecipeMutation,
 } from '@/generated/graphql'
@@ -249,6 +251,68 @@ export function useUpdateRecipe() {
         updates: Partial<Omit<Recipe, 'id' | 'createdAt'>>
       }) => runCloudUpdate(id, updates),
       isPending: cloudUpdateLoading || isRefetching,
+    }
+  }
+
+  return localMutation
+}
+
+/** The input of `useSetItemRecipes`: the item, and every recipe that should hold it. */
+export interface SetItemRecipesArgs {
+  itemId: string
+  recipeIds: string[]
+}
+
+/**
+ * The item Recipes tab's Save: make `recipeIds` the exact set of recipes that
+ * hold the item, in one write (design
+ * `docs/features/items/2026-11-27-item-relations-save-design.md`, *The hook*).
+ * The write computes each new link's `defaultAmount` itself, in both modes.
+ *
+ * - local: `setItemRecipesBatch`, one Dexie transaction. `onSuccess` RETURNS
+ *   the invalidation, so `mutateAsync` resolves only after the lists are read
+ *   again. `['recipes']` is a prefix, so it covers `['recipes', id]` and
+ *   `['recipes', 'itemCount', …]` too.
+ * - cloud: `SetItemRecipes`, then `refetchAfterWrite` for `GetRecipes` (read
+ *   even when nothing is mounted) and the mounted `ItemCountByRecipe` queries.
+ *   The server's live `CATALOG` event goes to OTHER tabs only, so this read is
+ *   what updates this tab. A failed read does not reject; a failed write does.
+ */
+export function useSetItemRecipes() {
+  const queryClient = useQueryClient()
+  const { mode } = useDataMode()
+  const { refetchAfterWrite, isRefetching } = useRefetchAfterWrite()
+
+  const localMutation = useMutation({
+    mutationFn: ({ itemId, recipeIds }: SetItemRecipesArgs) =>
+      setItemRecipesBatch(itemId, recipeIds),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['recipes'] }),
+  })
+
+  const [cloudSet, { loading: cloudSetLoading }] = useSetItemRecipesMutation()
+
+  if (mode === 'cloud') {
+    const runCloudSet = async ({ itemId, recipeIds }: SetItemRecipesArgs) => {
+      const result = await cloudSet({ variables: { itemId, recipeIds } })
+      await refetchAfterWrite([
+        { query: GetRecipesDocument },
+        'ItemCountByRecipe',
+      ])
+      return result.data?.setItemRecipes
+    }
+    return {
+      mutate: (
+        args: SetItemRecipesArgs,
+        options?: { onSuccess?: () => void; onError?: (err: unknown) => void },
+      ) =>
+        runCloudSet(args).then(
+          () => options?.onSuccess?.(),
+          (err) => {
+            options?.onError?.(err)
+          },
+        ),
+      mutateAsync: runCloudSet,
+      isPending: cloudSetLoading || isRefetching,
     }
   }
 
