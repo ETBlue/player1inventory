@@ -159,6 +159,10 @@ describe('Item page - one flat tab row', { timeout: 15_000 }, () => {
   // The Tags, Vendors and Recipes tabs are guarded too since the item
   // relations Save (design 2026-11-27). The dirty state of a tab that is gone
   // must not follow the person to the next tab.
+  // These two tests pass WITHOUT the layout's reset effect in `$id.tsx`
+  // (measured 2026-11-28): `ItemForm` mounts once more under the new path and
+  // reports `false` first. The test that fails without the effect is in
+  // `$id.dirtyReset.test.tsx`, with a tab that never reports `false`.
   it('user who discards an Info edit can leave the next tab with no dialog', async () => {
     const user = userEvent.setup()
     const router = renderAt(`/items/${itemId}`)
