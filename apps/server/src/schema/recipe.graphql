@@ -94,5 +94,14 @@ extend type Mutation {
   updateRecipe(id: ID!, name: String, items: [RecipeItemInput!]): Recipe!
   updateRecipeLastCookedAt(id: ID!): Recipe!
   deleteRecipe(id: ID!): Boolean!
+
+  """
+  Make `recipeIds` the exact set of recipes that hold this item. Recipes not
+  in the list lose the item; recipes in the list that do not hold it get it,
+  with `defaultAmount` = the item's `consumeAmount`, or 1 when that is 0. A
+  recipe that already holds the item keeps its amount. One transaction.
+  Returns the recipes that changed (empty when nothing changed).
+  """
+  setItemRecipes(itemId: ID!, recipeIds: [ID!]!): [Recipe!]!
   consumeRecipes(input: ConsumeRecipesInput!): ConsumeRecipesResult!
 }

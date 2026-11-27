@@ -367,6 +367,80 @@ export const recipeResolvers: Pick<Resolvers, 'Query' | 'Mutation' | 'Recipe'> =
       await publishHouseholdChange(ctx, ['CATALOG'], householdId)
       return true
     },
+    // The Recipes tab of the item page saves its whole list with one call
+    // (docs/features/items/2026-11-27-item-relations-save-design.md, *Server:
+    // `setItemRecipes` (PR A)*). Every refusal comes before the first write.
+    setItemRecipes: async (_, { itemId, recipeIds }, ctx) => {
+      const householdId = await requireCatalogRole(ctx, 'manager')
+
+      // The item must be the household's. Another household's item gives the
+      // same NOT_FOUND as a missing one, as in `updateItem`.
+      const existing = await prisma.item.findFirst({ where: { id: itemId, householdId } })
+      if (!existing) throw new GraphQLError('Item not found', { extensions: { code: 'NOT_FOUND' } })
+
+      // The argument is a set: a repeated id is folded, not refused.
+      // Issue #273: another household's recipe is FORBIDDEN, an id no row
+      // holds is BAD_USER_INPUT. Checked before any write.
+      const ids = [...new Set(recipeIds)]
+      await requireCatalogIds(ctx, householdId, 'recipe', ids)
+
+      const changed = await prisma.$transaction(async (tx) => {
+        const item = await tx.item.findFirst({
+          where: { id: itemId, householdId },
+          select: { consumable: true, consumeAmount: true },
+        })
+        if (!item) throw new GraphQLError('Item not found', { extensions: { code: 'NOT_FOUND' } })
+
+        // `recipe: { householdId }`: `RecipeItem` has no `householdId`.
+        // Before issue #273 a recipe of ANOTHER household could be made to
+        // hold this item. Without the filter that recipe would be in
+        // `toRemove`, and this write would change another household's recipe.
+        const current = new Set(
+          (
+            await tx.recipeItem.findMany({
+              where: { itemId, recipe: { householdId } },
+              select: { recipeId: true },
+            })
+          ).map((r) => r.recipeId),
+        )
+        const wanted = new Set(ids)
+        const toAdd = ids.filter((id) => !current.has(id))
+        const toRemove = [...current].filter((id) => !wanted.has(id))
+
+        // Only consumable items can be in a recipe (lib/consumable.ts). Only
+        // an ADD is refused: a non-consumable item can still leave an old
+        // recipe. `=== false`: the column is NOT NULL.
+        if (toAdd.length > 0 && item.consumable === false) throw notConsumableError([itemId])
+
+        if (toRemove.length > 0) {
+          await tx.recipeItem.deleteMany({ where: { itemId, recipeId: { in: toRemove } } })
+        }
+        if (toAdd.length > 0) {
+          // The same rule as the other places that add an item to a recipe
+          // (owner answer 4A): the item's amount per use, or 1 when that is 0.
+          const defaultAmount = item.consumeAmount > 0 ? item.consumeAmount : 1
+          // `skipDuplicates`: the key is `(recipeId, itemId)`. Two saves at
+          // the same moment can both read "not linked" for one recipe; the
+          // second must not fail with P2002. A row the other save wrote keeps
+          // its amount. No lock: the last save wins per recipe.
+          await tx.recipeItem.createMany({
+            data: toAdd.map((recipeId) => ({ recipeId, itemId, defaultAmount })),
+            skipDuplicates: true,
+          })
+        }
+        return [...toAdd, ...toRemove]
+      })
+
+      // Nothing changed: no event, and an empty answer.
+      if (changed.length === 0) return []
+      // After the commit, so a save that rolled back reaches no subscriber.
+      await publishHouseholdChange(ctx, ['CATALOG'], householdId)
+      const recipes = await prisma.recipe.findMany({
+        where: { id: { in: changed }, householdId },
+        include: { items: true },
+      })
+      return recipes as unknown as Recipe[]
+    },
   },
   Recipe: {
     lastCookedAt: (recipe) => {

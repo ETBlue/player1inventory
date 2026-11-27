@@ -547,9 +547,12 @@ production** (2026-11-23, release #403, merge `16929909`). Where a paragraph bel
 >
 > **Every `Mutation` field must be in one of two lists** in
 > `apps/server/src/resolvers/live-publish.guard.test.ts`: `publishes` (with its kinds) or
-> `publishesNothing` (with a reason). A new mutation in no list fails the test. Today: 84
-> fields, 77 in `publishes` and 7 in `publishesNothing` (measured 2026-11-22 after
-> households H7b; count with the two commands in the H6b *Counts* table above). H7b added
+> `publishesNothing` (with a reason). A new mutation in no list fails the test. Today: 85
+> fields, 78 in `publishes` and 7 in `publishesNothing` (measured 2026-11-27 on
+> `feature/item-relations-save-server`; count with the two commands in the H6b *Counts*
+> table above). The item relations Save PR A added `setItemRecipes` to `publishes`
+> (household-level `CATALOG`, only when the list changed something). Before it: 84, 77
+> and 7, measured 2026-11-22 after households H7b. H7b added
 > `markLocationVisited` and `setLocationSort` to `publishesNothing`, and moved
 > `reorderLocations` there from `publishes`: the order is the person's own, so a
 > household-level `LOCATION` would make every member refetch for a change only one person
