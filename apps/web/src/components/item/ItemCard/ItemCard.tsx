@@ -155,7 +155,7 @@ export function ItemCard({
     )
   }
 
-  // "Inactive" is targetQuantity === 0 — a per-location fact. When stock is
+  // "Inactive" is the "Active here" switch — a per-location fact. When stock is
   // hidden the card must not read as inactive either, so this drives every
   // inactive-derived rendering rather than isInactive(item) directly.
   const showsInactive = showStock && isInactive(item)

@@ -65,8 +65,8 @@ export function isConsumable(item: {
  * as inactive. Every writer writes the value; this fallback is only for rows
  * nobody wrote since then.
  *
- * The parameter is structural on purpose. The `ItemStock` interface below
- * gains `isActive` in a later change; this function does not need it.
+ * The parameter is structural on purpose, so a caller can pass a live form
+ * value or a GraphQL row as well as an `ItemStock`.
  */
 export function isStockActive(stock: {
   isActive?: boolean | null | undefined
@@ -87,9 +87,16 @@ export interface ItemStock {
   itemId: string
   locationId: string
 
-  // Quantity state
-  // `targetQuantity === 0` marks the item inactive AT THIS LOCATION — see
-  // isInactive / isStockedHere / isInactiveHere in lib/quantityUtils.ts.
+  // The "Active here" switch: is the item in use AT THIS LOCATION? `false`
+  // shows it as inactive here and keeps its target and refill. Optional
+  // because old data has none: a Dexie row, a backup file or a test fixture
+  // written before the field existed. Never read it directly; read it through
+  // `isStockActive` (above), which gives a missing value the old meaning
+  // (target 0 = inactive). The web reads that through isInactive /
+  // isStockedHere / isInactiveHere in apps/web/src/lib/quantityUtils.ts.
+  isActive?: boolean
+
+  // Quantity state. Target 0 on an ACTIVE row means "no target".
   targetQuantity: number
   refillThreshold: number
   packedQuantity: number

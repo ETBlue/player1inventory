@@ -2,6 +2,7 @@ import {
   MockedProvider,
   type MockedProviderProps,
 } from '@apollo/client/testing/react'
+import { isStockActive } from '@p1i/types'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
@@ -118,6 +119,9 @@ const cloudStock = (
   itemId,
   locationId,
   dueDate: null,
+  // Selected since the "Active here" switch. The old meaning of the target,
+  // like `cloudStock` in `@/test/cloudFixtures`.
+  isActive: isStockActive({ targetQuantity: fields.targetQuantity }),
   ...fields,
   createdAt: '2026-02-01T00:00:00.000Z',
   updatedAt: '2026-02-02T00:00:00.000Z',

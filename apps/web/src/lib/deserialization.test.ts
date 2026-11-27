@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   deserializeCart,
   deserializeItem,
+  deserializeItemStock,
   deserializeLocation,
   deserializeRecipe,
   deserializeShelf,
@@ -332,5 +333,33 @@ describe('deserializeCart', () => {
     const raw = { id: 'vendor-1' }
     const result = deserializeCart(raw)
     expect(result.lastPurchasedAt).toBeUndefined()
+  })
+})
+
+describe('deserializeItemStock', () => {
+  // A cloud row always carries `isActive` (`ItemStock.isActive: Boolean!`).
+  // `false` must survive the read: with target 5 the old rule would call this
+  // row active.
+  it('keeps the "Active here" switch, false and true', () => {
+    const row = {
+      __typename: 'ItemStock',
+      id: 's1',
+      itemId: 'i1',
+      locationId: 'l1',
+      targetQuantity: 5,
+      refillThreshold: 1,
+      packedQuantity: 2,
+      unpackedQuantity: 0,
+      dueDate: null,
+      createdAt: '2026-11-27T00:00:00.000Z',
+      updatedAt: '2026-11-27T00:00:00.000Z',
+    }
+    expect(deserializeItemStock({ ...row, isActive: false }).isActive).toBe(
+      false,
+    )
+    expect(
+      deserializeItemStock({ ...row, targetQuantity: 0, isActive: true })
+        .isActive,
+    ).toBe(true)
   })
 })

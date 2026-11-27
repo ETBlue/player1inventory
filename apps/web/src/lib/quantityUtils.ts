@@ -2,6 +2,7 @@ import {
   DEFAULT_PACKAGE_UNIT,
   decimalPlaces,
   getCurrentQuantity,
+  isStockActive,
   roundToStep,
 } from '@p1i/types'
 import type { StockConfigFields, StockFields } from '@/types'
@@ -262,14 +263,21 @@ export function addItem(
   }
 }
 
-// Widened to `Pick<Stock, 'targetQuantity'>` rather than the full `Stock`: the
-// only field this reads is targetQuantity, and a caller previewing a live
-// (not-yet-saved) target — ItemForm's Stock tab progress row — wants to pass
-// just that value without assembling an object satisfying every other Stock
-// field. Any full Stock value (PantryItem, etc.) still satisfies the narrower
-// type, so every existing caller is unaffected.
-export function isInactive(item: Pick<Stock, 'targetQuantity'>): boolean {
-  return item.targetQuantity === 0
+// "Inactive" is the "Active here" switch, `ItemStock.isActive`, read through
+// `isStockActive` from `@p1i/types` (the one rule, shared with the server).
+// A boolean decides, whatever the target is: an active row with target 0 has
+// "no target", and an inactive row keeps its target. Only a row with no value
+// (old data, or `ZERO_STOCK` for an item not stocked here) falls back to the
+// old rule, target 0 = inactive.
+//
+// Narrowed to `Pick<Stock, 'targetQuantity' | 'isActive'>` rather than the
+// full `Stock`: these are the only fields it reads, and a caller previewing
+// live (not-yet-saved) values passes just those. Any full Stock value
+// (PantryItem, etc.) still satisfies the narrower type.
+export function isInactive(
+  item: Pick<Stock, 'targetQuantity' | 'isActive'>,
+): boolean {
+  return !isStockActive(item)
 }
 
 // The stock CONFIGURATION half of the progress-row preview: the global fields
@@ -289,13 +297,17 @@ export interface StockPreviewConfig {
   consumable?: boolean
 }
 
-// The four live values driving the preview — never the stored/saved ones, so
+// The live values driving the preview — never the stored/saved ones, so
 // callers can pass in-progress edits before they are submitted.
 export interface StockPreviewValues {
   packedQuantity: number
   unpackedQuantity: number
   targetQuantity: number
   refillThreshold: number
+  // The live "Active here" switch, so the bar turns grey before Save. Left
+  // out, the preview falls back to `isStockActive`'s old rule on the live
+  // target (target 0 = inactive), which is what it did before the switch.
+  isActive?: boolean
 }
 
 export interface StockPreview {
@@ -340,8 +352,20 @@ export function getStockPreview(
     consumeAmount,
     consumable = true,
   } = config
-  const { packedQuantity, unpackedQuantity, targetQuantity, refillThreshold } =
-    values
+  const {
+    packedQuantity,
+    unpackedQuantity,
+    targetQuantity,
+    refillThreshold,
+    isActive,
+  } = values
+  // Built once, so both branches below read the same switch. `isActive` is
+  // left out when undefined, because `exactOptionalPropertyTypes` refuses an
+  // explicit `undefined` on an optional key.
+  const inactive = isInactive({
+    targetQuantity,
+    ...(isActive !== undefined ? { isActive } : {}),
+  })
 
   // The package unit as the card shows it (`ItemStockSummary`:
   // `item.packageUnit || DEFAULT_PACKAGE_UNIT`). `||`, not `??`: an item
@@ -366,7 +390,7 @@ export function getStockPreview(
       refillThreshold: pieces.refillThreshold,
       unitLabel: packageWord,
       quantityLabel: `${pieces.inStock} / ${pieces.wanted}`,
-      status: isInactive({ targetQuantity })
+      status: inactive
         ? 'inactive'
         : getStockStatus(pieces.inStock, pieces.refillThreshold),
       isAtZero,
@@ -392,7 +416,7 @@ export function getStockPreview(
       ? packedQuantity * amountPerPackage
       : packedQuantity
 
-  const status = isInactive({ targetQuantity })
+  const status = inactive
     ? 'inactive'
     : getStockStatus(current, refillThreshold)
 
@@ -518,9 +542,10 @@ export function toNonConsumableQuantities(
 }
 
 // Location predicates — guard against the ZERO_STOCK trap: joinItemStock()
-// returns targetQuantity: 0 (no stockId) for an item with no ItemStock row in
-// the active location, so isInactive() alone reports a merely-unstocked item
-// as inactive. Every location-scoped count must check stockId first.
+// returns targetQuantity: 0, no `isActive` and no stockId for an item with no
+// ItemStock row in the active location, so isInactive() alone reports a
+// merely-unstocked item as inactive (the fallback of `isStockActive`). Every
+// location-scoped count must check stockId first.
 
 // True when the item has a real ItemStock row in the active location (as
 // opposed to the zeroed join result for an item not stocked here).
@@ -528,16 +553,18 @@ export function isStockedHere(item: { stockId?: string }): boolean {
   return item.stockId !== undefined
 }
 
-// Strict "inactive" for the active location: stocked here AND targetQuantity
-// is 0. An item that is simply not stocked here is neither active nor
-// inactive here — it is absent, so this returns false for it.
+// Strict "inactive" for the active location: stocked here AND its "Active
+// here" switch is off (see isInactive). An item that is simply not stocked
+// here is neither active nor inactive here — it is absent, so this returns
+// false for it.
 export function isInactiveHere(item: { stockId?: string } & Stock): boolean {
   return isStockedHere(item) && isInactive(item)
 }
 
 // Health predicates — shared by every surface that summarises a group of items
 // (the pantry group cards and the cooking recipe card). Inactive items are
-// excluded from both: with targetQuantity 0 there is no level to fall short of.
+// excluded from both, also when they keep a target: the person turned the
+// item off here, so it is not "empty" or "low" here.
 
 // True when the item's current quantity has fallen BELOW its refill threshold.
 // Displayed as "empty".

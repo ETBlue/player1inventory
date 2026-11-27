@@ -337,6 +337,8 @@ const CLOUD_STOCKS = [
     packedQuantity: 2,
     unpackedQuantity: 0,
     dueDate: null,
+    // `ItemStocksForItem` selects it; a mock without it is incomplete.
+    isActive: true,
     createdAt: '2026-08-01T10:00:00.000Z',
     updatedAt: '2026-08-01T10:00:00.000Z',
   },

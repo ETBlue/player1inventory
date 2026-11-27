@@ -70,7 +70,7 @@ export function ItemStockSummary({
     : getStockStatus(pieces.inStock, pieces.refillThreshold)
   const progressStatus = isInactive(item) ? 'inactive' : status
 
-  // "Inactive" is targetQuantity === 0, a per-location fact. With stock
+  // "Inactive" is the "Active here" switch, a per-location fact. With stock
   // hidden the name must not say "Inactive" either.
   const showsInactive = showStock && isInactive(item)
 

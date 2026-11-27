@@ -231,7 +231,7 @@ function ShelfItemsTab() {
 
   // Two-bucket ordering: assigned before unassigned, each keeping the sort
   // order. There is deliberately no active/inactive split — "inactive" is
-  // targetQuantity === 0, a per-location fact, and this page edits a global
+  // the "Active here" switch, a per-location fact, and this page edits a global
   // item↔shelf relation. Worse, useItems() joins the ACTIVE location, so an
   // item stocked only elsewhere arrives zeroed and a bare isInactive() would
   // sink it (the stockId trap in lib/quantityUtils.ts).
