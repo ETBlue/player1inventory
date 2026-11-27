@@ -922,8 +922,9 @@ reconcile finds nothing to remove and creates every row the fixture lists. No ed
 loop was needed in 4b or in PR 5 — which is the whole argument for reading state back
 instead of predicting it.
 
-**The cloud list (`CLOUD_SPECS`) is 44 files today** (`e2e/playwright.config.ts`,
-measured 2026-11-27 after the "Active here" switch task W.6 added `item-stock-active.spec.ts`;
+**The cloud list (`CLOUD_SPECS`) is 45 files today, of 49 spec files** (`e2e/playwright.config.ts`,
+measured 2026-11-28 after the item relations Save task B.8 added `item-relations-save.spec.ts`;
+44 on 2026-11-27 after the "Active here" switch task W.6 added `item-stock-active.spec.ts`;
 40 on 2026-11-23, 40 after households H7b task M.5, 39 on 2026-11-21 after households H7
 task L.6; 38 after H6b task K.8, 37 on 2026-11-20
 after households H6 task J.8; 36 on 2026-11-19, 35 on 2026-11-18, 29
@@ -934,7 +935,7 @@ grows most weeks:
 awk '/^const CLOUD_SPECS = \[/,/^\]/' e2e/playwright.config.ts | grep -c "spec\.ts'"
 ```
 
-It gave **44** on 2026-11-27 (40 on 2026-11-23). The `awk` range matters: the file holds more than one such
+It gave **45** on 2026-11-28 (44 on 2026-11-27, 40 on 2026-11-23). The `awk` range matters: the file holds more than one such
 list (`local`'s `testIgnore`, `CLOUD_SPECS`, `pwa`'s `testMatch`), and a grep over the
 whole file counts them all (56 instead of 37 on 2026-11-20). **The range changed on
 2026-11-23** (E2E speed plan task S.8): the cloud list moved into `const CLOUD_SPECS`, so
@@ -1735,6 +1736,49 @@ so code that wrote or read it for the whole item would turn both off.
 pooler, the 52 ms per query or a lock race can change the result. This spec makes one
 `upsertItemStock` at a time and waits for each, so it has none of the three. It runs on Neon
 only in the checkpoint gate (`pnpm test:e2e:all:neon`).
+
+### `item-relations-save.spec.ts` — one Save for item tags, vendors and recipes (2026-11-28)
+
+Added by the item relations Save, PR B task B.8 (design
+`docs/features/items/2026-11-27-item-relations-save-design.md`). Runs in `local` and
+`cloud` (it is in `CLOUD_SPECS`; not in `NEON_SPECS`). In cloud, test 4 is the first
+real-SQL run of `setItemRecipes`. 7 tests:
+
+| Test | What it proves |
+|---|---|
+| 1 | two tag presses and one Save: the backend has the list on screen, read back with `expect.poll` and after a reload |
+| 2 | leaving Tags with an unsaved press opens the unsaved-changes dialog; its Save writes the press |
+| 3 | Discard after New Tag: the tag exists, the item does not have it |
+| 4 | one Recipes Save adds Milk to Pasta with its `consumeAmount` (2), takes it out of Salad, and keeps Soup's own amount (3) |
+| 5 | cloud only: a household `member` (`newUserContext`, `addHouseholdMember` BEFORE the member opens a page) sees no Save, and a press changes nothing |
+| 6, 7 | axe scans of the three tabs with a pressed badge and Save on, light and dark (`a11y.spec.ts` does not run in `cloud`) |
+
+**A badge press shows as pressed before Save too**, so a pressed badge on screen proves
+nothing about a write. Every write is read from the BACKEND (IndexedDB in `local`, GraphQL
+in `cloud`) with `expect.poll`. The page object's `saveRelations()` (`e2e/pages/ItemPage.ts`)
+presses the top bar Save and waits for the "Saved" toast and for Save to turn off again.
+`createAndAssignTag`, `createAndAssignVendor` and `assignVendor` press, then call it.
+
+**Trap: Playwright will not click an `aria-disabled` element.** `click()` waits for the
+element to be enabled, and it counts `aria-disabled="true"` as disabled, so a plain click
+on a member's read-only badge times out. Test 5 uses `click({ force: true })`: a person can
+still click it, and the test checks that nothing changes. Assert `aria-disabled` first, or
+the forced click could press a badge that is not read only at all.
+
+**`a11y.spec.ts`'s `seedTag` wrote `tagTypeId`, a field nothing reads** (fixed in B.8, it
+writes `typeId` now). Its tag belonged to no type, so the item Tags tab showed no badge and
+no axe scan ever saw a tag badge. The six item relation tab scans in `a11y.spec.ts` now
+seed one row, press its badge and check that Save is on before the scan.
+
+**The Tags tab scans allow ONE known defect: tag badge colour contrast in light mode**
+(3.11 to 4.48:1, the tag palette, older than this branch). `checkA11yAllowingKnownTagBadgeDefects`
+(`e2e/helpers/axe.ts`) leaves tag badges out of `color-contrast` only; every other rule
+still checks them. It waits for an owner decision on the palette. B.8 also left them out of
+`target-size` (the last tag above "New Tag" was 20px high with 20px of clear space, new on
+this branch because the badges became focusable). The last task of PR B fixed that in
+`routes/items/$id/tags.tsx` (`-mb-1` instead of `-my-1`) and removed the exclusion: with the
+old layout all 4 Tags tab scans in `local` failed on `target-size`; with the fix they and
+the 2 `pwa` scans pass.
 
 ### Location order is assigned differently in the two modes — keep the default first
 

@@ -1,5 +1,7 @@
 # Bug: a new tag or vendor shows as not selected for about a second
 
+> **Replaced (2026-11-28):** the item relations Save (`2026-11-27-item-relations-save-design.md`, PR B) replaces this fix. A badge press no longer writes, so there is no second write to wait for; `assigningTagIds`, `assigningVendorIds` and `aria-busy` are gone. This doc stays as history.
+
 Date: 2026-11-25. Issue #402, part 1. Branch `fix/new-tag-vendor-selected`.
 
 ## Bug

@@ -3,7 +3,9 @@
 Item detail pages use a tabbed layout with two rows (since 2026-11-24, design
 `docs/features/items/2026-11-24-item-tabs-flat-design.md`, part B; brainstorming beside it):
 
-- **Row 1** is the top bar: back, the item name and, on Info and Stock, **Save**.
+- **Row 1** is the top bar: back, the item name and, on every tab but Log, **Save** (on Info
+  and Stock since 2026-11-25; on Tags, Vendors and Recipes since the item relations Save,
+  2026-11-28).
 - **Row 2** is one flat tab row, **Info · Stock · Tags · Vendors · Recipes · Log**: a
   `<nav aria-label="Item sections">` (`items.detail.tabsLabel`) passed to `LayoutInnerPages`'s
   `tabs` prop. Below `sm` each tab shows its icon only; from `sm` up, icon and text. The name is
@@ -20,8 +22,11 @@ Item detail pages use a tabbed layout with two rows (since 2026-11-24, design
   field, submit it. Disabled state, the spinner (`isPending`), validation, the toast, the
   unsaved-changes dialog and the unit-switch dialog are unchanged. A read-only form (`readOnly`)
   renders no Save, in the slot or in the form. While the slot is `null` (the first render,
-  before the top bar's ref is set) there is no Save. Tags, Vendors, Recipes and Log render
-  nothing into the slot, and `contents` keeps an empty slot from adding a flex gap. On a
+  before the top bar's ref is set) there is no Save. Tags, Vendors and Recipes are not
+  `ItemForm`s: they render `TopBarSaveButton` (`components/item/TopBarSaveButton/`) into the
+  same slot, a `type="button"` with `onClick` (see *Saving Tags, Vendors and Recipes* below).
+  Log renders nothing into the slot, and `contents` keeps an empty slot from adding a flex
+  gap. On a
   phone row 1 is back, the truncated name and "Save" with its text label (default `h-8`
   size, the same height as the back button). Tests: `$id/saveTopBar.test.tsx`;
   `ItemForm.test.tsx` (`submitSlot`); Enter is checked only by E2E
@@ -144,29 +149,103 @@ an allow-list that forgot them would drop them here with no error. Since 2026-10
 
 The **cart rows themselves survive** (they are shared by every item in the location), other locations' logs and cart entries are untouched, and the global **`Item` persists**. An item removed from its *last* location becomes an **orphan**: gone from the pantry (`getStockedItems` filters on `ItemStock`) but still in the catalog (`getAllItems`), so the pantry Add combobox still finds it and can re-stock it via copy-on-add. Removing an item from *everywhere* is the Info tab's **Delete** button (`deleteItem`), not this. The Stock tab is also reachable for an orphan — every page just renders the not-stocked state.
 
-> Both the Info and Stock tabs are editable `ItemForm`s registering dirty state through `useItemLayout()`. The tab-row guard in `$id.tsx` (`isOnEditableTab`) shows the unsaved-changes dialog when navigating away dirty from **either** tab. Tags, Vendors, Recipes and Log apply changes immediately and never go dirty.
+> Every tab but Log registers a dirty state through `useItemLayout()`: Info and Stock through `ItemForm`, Tags, Vendors and Recipes through `useRelationTabSave` (since 2026-11-28). The tab-row guard in `$id.tsx` (`isOnEditableTab`, a list of the five paths, so a new tab is added on purpose) shows the unsaved-changes dialog when navigating away dirty from any of them. Log never goes dirty. Until 2026-11-28 Tags, Vendors and Recipes wrote on every press and never went dirty.
 
 **3. Tags (`/items/$id/tags`, `Tags` icon)**
 - Tag assignment interface with uppercase text styling for tag type names
-- Click badges to toggle tag assignment (selected tags show X icon)
+- Press a badge to select or unselect a tag (a selected tag shows an X icon). A press changes
+  only the screen; the top bar **Save** writes the list (see *Saving Tags, Vendors and
+  Recipes* below)
 - Visual dividers between tag type sections
-- Inline tag creation via "New Tag" buttons (opens `AddNameDialog`): creates the tag and immediately assigns it to this item
-- Changes apply immediately without save button
-
-**A tag or vendor created on this page is assigned to the item, in both modes** (since 2026-03-23 for tags, `e6253d2e`; checked again for issue #402 on 2026-11-24). It is two writes: the create (`useCreateTag` / `useCreateVendor`), then `useUpdateItem` with the item's list plus the new id. Cloud has no single write for this: `createTag` and `createVendor` take no item, and adding that would be a server change. When the create succeeds and the assign fails, the dialog closes (trying again would create a second tag or vendor), the new row exists but is not on the item, and `showSaveError` shows "Could not save the change. Please try again." The user can press the new badge to assign it. Tests: local `tags.test.tsx` "… automatically assigned to the item" and `vendors.test.tsx` "user can create a new vendor from the vendors tab"; cloud `createAssign.cloud.test.tsx` (the assign is sent with the old ids kept); the failed assign in `$id/saveFailed.cloud.test.tsx` and in both local files. Removing the assign call turns all four success tests red. The settings pages' create flows assign nothing; they have no item.
-
-**The new badge shows as selected from the moment it appears** (issue #402 part 1, fixed 2026-11-25; `docs/features/items/2026-11-25-bug-new-tag-vendor-not-selected-at-once.md`). Before, it showed as not selected for about a second in cloud: the list had the new row, the item did not have it yet. Now the tab keeps the new id in local state (`assigningTagIds` / `assigningVendorIds`) from the moment the create returns until the assign is done, and shows a badge as selected when its id is on the item OR in that state. While it waits, the badge has `aria-busy="true"` (no spinner). A failed assign removes the id, so the badge goes back to not selected, and `showSaveError` shows the toast. **While an assign is in flight, a press on any badge of the tab does nothing**: each write sends the whole `tagIds` / `vendorIds` list, so two writes at once could undo each other. Tests: the second `describe` of `createAssign.cloud.test.tsx` (they hold the assign with `holdMutation` from `test/cloudServerStub.ts`). The E2E tests in `item-management.spec.ts` wait for `aria-busy` to end, then reload, so they check the saved state and not only the screen.
+- Inline tag creation via "New Tag" buttons (opens `AddNameDialog`): the tag is created at
+  once and shows as selected; Save gives it to the item
+- "New Tag" has `-mb-1`, not `-my-1` like the Vendors and Recipes tabs: it sits under the
+  last tag badge, and a top margin of -4px left no gap, so that badge failed axe's
+  `target-size` rule (found 2026-11-28, once the badges became focusable)
 
 **4. Vendors (`/items/$id/vendors`, `Store` icon)**
-- Vendor assignment interface: click-to-toggle badges, immediate save
-- "New Vendor" button inline with badges — opens `AddNameDialog`, creates and immediately assigns the vendor
-- Changes apply immediately without save button
+- Vendor assignment interface: press a badge to select or unselect it; the top bar Save
+  writes the list
+- "New Vendor" button inline with badges — opens `AddNameDialog`; the vendor is created at
+  once (a failed create still shows `showVendorCreateError`) and shows as selected; Save
+  gives it to the item
 
 **5. Recipes (`/items/$id/recipes`, `ChefHat` icon)**
-- Recipe assignment interface: click-to-toggle badges, immediate save
-- Architecture: recipe-centric — `Recipe.items[]` stores the relationship; toggling updates the recipe, not the item
-- "New Recipe" button inline with badges — opens `AddNameDialog`, creates recipe assigned to this item
-- Changes apply immediately without save button
+- Recipe assignment interface: press a badge to select or unselect it; the top bar Save
+  sends ONE `setItemRecipes` (`useSetItemRecipes`) with the full list on screen
+- Architecture: recipe-centric — `Recipe.items[]` stores the relationship; the Save changes
+  the recipes, not the item. A NEW link gets `defaultAmount` = the item's `consumeAmount`,
+  or 1 when that is not above 0 (owner answer 4A); the server and the local batch
+  (`setItemRecipesBatch`) decide it, not the tab. A recipe that already held the item keeps
+  its amount
+- "New Recipe" button inline with badges — opens `AddNameDialog`, creates the recipe at once
+  with NO items (owner answer 1A, `mutateAsync`), and shows it as selected; Save gives it the
+  item
+- A non-consumable item: a press that adds does nothing (the draft's `canAdd: false`), and
+  there is no "New Recipe". A press that removes is allowed, and a recipe pressed off can be
+  pressed back, by mouse or keyboard (`draft.removed` makes it pressable). When the item
+  turns non-consumable in another tab, the draft drops its adds; its removes stay. A Save
+  refused with `NOT_CONSUMABLE` shows `common.notConsumable` and keeps the draft
+
+### Saving Tags, Vendors and Recipes (item relations Save, 2026-11-28)
+
+Design: `docs/features/items/2026-11-27-item-relations-save-design.md` (PR A is the server
+mutation `setItemRecipes`, PR B the web). Until 2026-11-28 each badge press sent one write
+and waited for it, so the tabs felt slow.
+
+**The draft.** Each tab keeps a draft in `useRelationDraft(saved, existingIds, { canEdit,
+canAdd })` (`hooks/useRelationDraft.ts`): `added` and `removed` hold only this person's own
+presses; `shown` = `(saved ∪ added) − removed`; `dirty` = `added` or `removed` is not empty.
+Pressing a badge twice leaves no trace. `saved` is read from the server (or Dexie) every
+render. When it changes (a live update, a refetch), the draft is cleaned up by the pure
+function `cleanUpRelationDraft`:
+
+| Case | Result |
+|---|---|
+| an id in `added` is now saved | it leaves `added` |
+| an id in `removed` is no longer saved | it leaves `removed` |
+| an id in `added` whose row WAS in the previous row list and is gone now (deleted in another tab, owner answer 10A) | it leaves `added`, quietly |
+| an id in `added` that was never in the row list (a row just created from the tab, before the list refetch lands) | KEPT. This is the issue #402 trap: "not in the list" is not "deleted" |
+| `canEdit` turns false (a manager demoted in another tab, owner answer 5A) | the draft is emptied and the tab turns read only |
+| `canAdd` turns false (Recipes: the item turned non-consumable) | `added` is emptied; `removed` stays |
+
+**Save** sends `shown` in ONE write: `useUpdateItem` with `tagIds` or `vendorIds` (no stock
+field, so it works in a household with no location), or `useSetItemRecipes` for Recipes.
+The tab keeps the list it sent, and on success calls `draft.reset(sent)`, which takes out of
+the draft only the ids in that list. So a row created with "New …" WHILE a Save runs stays
+selected and Save stays on (fixed in `919255b6`; before, the end of the Save emptied the
+whole draft). Then the toast `items.detail.saved` shows and the page stays. A failed Save
+shows `showSaveError(err, { catalog: true })` (a `FORBIDDEN` shows
+`settings.catalogReadOnlyItem`) and keeps the draft. While a Save runs the badges are
+`aria-disabled` and a press is ignored (owner answer 9A), so the list sent is the list on
+screen.
+
+**The Save button and the guard.** `useRelationTabSave({ dirty, isPending, canEdit, save })`
+(`hooks/useRelationTabSave.ts`) registers the dirty state (`false` on unmount), the
+`SaveControl` for the unsaved-changes dialog (`canSave = dirty && !isPending && canEdit`),
+and returns the top bar `saveSlot` for `TopBarSaveButton`. Read only (`canEdit` false): no
+Save, no `SaveControl`, `dirty: false`.
+
+**Keyboard (owner answer 8A).** A pressable badge has `tabIndex={0}`, and Enter or Space
+press it (`pressOnEnterOrSpace`, `lib/pressKeys.ts`). A held key presses once only
+(`event.repeat` is ignored). A badge that cannot be pressed is not in the Tab order.
+
+**Discard** (from the unsaved-changes dialog) leaves the tab, so the draft is gone. Nothing
+is written. A row made with "New …" stays, not given to the item (owner answer 1A).
+
+**History.** Issue #402 (`docs/features/items/2026-11-25-bug-new-tag-vendor-not-selected-at-once.md`)
+was fixed on 2026-11-25 with `assigningTagIds` / `assigningVendorIds`, `aria-busy` on the new
+badge and a "no press while an assign runs" guard, because a new tag or vendor needed a
+second write. The draft replaced all of it: there is no second write any more.
+
+Tests: `$id/tags.test.tsx`, `$id/vendors.test.tsx`, `$id/recipes.test.tsx` (local);
+`$id/relationSave.cloud.test.tsx` (two presses one Save, a press during Save, the late row
+list trap, a row created during a held Save); `$id/createAssign.cloud.test.tsx` (a create
+sends no `UpdateItem`; Save sends it with the old ids kept); `$id/saveFailed.cloud.test.tsx`;
+`$id.tabs.test.tsx` (the guard on the three tabs); `$id/unsavedDialogSave*.test.tsx`;
+`$id/saveTopBar.test.tsx`; `$id/readOnly.test.tsx`; `hooks/useRelationDraft.test.ts`.
+Stories: `PressedUnsaved` in the three tabs' `.stories.tsx`. E2E:
+`e2e/tests/item-relations-save.spec.ts` (`local` and `cloud`).
 
 **6. Log (`/items/$id/log`, `History` icon)**
 - History/logs tab (view-only); never has unsaved changes
@@ -216,11 +295,22 @@ The switch is a global setting: it lives on Info with `targetUnit`. Covered by `
 **Dirty State Tracking:**
 
 Each tab tracks unsaved changes independently:
-- Navigation guard prevents tab switching with unsaved changes
+- Navigation guard prevents tab switching with unsaved changes, on every tab but Log (Info and
+  Stock through `ItemForm`; Tags, Vendors and Recipes through `useRelationTabSave`, since
+  2026-11-28)
 - Confirmation dialog offers **Cancel · Discard · Save** (since 2026-11-25; see *The
-  unsaved-changes dialog* below)
-- Save button disabled when form is clean (no changes)
+  unsaved-changes dialog* below). On Tags, Vendors and Recipes its Save is the tab's own
+  Save (the same `save()` as the top bar Save)
+- Save button disabled when there are no changes
 - Logs tab never has unsaved changes (view-only)
+- **The layout resets the dirty state on every path change** (`routes/items/$id.tsx`, an
+  effect keyed on the path whose cleanup calls `registerDirtyState(false)`, since
+  2026-11-28). `ItemForm` does not report `false` when it unmounts, so without it an Info
+  edit discarded on the way to Tags could keep the guard armed there. React runs that
+  cleanup before the new tab's mount effects, so a tab that registers on mount still wins.
+  Pinned by a test in `$id.tabs.test.tsx` that mounts a tab which registers dirty and never
+  reports `false`: the two earlier tests passed without the effect, because a new
+  `ItemForm` mount under the new path reported `false` first
 
 **The unsaved-changes dialog (since 2026-11-25).** Design:
 `docs/global/ui-polish/2026-11-25-unsaved-dialog-save-design.md`. Leaving Info or Stock with
@@ -273,7 +363,7 @@ Uses `useAppNavigation()` hook from `src/hooks/useAppNavigation.ts`.
 
 **Files:**
 - `src/components/item/ItemForm/ItemForm.tsx` - Shared form component (gates fields via its `sections` prop: `'info'` = identity + the global stock settings, `'stock'` = the per-location numbers). It always holds every value — the stock section's labels read the global units — but each section renders only its own half
-- `src/routes/items/$id.tsx` - Parent layout: the top bar, the flat tab row (Info · Stock · Tags · Vendors · Recipes · Log) and the navigation guard (dual-tab dirty guard via `isOnEditableTab`). Tests at `$id.tabs.test.tsx` (the row, the marking, the old addresses)
+- `src/routes/items/$id.tsx` - Parent layout: the top bar, the flat tab row (Info · Stock · Tags · Vendors · Recipes · Log) and the navigation guard (every tab but Log, via `isOnEditableTab`; the dirty reset on each path change). Tests at `$id.tabs.test.tsx` (the row, the marking, the old addresses)
 - `src/routes/items/$id/index.tsx` - Info tab (`ItemForm sections={['info']}` — identity + the eight global stock settings, persisted by `buildInfoUpdates`); hosts the unit-switch dialog (recipe `defaultAmount`s + every location's tracked quantities) and the Delete button. Stories at `$id/index.stories.tsx` (`StockedInThreeLocations` seeds the multi-location conversion). Cloud-mode coverage of the same switch is in `$id/index.cloud.test.tsx`, which drives the real `useApplyUnitSwitchMutation` through `MockedProvider`
 - `src/routes/items/$id/stock.tsx` - Stock tab: `ItemStockTab` → `StockTab`, one all-locations pager for **both** modes (no mode split since PR 2), rendering `StockFormPanel` (the `sections={['stock']}` ItemForm; `buildStockUpdates` writes the six per-location fields only: the four amounts, `dueDate` and `isActive`). Stories at `$id/stock.stories.tsx`, smoke tests at `$id/stock.stories.test.tsx`, integration tests at `$id/stock.test.tsx` and cloud-mode tests at `$id/stock.cloud.test.tsx`
 - `src/components/item/LocationPager/LocationPager.tsx` - the dot pager (tablist) used by the Stock tab
@@ -403,12 +493,12 @@ A household `member` may read the catalog but not change it. Everything reads `u
 | Tab | Member |
 | --- | --- |
 | Info | `ItemForm readOnly`: the fields are `readOnly` or disabled, no Save (in the top bar or anywhere), no Delete. The note "Only a household owner or manager can change this." (`settings.catalogReadOnlyItem`) shows above the form. The unit-switch dialog is reached only through Save, so it cannot open |
-| Tags, Vendors, Recipes | the badges show what is assigned, are `aria-disabled`, and a press writes nothing. No "New Tag Type" / "New …" buttons |
+| Tags, Vendors, Recipes | the badges show what is assigned, are `aria-disabled` and not in the Tab order, and a press changes nothing. No "New Tag Type" / "New …" buttons and no top bar Save. A manager demoted while a press is unsaved sees the saved state, no Save, and no dialog when leaving (owner answer 5A) |
 | Stock | unchanged by the household role. It follows the LOCATION role (task F.6) |
 
 The note shows only when `roleKnown` is `true`. While `GetHousehold` loads, or when it failed with nothing cached, the Info tab is read only (the safe default) but shows no note. Tests: `routes/items/$id/readOnly.test.tsx`.
 
-**Known gap:** the `role="button"` badges on the Tags, Vendors and Recipes tabs cannot be reached by keyboard (no `tabIndex`, no key handler). This is older than H5; see the H5 plan, *Known gaps*.
+**Closed 2026-11-28 (owner answer 8A of the item relations Save):** the `role="button"` badges on the Tags, Vendors and Recipes tabs could not be reached by keyboard (no `tabIndex`, no key handler), a gap older than H5. A pressable badge now has `tabIndex={0}` and Enter or Space press it; see *Saving Tags, Vendors and Recipes* above.
 
 ### What a location viewer sees on the Stock tab (cloud, households H5 task F.6)
 
