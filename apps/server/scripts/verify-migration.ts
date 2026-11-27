@@ -1002,9 +1002,22 @@ async function assertLocationMigrationsBeforeDrop(): Promise<void> {
   )
 
   const stocks = await prisma.itemStock.findMany({
-    // Only the id: "dataUpdatedAt" is not there yet (see
-    // assertHouseholdsBackfill). Nothing below reads the relation.
-    include: { location: { select: { id: true } } },
+    // A `select`, not all columns: this runs BEFORE the last deploy, so
+    // "ItemStock"."isActive" (add_item_stock_is_active) is not there yet, and
+    // the client built from the final schema would ask for it (P2022). For the
+    // same reason the location gives only its id: "dataUpdatedAt" is not
+    // there yet either (see assertHouseholdsBackfill). Nothing below reads
+    // the relation.
+    select: {
+      itemId: true,
+      locationId: true,
+      targetQuantity: true,
+      refillThreshold: true,
+      packedQuantity: true,
+      unpackedQuantity: true,
+      dueDate: true,
+      location: { select: { id: true } },
+    },
     orderBy: { itemId: 'asc' },
   })
   assert(stocks.length === 3, 'one ItemStock per Item')
@@ -1052,6 +1065,10 @@ async function assertLocationMigrationsBeforeDrop(): Promise<void> {
         packedQuantity: 0,
         unpackedQuantity: 0,
       },
+      // `select`: a create returns the row, and "isActive" is not there yet.
+      // Without it the INSERT fails on the missing column (P2022), not on the
+      // unique key, and this check reads the wrong error.
+      select: { id: true },
     })
   } catch (err) {
     duplicateCode = err instanceof Prisma.PrismaClientKnownRequestError ? err.code : undefined
@@ -1645,7 +1662,8 @@ async function assertDropUserScope(): Promise<void> {
 
   // ── 3f. The three stock-side kinds ──
   const myHomeA = locations.find((l) => l.householdId === householdA && l.name === 'My Home')
-  const stocks = await prisma.itemStock.findMany()
+  // `select`: this runs before the last deploy, so "isActive" is not there yet.
+  const stocks = await prisma.itemStock.findMany({ select: { id: true, itemId: true, locationId: true } })
   assert(
     myHomeA !== undefined &&
       !stocks.some((s) => s.id === 'stock-cross') &&
@@ -2102,6 +2120,7 @@ const HOUSEHOLD_ACTIVITY_MIGRATION = '20261120000000_add_household_activity'
 const OWNERSHIP_OFFERS_MIGRATION = '20261120100000_add_ownership_offers'
 const LOCATION_PREFERENCES_MIGRATION = '20261122000000_add_location_preferences'
 const ITEM_CONSUMABLE_MIGRATION = '20261125000000_add_item_consumable'
+const ITEM_STOCK_IS_ACTIVE_MIGRATION = '20261126000000_add_item_stock_is_active'
 
 const PARKED_ROOT = join(SERVER_DIR, '.migration-under-test')
 const migrationDir = (name: string) => join(SERVER_DIR, 'prisma/migrations', name)
@@ -3484,6 +3503,151 @@ async function assertItemConsumable(idsBefore: readonly string[]): Promise<void>
   await prisma.$executeRaw`DELETE FROM "Item" WHERE "id" LIKE 'item-consumable-%'`
 }
 
+// ══════════════════════════════════════════════════════════════════════
+// 20261126000000 — "ItemStock"."isActive"
+// ══════════════════════════════════════════════════════════════════════
+//
+// Design: docs/features/items/2026-11-26-item-stock-active-design.md. Written
+// on 2026-11-27 and NOT run yet when it was written: no subagent may reach a
+// database. The main session runs it with the owner's consent.
+//
+// One NOT NULL column with DEFAULT true, then ONE backfill UPDATE: a row with
+// target 0 gets false, because "target 0" meant "inactive here" until now.
+// So the checks are:
+//
+//   1. the column is on "ItemStock" and NOT on "Item" (the two tables share
+//      field names, so "present on ItemStock" alone cannot catch the wrong
+//      table)
+//   2. it is a NOT NULL boolean with DEFAULT true
+//   3. the three rows seeded BEFORE the deploy, read back by id: target 0
+//      reads false, target 5 and target 0.5 read true. 0.5 is there so a
+//      backfill that compared with `< 1` or rounded the target is caught
+//   4. every "ItemStock" row of the fixture follows the old rule, not only
+//      the three seeded ones
+//   5. a row inserted without the column reads true, even with target 0 (the
+//      default is the constant true, not the old rule), and an explicit NULL
+//      is refused (23502)
+//
+// Removing the UPDATE from the migration must make check 3 fail on the
+// target 0 row (it would read true). That mutation needs a database, so the
+// main session runs it.
+const IA_LOC = 'ia-loc'
+const IA_STOCK_ZERO = 'ia-stock-0'
+const IA_STOCK_FIVE = 'ia-stock-5'
+const IA_STOCK_HALF = 'ia-stock-half'
+
+// Runs in the pre-deploy phase. Raw SQL: the Prisma client knows "isActive",
+// which is not there yet.
+async function seedItemStockIsActiveBackfill(): Promise<void> {
+  console.log('Seeding stock rows for the add_item_stock_is_active backfill...')
+  const household = await prisma.household.findFirstOrThrow({
+    where: { ownerId: 'user-a' },
+    select: { id: true },
+  })
+  await prisma.$executeRaw`
+    INSERT INTO "Location" ("id","name","order","householdId","createdAt","updatedAt")
+    VALUES (${IA_LOC}, 'IA location', 30, ${household.id}, NOW(), NOW())
+  `
+  await prisma.$executeRaw`
+    INSERT INTO "Item" ("id","name","targetUnit","consumeAmount","expirationMode","householdId","createdAt","updatedAt") VALUES
+      ('item-ia-0', 'IA zero', 'package', 1, 'disabled', ${household.id}, NOW(), NOW()),
+      ('item-ia-5', 'IA five', 'package', 1, 'disabled', ${household.id}, NOW(), NOW()),
+      ('item-ia-half', 'IA half', 'package', 1, 'disabled', ${household.id}, NOW(), NOW()),
+      ('item-ia-new', 'IA new', 'package', 1, 'disabled', ${household.id}, NOW(), NOW())
+  `
+  await prisma.$executeRaw`
+    INSERT INTO "ItemStock" ("id","itemId","locationId","targetQuantity","createdAt","updatedAt") VALUES
+      (${IA_STOCK_ZERO}, 'item-ia-0', ${IA_LOC}, 0, NOW(), NOW()),
+      (${IA_STOCK_FIVE}, 'item-ia-5', ${IA_LOC}, 5, NOW(), NOW()),
+      (${IA_STOCK_HALF}, 'item-ia-half', ${IA_LOC}, 0.5, NOW(), NOW())
+  `
+}
+
+// Runs right after the last deploy, after assertLocationDataUpdatedAtBackfill
+// (which must be first) and before every other block, so no later write has
+// changed a stock row yet.
+async function assertItemStockIsActive(): Promise<void> {
+  console.log('add_item_stock_is_active:')
+
+  // ── 1. On the right table ──
+  assert((await columnNamesOf('ItemStock')).has('isActive'), '"ItemStock"."isActive" exists')
+  assert(
+    !(await columnNamesOf('Item')).has('isActive'),
+    '"isActive" is NOT on "Item" — it is per-location state, not global item configuration',
+  )
+
+  // ── 2. NOT NULL boolean, DEFAULT true ──
+  const meta = await columnMetaOf('ItemStock', 'isActive')
+  const defaults = await prisma.$queryRaw<{ column_default: string | null }[]>`
+    SELECT column_default::text AS column_default FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name::text = 'ItemStock' AND column_name::text = 'isActive'
+  `
+  const columnDefault = defaults[0]?.column_default ?? null
+  assert(
+    meta?.dataType === 'boolean' && meta.isNullable === 'NO',
+    `"ItemStock"."isActive" is a NOT NULL boolean (read: ${meta ? `${meta.dataType}, nullable=${meta.isNullable}` : 'column missing'})`,
+  )
+  assert(columnDefault === 'true', `"ItemStock"."isActive" defaults to true (read: ${columnDefault ?? 'no default'})`)
+
+  // ── 3. The three seeded rows, read back by id ──
+  const seeded = await prisma.$queryRaw<{ id: string; isActive: boolean | null }[]>`
+    SELECT "id", "isActive" FROM "ItemStock"
+    WHERE "id" IN (${IA_STOCK_ZERO}, ${IA_STOCK_FIVE}, ${IA_STOCK_HALF})
+  `
+  const activeOf = (id: string) => {
+    const row = seeded.find((r) => r.id === id)
+    return row === undefined ? 'row missing' : String(row.isActive)
+  }
+  assert(
+    activeOf(IA_STOCK_ZERO) === 'false',
+    `a stock row with target 0 before the migration reads isActive = false (read: ${activeOf(IA_STOCK_ZERO)})`,
+  )
+  assert(
+    activeOf(IA_STOCK_FIVE) === 'true',
+    `a stock row with target 5 before the migration reads isActive = true (read: ${activeOf(IA_STOCK_FIVE)})`,
+  )
+  assert(
+    activeOf(IA_STOCK_HALF) === 'true',
+    `a stock row with target 0.5 before the migration reads isActive = true (read: ${activeOf(IA_STOCK_HALF)})`,
+  )
+
+  // ── 4. Every stock row of the fixture follows the old rule ──
+  const wrong = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT "id" FROM "ItemStock" WHERE "isActive" IS DISTINCT FROM ("targetQuantity" <> 0)
+  `
+  const total = await prisma.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS n FROM "ItemStock"`
+  assert(
+    wrong.length === 0,
+    `every one of the ${total[0]?.n ?? '?'} stock rows reads isActive = (targetQuantity <> 0) (wrong: ${wrong.map((r) => r.id).join(', ') || 'none'})`,
+  )
+
+  // ── 5. Writes after the migration ──
+  await prisma.$executeRaw`
+    INSERT INTO "ItemStock" ("id","itemId","locationId","targetQuantity","createdAt","updatedAt")
+    VALUES ('ia-stock-default', 'item-ia-new', ${IA_LOC}, 0, NOW(), NOW())
+  `
+  const omitted = await prisma.$queryRaw<{ isActive: boolean | null }[]>`
+    SELECT "isActive" FROM "ItemStock" WHERE "id" = 'ia-stock-default'
+  `
+  assert(
+    omitted[0]?.isActive === true,
+    `a stock row inserted without "isActive", with target 0, reads true (read: ${String(omitted[0]?.isActive)})`,
+  )
+  await prisma.$executeRaw`DELETE FROM "ItemStock" WHERE "id" = 'ia-stock-default'`
+  const nullCode = await postgresCodeOf(
+    () => prisma.$executeRaw`
+      INSERT INTO "ItemStock" ("id","itemId","locationId","isActive","createdAt","updatedAt")
+      VALUES ('ia-stock-null', 'item-ia-new', ${IA_LOC}, NULL, NOW(), NOW())
+    `,
+  )
+  assert(nullCode === '23502', `an explicit NULL "isActive" is refused with 23502 (read: ${nullCode ?? 'no error'})`)
+
+  // Clean up, so no later block counts these rows.
+  await prisma.$executeRaw`DELETE FROM "ItemStock" WHERE "id" LIKE 'ia-stock-%'`
+  await prisma.$executeRaw`DELETE FROM "Item" WHERE "id" LIKE 'item-ia-%'`
+  await prisma.$executeRaw`DELETE FROM "Location" WHERE "id" = ${IA_LOC}`
+}
+
 async function main(): Promise<void> {
   // Self-heal: if a previous run was killed between parking and restoring,
   // recover instead of throwing on the renameSync below.
@@ -3561,6 +3725,11 @@ async function main(): Promise<void> {
     // reads (households H7b task M.1). Raw SQL only: see the function.
     await seedLocationPreferenceBackfill()
 
+    // Stock rows with target 0, 5 and 0.5, which add_item_stock_is_active's
+    // backfill reads. Before itemIdsBeforeConsumable, so its items are also
+    // checked by assertItemConsumable. Raw SQL only: see the function.
+    await seedItemStockIsActiveBackfill()
+
     // The "Item" rows that exist before add_item_consumable, so its check can
     // prove each of them reads true after the deploy.
     itemIdsBeforeLastDeploy = await itemIdsBeforeConsumable()
@@ -3578,6 +3747,13 @@ async function main(): Promise<void> {
   // times, so it must run before any later block writes a stock row.
   console.log(`Asserting the backfill of ${LOCATION_PREFERENCES_MIGRATION}...`)
   await assertLocationDataUpdatedAtBackfill()
+
+  // SECOND after the deploy: its "every stock row follows the old rule" check
+  // must run before any later block writes a stock row. It reads no
+  // "updatedAt" and writes its own rows only after that check, so it does not
+  // disturb the block above.
+  console.log(`Asserting the backfill of ${ITEM_STOCK_IS_ACTIVE_MIGRATION}...`)
+  await assertItemStockIsActive()
 
   console.log(`Asserting, after ${SHARED_CARTS_MIGRATION}...`)
   await assertSharedCarts()

@@ -155,6 +155,27 @@ Two rules from it:
 - **An optional GraphQL input on a `NOT NULL` column must never pass `null` to Prisma.**
   `null` and an omitted key both mean "the default" on create and "leave it" on update.
 
+**One named exception: a constant default PLUS one backfill `UPDATE` from another column.**
+`20261126000000_add_item_stock_is_active` is the model (design
+`docs/features/items/2026-11-26-item-stock-active-design.md`). Two statements in one file:
+
+```sql
+ALTER TABLE "ItemStock" ADD COLUMN "isActive" BOOLEAN NOT NULL DEFAULT true;
+UPDATE "ItemStock" SET "isActive" = false WHERE "targetQuantity" = 0;
+```
+
+The reason is in data terms: before this column, "inactive at this location" was
+`targetQuantity = 0`. Every row that showed as inactive must still show as inactive on the
+first request after the deploy. Without the `UPDATE`, all of them would turn active at once.
+It is still not the four-phase shape: the column is added `NOT NULL DEFAULT true` in one
+step, so no row can be left `NULL`, and there is no `RAISE EXCEPTION` guard (nothing to
+count). Use this exception only when the new column must copy a rule that another column
+held until now, and say so in the SQL comment. Its `verify-migration.ts` check seeds raw-SQL
+stock rows with target 0, 5 and 0.5 BEFORE the last deploy
+(`seedItemStockIsActiveBackfill`) and reads them back by id after it
+(`assertItemStockIsActive`). The two rules above still hold: every writer writes `isActive`
+itself, and an optional input never passes `null`.
+
 ## Re-keying a primary key
 
 `20260917000000_rekey_cart_to_location_vendor` rewrote `Cart.id` from the bare vendor id to
@@ -299,6 +320,17 @@ than trusting a number here — it said **four** when there were seven.
   its type, `NOT NULL`, `DEFAULT true`, a `23502` for an explicit `NULL`, and a stored
   `false`. **Not run yet**: the main session runs it on the test database, with the
   owner's consent.
+  **Fifteen** entries since 2026-11-26 (`20261126000000_add_item_stock_is_active`, in the
+  `last` group too: one `NOT NULL` boolean with `DEFAULT true` on `"ItemStock"` and one
+  backfill `UPDATE` from `"targetQuantity"`). So the fourth `migrate deploy` now applies seven
+  migrations. It hit the same trap again: three `ItemStock` calls run BEFORE the last deploy
+  (a `findMany` and a `create` in `assertLocationMigrationsBeforeDrop`, a `findMany` in
+  `assertDropUserScope`), and the client built from the final schema would ask for
+  `isActive` (`P2022`). All three got a `select`. The `create` matters most: without the
+  `select` its `INSERT ... RETURNING` fails on the missing column, so the "duplicate is
+  refused with `P2002`" check would read `P2022` and fail. `seedItemStockIsActiveBackfill`
+  writes three stock rows (target 0, 5 and 0.5) before the deploy, and
+  `assertItemStockIsActive` runs second after it. **Not run yet** either.
   The history below said the list was in `scripts/verify-migration.ts`, as a `MIGRATIONS` list —
   **nine** entries since households H3b task B.3 (2026-11-15; eight on 2026-11-11). The
   ninth, `20261114000000_shared_carts`, is applied in a **fourth** `migrate deploy`, after
@@ -320,7 +352,7 @@ than trusting a number here — it said **four** when there were seven.
   old server could write between the two deploys (`seedBetweenDeploys`).
   **Count the array rather than trusting this line.** It said **four** until 2026-10-08:
   ```bash
-  grep -o "'2026[0-9]*_[a-z_]*'" apps/server/scripts/migrationDeploys.ts | wc -l   # 14 since add_item_consumable (13 since H7b task M.1, 12 since H6b task K.1, 11 since H6 task J.1, 10 since H5b task G.1)
+  grep -o "'2026[0-9]*_[a-z_]*'" apps/server/scripts/migrationDeploys.ts | wc -l   # 15 since add_item_stock_is_active (14 since add_item_consumable, 13 since H7b task M.1, 12 since H6b task K.1, 11 since H6 task J.1, 10 since H5b task G.1)
   ```
   (The command was `grep -c "^  '2026" apps/server/scripts/verify-migration.ts` until G.1. It
   prints 0 now.)
