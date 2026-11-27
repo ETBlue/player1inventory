@@ -6,7 +6,7 @@ import {
   useRouter,
 } from '@tanstack/react-router'
 import { Calculator, ChefHat, History, Info, Store, Tags } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LayoutInnerPages } from '@/components/shared/LayoutInnerPages'
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner'
@@ -28,14 +28,35 @@ function ItemLayoutInner() {
   const navigate = useNavigate()
   const router = useRouter()
   const { data: item, isLoading } = useItem(id)
-  const { isDirty, saveControl, setSaveSlot } = useItemLayout()
+  const { isDirty, registerDirtyState, saveControl, setSaveSlot } =
+    useItemLayout()
   const { goBack } = useAppNavigation('/')
-  // Both the Info tab (index, exact `/items/$id`) and the Stock tab
-  // (`/items/$id/stock`) render an editable ItemForm that registers dirty
-  // state. The dirty-navigation guard must fire when leaving either of them.
+  // Every tab but Log registers a dirty state: Info and Stock through
+  // `ItemForm`, Tags, Vendors and Recipes through `useRelationTabSave` (item
+  // relations Save, design 2026-11-27). The dirty-navigation guard fires when
+  // leaving any of them. A list, so a new tab is added here on purpose.
   const currentPath = router.state.location.pathname
-  const isOnEditableTab =
-    currentPath === `/items/${id}` || currentPath === `/items/${id}/stock`
+  const editableTabPaths = [
+    `/items/${id}`,
+    `/items/${id}/stock`,
+    `/items/${id}/tags`,
+    `/items/${id}/vendors`,
+    `/items/${id}/recipes`,
+  ]
+  const isOnEditableTab = editableTabPaths.includes(currentPath)
+
+  // A tab that goes away leaves no dirty state behind. Without this, an Info
+  // edit discarded on the way to Tags would keep the guard armed there,
+  // because `ItemForm` does not report `false` when it unmounts. (Today a
+  // new `ItemForm` mount under the new path reports `false` first, but only
+  // because of the order the router renders in.) React runs this cleanup
+  // before the new tab's mount effects, so a tab that registers on mount
+  // still wins.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: currentPath is the trigger; the cleanup must run each time the tab changes
+  useEffect(
+    () => () => registerDirtyState(false),
+    [currentPath, registerDirtyState],
+  )
 
   const [showDiscardDialog, setShowDiscardDialog] = useState(false)
   const [pendingNavigation, setPendingNavigation] = useState<string | null>(
@@ -144,7 +165,8 @@ function ItemLayoutInner() {
         onBack={handleBackClick}
         // Row 1 ends with the current tab's Save (owner decision 2026-11-25).
         // The Info and Stock tabs portal their Save into this element
-        // (`ItemForm`'s `submitSlot`); the other tabs leave it empty.
+        // (`ItemForm`'s `submitSlot`); Tags, Vendors and Recipes portal
+        // theirs with `TopBarSaveButton`. Log leaves it empty.
         // `contents`, so an empty slot adds no flex gap.
         toolbarEnd={<div ref={setSaveSlot} className="contents" />}
         tabs={
@@ -176,9 +198,9 @@ function ItemLayoutInner() {
         <Outlet key={router.state.location.pathname} />
       </LayoutInnerPages>
 
-      {/* Cancel · Discard · Save (design 2026-11-25). Save runs the Info
-          form's own save and goes where the user pressed only when it
-          worked. */}
+      {/* Cancel · Discard · Save (design 2026-11-25). Save runs the
+          current tab's own save and goes where the user pressed only when
+          it worked. */}
       <UnsavedChangesDialog
         open={showDiscardDialog}
         onCancel={cancelDiscard}

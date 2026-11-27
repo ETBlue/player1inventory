@@ -155,4 +155,61 @@ describe('Item page - one flat tab row', { timeout: 15_000 }, () => {
     router.history.back()
     await waitFor(() => expect(router.state.location.pathname).toBe('/'))
   })
+
+  // The Tags, Vendors and Recipes tabs are guarded too since the item
+  // relations Save (design 2026-11-27). The dirty state of a tab that is gone
+  // must not follow the person to the next tab.
+  it('user who discards an Info edit can leave the next tab with no dialog', async () => {
+    const user = userEvent.setup()
+    const router = renderAt(`/items/${itemId}`)
+    const row = await tabRow()
+
+    // Given an unsaved rename on the Info tab, discarded on the way to Tags
+    const nameInput = await screen.findByRole('textbox', { name: /^name/i })
+    await user.clear(nameInput)
+    await user.type(nameInput, 'Oat milk')
+    await user.click(row.getByRole('link', { name: 'Tags' }))
+    const dialog = await screen.findByRole('alertdialog', {
+      name: 'Unsaved changes',
+    })
+    await user.click(within(dialog).getByRole('button', { name: 'Discard' }))
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(`/items/${itemId}/tags`),
+    )
+
+    // When the user opens the Log tab
+    await user.click(row.getByRole('link', { name: 'Log' }))
+
+    // Then the page moves with no dialog: nothing on Tags is unsaved
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(`/items/${itemId}/log`),
+    )
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  })
+
+  it('user who discards an Info edit can press Back on the next tab with no dialog', async () => {
+    const user = userEvent.setup()
+    const router = renderAt('/', `/items/${itemId}`)
+    sessionStorage.setItem('app-navigation-history', JSON.stringify(['/']))
+    const row = await tabRow()
+
+    const nameInput = await screen.findByRole('textbox', { name: /^name/i })
+    await user.clear(nameInput)
+    await user.type(nameInput, 'Oat milk')
+    await user.click(row.getByRole('link', { name: 'Recipes' }))
+    const dialog = await screen.findByRole('alertdialog', {
+      name: 'Unsaved changes',
+    })
+    await user.click(within(dialog).getByRole('button', { name: 'Discard' }))
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(`/items/${itemId}/recipes`),
+    )
+
+    // When the user presses Back
+    await user.click(screen.getByRole('button', { name: /go back/i }))
+
+    // Then the page goes back with no dialog
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  })
 })
