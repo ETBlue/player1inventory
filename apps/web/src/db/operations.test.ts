@@ -1,3 +1,4 @@
+import Dexie from 'dexie'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { NotConsumableError } from '@/lib/recipeConsumables'
 import { cartIdFor, DEFAULT_LOCATION_ID, TagColor } from '../types'
@@ -3576,7 +3577,8 @@ describe('setItemRecipesBatch', () => {
       .spyOn(db.recipes, 'update')
       .mockImplementation((...args: Parameters<typeof realUpdate>) => {
         calls += 1
-        if (calls === 2) return Promise.reject(new Error('disk full'))
+        // A Dexie promise, like the real `update`, so the transaction zone holds.
+        if (calls === 2) return Dexie.Promise.reject(new Error('disk full'))
         return realUpdate(...args)
       })
 
