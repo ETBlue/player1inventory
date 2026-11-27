@@ -105,4 +105,51 @@ describe('GroupCard', () => {
     expect(screen.queryByTestId('refill-marker')).not.toBeInTheDocument()
     expect(screen.queryByText(/Refill when below/)).not.toBeInTheDocument()
   })
+
+  // The bar's colour class tells "inactive" (grey) from a status colour. With
+  // a total target of 0 and stock above 0 the bar is ONE full fill, so the
+  // class of that fill is the group's status.
+  it('user sees a group of active items with no target keep its status colour', () => {
+    // Given a group whose items are all active and have no target (target 0)
+    const { container } = render(
+      <GroupCard
+        name="Cleaning"
+        itemCount={2}
+        activeCount={2}
+        onClick={() => {}}
+        totalPackedQuantity={3}
+        totalTargetInPacks={0}
+        totalRefillInPacks={0}
+      />,
+    )
+
+    // Then the bar is not grey: it shows the "ok" colour
+    expect(
+      container.querySelector('.bg-status-ok-background-muted'),
+    ).toBeInTheDocument()
+    expect(
+      container.querySelector('.bg-status-inactive-background-muted'),
+    ).not.toBeInTheDocument()
+  })
+
+  it('user sees a group with no active item as inactive', () => {
+    // Given a group whose two items are both turned off here
+    const { container } = render(
+      <GroupCard
+        name="Cleaning"
+        itemCount={2}
+        activeCount={0}
+        onClick={() => {}}
+        totalPackedQuantity={3}
+        totalTargetInPacks={0}
+        totalRefillInPacks={0}
+      />,
+    )
+
+    // Then the bar is grey
+    expect(
+      container.querySelector('.bg-status-inactive-background-muted'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('0 / 2 active')).toBeInTheDocument()
+  })
 })

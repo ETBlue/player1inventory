@@ -102,3 +102,30 @@ export const Unsorted: Story = {
     activeCount: 3,
   },
 }
+
+// Every item is active here but none has a target (target 0, "no target").
+// The bar keeps its status colour; it is not grey.
+export const ActiveNoTarget: Story = {
+  args: {
+    name: 'Cleaning',
+    itemCount: 2,
+    totalPackedQuantity: 3,
+    totalTargetInPacks: 0,
+    totalRefillInPacks: 0,
+    activeCount: 2,
+  },
+}
+
+// Every item is turned off here ("Active here" off). The bar is grey. The
+// items keep their own targets, but an inactive item adds 0 to the group
+// target (`getGroupPackTotals`).
+export const AllInactive: Story = {
+  args: {
+    name: 'Camping',
+    itemCount: 2,
+    totalPackedQuantity: 3,
+    totalTargetInPacks: 0,
+    totalRefillInPacks: 0,
+    activeCount: 0,
+  },
+}

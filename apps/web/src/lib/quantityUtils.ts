@@ -79,6 +79,33 @@ export function getItemPackUnits(item: Stock): {
   return { packed, target: 0, refill: 0 }
 }
 
+// The pack totals of a GROUP card (one recipe, shelf or vendor): the sum of
+// every item's `getItemPackUnits`. An INACTIVE item ("Active here" switch
+// off) adds its packed amount, and 0 to the target and 0 to the refill. So an
+// item turned off here with a target of 5 does not change the group bar: the
+// person said it is not in use here. Its stock is still stock, so it counts.
+//
+// The three group views (`RecipeGroupView`, `ShelfGroupView`,
+// `VendorGroupView`) all call this, so the rule is written once.
+export function getGroupPackTotals(items: readonly Stock[]): {
+  totalPacked: number
+  totalTarget: number
+  totalRefill: number
+} {
+  return items.reduce(
+    (acc, item) => {
+      const { packed, target, refill } = getItemPackUnits(item)
+      const active = !isInactive(item)
+      return {
+        totalPacked: acc.totalPacked + packed,
+        totalTarget: acc.totalTarget + (active ? target : 0),
+        totalRefill: acc.totalRefill + (active ? refill : 0),
+      }
+    },
+    { totalPacked: 0, totalTarget: 0, totalRefill: 0 },
+  )
+}
+
 export interface PackUnpackState {
   packedQuantity: number
   unpackedQuantity: number

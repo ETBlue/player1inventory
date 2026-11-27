@@ -9,6 +9,7 @@ import {
   consumeItem,
   convertTrackedQuantities,
   getCurrentQuantity,
+  getGroupPackTotals,
   getItemPackUnits,
   getPackedTotal,
   getPieceCounts,
@@ -1784,5 +1785,53 @@ describe('getStockPreview for a non-consumable item', () => {
         unpackedQuantity: 1,
       }).isAtFull,
     ).toBe(false)
+  })
+})
+
+describe('getGroupPackTotals', () => {
+  it("adds an inactive item's packed amount, and 0 to target and refill", () => {
+    // Given an active item and an item turned off here that keeps a target
+    // of 5 and a refill of 2
+    const active = makeStock({
+      targetQuantity: 2,
+      refillThreshold: 1,
+      packedQuantity: 1,
+    })
+    const off = makeStock({
+      isActive: false,
+      targetQuantity: 5,
+      refillThreshold: 2,
+      packedQuantity: 3,
+    })
+
+    // Then the stock of both counts, the target and refill of the active
+    // one only
+    expect(getGroupPackTotals([active, off])).toEqual({
+      totalPacked: 4,
+      totalTarget: 2,
+      totalRefill: 1,
+    })
+  })
+
+  it('adds the target of an active item with no target (0) as 0', () => {
+    const noTarget = makeStock({
+      isActive: true,
+      targetQuantity: 0,
+      refillThreshold: 0,
+      packedQuantity: 2,
+    })
+    expect(getGroupPackTotals([noTarget])).toEqual({
+      totalPacked: 2,
+      totalTarget: 0,
+      totalRefill: 0,
+    })
+  })
+
+  it('is all zero for an empty group', () => {
+    expect(getGroupPackTotals([])).toEqual({
+      totalPacked: 0,
+      totalTarget: 0,
+      totalRefill: 0,
+    })
   })
 })

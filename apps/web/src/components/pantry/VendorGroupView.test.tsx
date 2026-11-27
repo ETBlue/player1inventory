@@ -186,4 +186,50 @@ describe('VendorGroupView location partition', () => {
     // ...and only Costco sinks
     expect(divider()).toHaveTextContent('1 not stocked here')
   })
+
+  it('user sees an item turned off here add its stock but not its target to a vendor card', async () => {
+    const alpine = await createVendor('Alpine Mart')
+    // Given two items stocked here: Milk is active (target 2, refill 1), and
+    // Oil is turned off here but keeps its target of 5 and refill of 2
+    const milk = await createItem(
+      {
+        name: 'Milk',
+        tagIds: [],
+        vendorIds: [alpine.id],
+        targetUnit: 'package',
+        targetQuantity: 2,
+        refillThreshold: 1,
+        packedQuantity: 1,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+      },
+      DEFAULT_LOCATION_ID,
+    )
+    const oil = await createItem(
+      {
+        name: 'Oil',
+        tagIds: [],
+        vendorIds: [alpine.id],
+        targetUnit: 'package',
+        targetQuantity: 5,
+        refillThreshold: 2,
+        packedQuantity: 1,
+        unpackedQuantity: 0,
+        consumeAmount: 1,
+        isActive: false,
+      },
+      DEFAULT_LOCATION_ID,
+    )
+    void milk
+    void oil
+
+    renderVendorGroupView()
+
+    // Then the card counts Oil's stock, but not its target: 1 + 1 packed,
+    // and only Milk's target of 2. With Oil's target the card would read
+    // "2 / 7 pack".
+    const card = await screen.findByRole('button', { name: 'Alpine Mart' })
+    expect(card).toHaveTextContent('2 / 2 pack')
+    expect(card).toHaveTextContent('1 / 2 active')
+  })
 })
