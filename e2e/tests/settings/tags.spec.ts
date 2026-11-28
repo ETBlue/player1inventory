@@ -476,7 +476,7 @@ test.describe('tag type dialog closes after button submit', () => {
 })
 
 test.describe('new tag from item tags tab', () => {
-  test('user can create a new tag from item tags tab and it is automatically assigned to the item', async ({
+  test('user can create a new tag from item tags tab, see it selected, and save it to the item', async ({
     page,
     baseURL,
   }) => {
@@ -536,12 +536,16 @@ test.describe('new tag from item tags tab', () => {
 
     // Then: the "Fresh" badge is visible and in a selected/pressed state (aria-pressed=true)
     // Tag badges on item tags tab: role="button" aria-pressed={isSelected}
-    // (src/routes/items/$id/tags.tsx)
+    // (src/routes/items/$id/tags.tsx:91)
     await expect(
       page.getByRole('button', { name: /fresh/i, pressed: true }),
     ).toBeVisible()
 
-    // And: persists after navigating away and back to the tags tab
+    // When: the user presses the top bar Save. The new tag is created at
+    // once, but only Save gives it to the item (item relations Save).
+    await item.saveRelations()
+
+    // Then: it persists after navigating away and back to the tags tab
     await pantry.navigateTo()
     await page.goto(`/items/${itemId}/tags`)
 
@@ -683,6 +687,8 @@ test.describe('tag item count after item deletion', () => {
       await expect(
         page.getByRole('button', { name: /perishable/i, pressed: true }),
       ).toBeVisible()
+      // A press changes only the screen; the top bar Save writes the tag
+      await item.saveRelations()
     } else {
       // Local: seed tag type + tag, then seed item with the tag already assigned
       const { tagIds } = await seedTags(

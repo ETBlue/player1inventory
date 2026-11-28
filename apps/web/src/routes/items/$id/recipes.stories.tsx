@@ -7,6 +7,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
+import { expect, userEvent, waitFor, within } from 'storybook/test'
 import { db } from '@/db'
 import { createItem, createRecipe } from '@/db/operations'
 import { routeTree } from '@/routeTree.gen'
@@ -200,6 +201,25 @@ function EmptyRecipesStory() {
 
 export const Default: Story = {
   render: () => <DefaultStory />,
+}
+
+// A pressed badge that is not saved yet: the top bar Save is on (item
+// relations Save, design
+// `docs/features/items/2026-11-27-item-relations-save-design.md`). The
+// `play` presses "Omelette"; the smoke test presses it the same way.
+export const PressedUnsaved: Story = {
+  name: 'Pressed, not saved yet',
+  render: () => <DefaultStory />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const user = userEvent.setup()
+
+    await user.click(await canvas.findByRole('button', { name: 'Omelette' }))
+
+    await waitFor(() =>
+      expect(canvas.getByRole('button', { name: /^save$/i })).toBeEnabled(),
+    )
+  },
 }
 
 export const WithRecipes: Story = {

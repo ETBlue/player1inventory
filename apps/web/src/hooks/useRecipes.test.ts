@@ -12,6 +12,7 @@ import {
   useItemCountByRecipe,
   useRecipe,
   useRecipes,
+  useSetItemRecipes,
   useUpdateRecipe,
   useUpdateRecipeLastCookedAt,
 } from './useRecipes'
@@ -25,6 +26,7 @@ const mockCloudUpdateRecipe = vi.fn()
 const mockCloudDeleteRecipe = vi.fn()
 const mockCloudUpdateRecipeLastCookedAt = vi.fn()
 const mockCloudConsumeRecipes = vi.fn()
+const mockCloudSetItemRecipes = vi.fn()
 
 vi.mock('@/generated/graphql', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/generated/graphql')>()
@@ -44,6 +46,7 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       {},
     ],
     useConsumeRecipesMutation: () => [mockCloudConsumeRecipes, {}],
+    useSetItemRecipesMutation: () => [mockCloudSetItemRecipes, {}],
   }
 })
 
@@ -468,5 +471,55 @@ describe('useConsumeRecipes (local mode)', () => {
     // And the cloud mutation is not called
     expect(mockCloudConsumeRecipes).not.toHaveBeenCalled()
     batch.mockRestore()
+  })
+})
+
+// ─── useSetItemRecipes ───────────────────────────────────────────────────────
+
+describe('useSetItemRecipes (local mode)', () => {
+  it('mutateAsync resolves only after the recipe list is read again', async () => {
+    // Given local mode, a batch write that succeeds, and a recipe list whose
+    // SECOND read (the one after the save) waits until the test releases it
+    const batch = vi
+      .spyOn(operations, 'setItemRecipesBatch')
+      .mockResolvedValue([])
+    let release: () => void = () => {}
+    let reads = 0
+    const list = vi.spyOn(operations, 'getRecipes').mockImplementation(() => {
+      reads += 1
+      if (reads === 1) return Promise.resolve([])
+      return new Promise((resolve) => {
+        release = () => resolve([])
+      })
+    })
+    const { result } = renderHook(
+      () => ({ list: useRecipes(), save: useSetItemRecipes() }),
+      { wrapper: createWrapper() },
+    )
+    await waitFor(() => expect(result.current.list.isLoading).toBe(false))
+
+    // When the save runs
+    let resolved = false
+    const save = result.current.save
+      .mutateAsync({ itemId: 'item-1', recipeIds: ['r-1', 'r-2'] })
+      .then(() => {
+        resolved = true
+      })
+
+    // Then the batch got the item and the list, and the list is read again
+    await waitFor(() => expect(reads).toBe(2))
+    expect(batch).toHaveBeenCalledWith('item-1', ['r-1', 'r-2'])
+    // And the save has NOT resolved while that read is still open
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(resolved).toBe(false)
+
+    // And it resolves once the read has landed
+    release()
+    await save
+    expect(resolved).toBe(true)
+    // And the cloud mutation is not called
+    expect(mockCloudSetItemRecipes).not.toHaveBeenCalled()
+    batch.mockRestore()
+    list.mockRestore()
   })
 })

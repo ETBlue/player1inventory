@@ -44,6 +44,22 @@ mutation UpdateRecipe($id: ID!, $name: String, $items: [RecipeItemInput!]) {
   }
 }
 
+# The item Recipes tab's Save: make `recipeIds` the exact set of recipes
+# that hold the item, in one transaction. Answers the recipes that changed
+# (empty when nothing changed). The same fields as `GetRecipes`, so the
+# answer's rows land in the cache under the same ids.
+mutation SetItemRecipes($itemId: ID!, $recipeIds: [ID!]!) {
+  setItemRecipes(itemId: $itemId, recipeIds: $recipeIds) {
+    id
+    name
+    lastCookedAt
+    items {
+      itemId
+      defaultAmount
+    }
+  }
+}
+
 mutation UpdateRecipeLastCookedAt($id: ID!) {
   updateRecipeLastCookedAt(id: $id) {
     id

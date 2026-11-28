@@ -1,14 +1,19 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { Loader2, Plus, X } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { Plus, X } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
+import { TopBarSaveButton } from '@/components/item/TopBarSaveButton'
 import { AddNameDialog } from '@/components/shared/AddNameDialog'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useItem, useUpdateItem, useVendors } from '@/hooks'
 import { usePermissions } from '@/hooks/usePermissions'
+import { useRelationDraft } from '@/hooks/useRelationDraft'
+import { useRelationTabSave } from '@/hooks/useRelationTabSave'
 import { useCreateVendor } from '@/hooks/useVendors'
+import { pressOnEnterOrSpace } from '@/lib/pressKeys'
 import { showSaveError } from '@/lib/saveError'
 import { showVendorCreateError } from '@/lib/vendorCreateError'
 
@@ -20,53 +25,66 @@ function VendorsTab() {
   const { t } = useTranslation()
   const { id } = Route.useParams()
   const { data: item } = useItem(id)
-  const { data: vendors = [] } = useVendors()
+  const { data: vendors } = useVendors()
   const updateItem = useUpdateItem()
   const createVendor = useCreateVendor()
   // A household member sees what is assigned and cannot change it
-  // (households H5 task F.5): presses write nothing, the badges are
-  // aria-disabled, and there is no "New …" button.
+  // (households H5 task F.5): presses do nothing, the badges are
+  // aria-disabled, and there is no "New …" button and no Save.
   const { canEditCatalog } = usePermissions()
   const [showDialog, setShowDialog] = useState(false)
   const [newVendorName, setNewVendorName] = useState('')
-  const [togglingVendorId, setTogglingVendorId] = useState<string | null>(null)
-  // Issue #402: a new vendor is created, then assigned to the item in a
-  // second write. Between the two, the vendor list already shows the new
-  // vendor but the item does not have it yet, so it showed as not selected
-  // for about a second. Its id waits here until the assign is done, and the
-  // page shows it as selected all that time. On a failed assign it is
-  // removed, so the badge goes back to not selected.
-  const [assigningVendorIds, setAssigningVendorIds] = useState<string[]>([])
-  // What the user sees as assigned: the item's vendors, plus new vendors
-  // whose assign is still being saved.
-  const itemVendorIds = item?.vendorIds ?? []
-  const shownVendorIds = [
-    ...itemVendorIds,
-    ...assigningVendorIds.filter((vid) => !itemVendorIds.includes(vid)),
-  ]
+  // A press changes only the screen; the top bar Save writes the list (item
+  // relations Save, design
+  // `docs/features/items/2026-11-27-item-relations-save-design.md`). The
+  // draft replaces the issue #402 state (`assigningVendorIds`) and the
+  // press spinner (`togglingVendorId`): a new vendor goes into the draft the
+  // moment it is created, so it shows as selected through the same rule as
+  // a press.
+  const draft = useRelationDraft(
+    item?.vendorIds ?? [],
+    vendors?.map((vendor) => vendor.id),
+    { canEdit: canEditCatalog },
+  )
+  const saving = updateItem.isPending
 
-  useEffect(() => {
-    if (!updateItem.isPending) setTogglingVendorId(null)
-  }, [updateItem.isPending])
+  const save = async (): Promise<boolean> => {
+    if (!item) return false
+    // The list on screen now. Kept, so the end of the Save takes out of the
+    // draft only what was sent: a row created while the Save runs stays.
+    const sent = draft.shown
+    try {
+      // Cloud: a vendor list is configuration, so no location is resolved
+      // and this works in a household with no location
+      await updateItem.mutateAsync({
+        id,
+        updates: { vendorIds: sent },
+      })
+    } catch (err) {
+      // The draft stays, so the person can press Save again
+      showSaveError(err, { catalog: true })
+      return false
+    }
+    // The item already has the saved list here: local `mutateAsync` waits
+    // for the refetch, and Apollo writes the answer to its cache first. So
+    // emptying the draft does not flicker the badges back.
+    draft.reset(sent)
+    toast.success(t('items.detail.saved'))
+    return true
+  }
+
+  const { canSave, saveSlot } = useRelationTabSave({
+    dirty: draft.dirty,
+    isPending: saving,
+    canEdit: canEditCatalog,
+    save,
+  })
 
   const toggleVendor = (vendorId: string) => {
-    // No toggle while a new vendor is being assigned. Each write sends the
-    // WHOLE list, so a second write at the same time could leave out the
-    // other one's change, depending on which one the server takes last.
-    if (!item || !canEditCatalog || assigningVendorIds.length > 0) return
-
-    const currentVendorIds = item.vendorIds ?? []
-    const newVendorIds = currentVendorIds.includes(vendorId)
-      ? currentVendorIds.filter((vid) => vid !== vendorId)
-      : [...currentVendorIds, vendorId]
-
-    setTogglingVendorId(vendorId)
-    // `mutate` never rejects, so the failure comes in through `onError`.
-    // Before, it was ignored and a failed save showed nothing.
-    updateItem.mutate(
-      { id, updates: { vendorIds: newVendorIds } },
-      { onError: (err) => showSaveError(err) },
-    )
+    // No press while a Save runs (owner answer 9A): the list sent is the
+    // list on screen
+    if (!item || !canEditCatalog || saving) return
+    draft.press(vendorId)
   }
 
   const handleAddVendor = async () => {
@@ -77,67 +95,58 @@ function VendorsTab() {
     try {
       newVendor = await createVendor.mutateAsync(name)
     } catch (err) {
-      // The dialog stays open, so the user can try again.
+      // The dialog stays open, so the user can try again. Not
+      // `showSaveError`: this one says why a FORBIDDEN was refused, and
+      // `createVendor` also writes a cart.
       showVendorCreateError(err, name)
       return
     }
-    // The vendor exists now, so the dialog closes even if the assign below
-    // fails; the toast says so.
     setNewVendorName('')
     setShowDialog(false)
-    if (newVendor?.id) {
-      const newVendorId = newVendor.id
-      setAssigningVendorIds((ids) => [...ids, newVendorId])
-      // Immediately assign to the current item. The list keeps any other new
-      // vendor that is still being assigned.
-      try {
-        await updateItem.mutateAsync({
-          id,
-          updates: {
-            vendorIds: [...new Set([...shownVendorIds, newVendorId])],
-          },
-        })
-      } catch (err) {
-        showSaveError(err)
-      } finally {
-        // When the write has succeeded, the item already has the vendor:
-        // local `mutateAsync` waits for the refetch, and Apollo writes the
-        // answer to its cache before it resolves.
-        setAssigningVendorIds((ids) => ids.filter((x) => x !== newVendorId))
-      }
-    }
+    // The vendor is created at once (owner answer 1A), but only Save gives
+    // it to the item. Until then it is shown as selected. Discard keeps the
+    // vendor, not assigned.
+    if (newVendor?.id) draft.add(newVendor.id)
   }
 
   if (!item) return null
 
-  const sortedVendors = [...vendors].sort((a, b) =>
+  const sortedVendors = [...(vendors ?? [])].sort((a, b) =>
     a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
   )
 
   return (
     <div className="p-4 space-y-6 max-w-2xl mx-auto">
+      <TopBarSaveButton
+        saveSlot={saveSlot}
+        onClick={save}
+        disabled={!canSave}
+        isLoading={saving}
+      />
       <div className="flex flex-wrap gap-2">
         {sortedVendors.map((vendor) => {
-          const isAssigned = shownVendorIds.includes(vendor.id)
-          const isAssigning = assigningVendorIds.includes(vendor.id)
+          const isAssigned = draft.shown.includes(vendor.id)
 
           return (
             <Badge
               key={vendor.id}
               role="button"
               aria-pressed={isAssigned}
-              aria-busy={isAssigning || undefined}
-              aria-disabled={!canEditCatalog || undefined}
+              aria-disabled={!canEditCatalog || saving || undefined}
+              // Reached by Tab and pressed with Enter or Space (owner answer
+              // 8A). A read-only badge is not in the Tab order.
+              tabIndex={canEditCatalog ? 0 : undefined}
               variant={isAssigned ? 'neutral' : 'neutral-outline'}
-              className={`${canEditCatalog ? 'cursor-pointer' : 'cursor-default'} normal-case${updateItem.isPending && togglingVendorId === vendor.id ? ' pointer-events-none' : ''}`}
+              className={`${canEditCatalog ? 'cursor-pointer' : 'cursor-default'} normal-case`}
               onClick={() => toggleVendor(vendor.id)}
+              onKeyDown={
+                canEditCatalog
+                  ? pressOnEnterOrSpace(() => toggleVendor(vendor.id))
+                  : undefined
+              }
             >
               {vendor.name}
-              {updateItem.isPending && togglingVendorId === vendor.id ? (
-                <Loader2 className="ml-1 h-3 w-3 animate-spin [transform-box:fill-box]" />
-              ) : (
-                isAssigned && <X className="ml-1 h-3 w-3" />
-              )}
+              {isAssigned && <X className="ml-1 h-3 w-3" />}
             </Badge>
           )
         })}
@@ -155,7 +164,7 @@ function VendorsTab() {
         )}
       </div>
 
-      {shownVendorIds.length === 0 && (
+      {draft.shown.length === 0 && (
         <EmptyState
           title={t('items.vendors.assignEmpty.title')}
           description={t('items.vendors.assignEmpty.description')}

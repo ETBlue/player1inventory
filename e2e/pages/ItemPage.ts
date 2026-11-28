@@ -124,26 +124,52 @@ export class ItemPage {
   }
 
   async createAndAssignTag(name: string) {
-    // Navigate to the tags tab and create + assign the tag inline.
+    // Navigate to the tags tab, create the tag inline, then Save.
     // Caller is responsible for ensuring at least one tag type exists first
     // (tags tab shows "No tags yet. Create tags in Settings." when tagTypes.length === 0).
     await this.navigateToTab('tags')
     // "New Tag" button lives inside the tag type section.
     // exact: true so it doesn't also match the page's "New Tag Type" button
-    // (both render on /items/$id/tags — src/routes/items/$id/tags.tsx).
+    // (both render on /items/$id/tags — src/routes/items/$id/tags.tsx:116 and :239).
     await this.page
       .getByRole('button', { name: 'New Tag', exact: true })
       .first()
       .click()
-    // AddNameDialog label is "Name" (src/components/AddNameDialog/index.tsx:41)
+    // AddNameDialog label is "Name" (src/components/shared/AddNameDialog/AddNameDialog.tsx:48)
     await this.page.getByRole('dialog').getByLabel('Name').fill(name)
     await this.page
       .getByRole('dialog')
       .getByRole('button', { name: /add tag/i })
       .click()
-    // Tag is created and immediately assigned (pressed: true) — no extra click needed.
-    // It shows as pressed while the assign is still being saved; it carries
-    // aria-busy="true" until the save is done (issue #402).
+    // The tag is created at once and shows as pressed, but only Save gives
+    // it to the item (item relations Save, design
+    // docs/features/items/2026-11-27-item-relations-save-design.md). Wait for
+    // the pressed badge first: Save is off until the new id is in the draft.
+    await this.page
+      .getByRole('button', { name, exact: true, pressed: true })
+      .waitFor()
+    await this.saveRelations()
+  }
+
+  async saveRelations() {
+    // The top bar Save of the Tags, Vendors and Recipes tabs
+    // (`TopBarSaveButton`, src/routes/items/$id/tags.tsx:226,
+    // vendors.tsx:120, recipes.tsx:134; label `common.save` = "Save"). A
+    // badge press changes only the screen; this Save sends the whole list in
+    // one write, shows the toast "Saved" (`items.detail.saved`) and turns
+    // itself off again. Wait for both, so the caller can rely on the write
+    // having finished.
+    const saveButton = this.page.getByRole('button', {
+      name: 'Save',
+      exact: true,
+    })
+    await expect(saveButton).toBeEnabled()
+    await saveButton.click()
+    await this.page
+      .getByText('Saved', { exact: true })
+      .first()
+      .waitFor({ timeout: 10000 })
+    await expect(saveButton).toBeDisabled()
   }
 
   async ensureStockTab() {
@@ -183,7 +209,8 @@ export class ItemPage {
   }
 
   async createAndAssignVendor(name: string) {
-    // Navigate to Vendors tab, open AddNameDialog, fill and submit
+    // Navigate to Vendors tab, open AddNameDialog, fill and submit, then Save.
+    // "New Vendor" button: src/routes/items/$id/vendors.tsx:155.
     await this.navigateToTab('vendors')
     await this.page.getByRole('button', { name: /new vendor/i }).click()
     await this.page.getByRole('dialog').getByLabel('Name').fill(name)
@@ -191,31 +218,40 @@ export class ItemPage {
       .getByRole('dialog')
       .getByRole('button', { name: /add/i })
       .click()
+    // The vendor is created at once and shows as pressed; Save assigns it.
+    await this.page
+      .getByRole('button', { name, exact: true, pressed: true })
+      .waitFor()
+    await this.saveRelations()
   }
 
   async assignVendor(name: string) {
-    // Click the vendor badge (role="button" aria-pressed=false) to assign it to the item
-    // Badge: role="button" aria-pressed={isAssigned} (src/routes/items/$id/vendors.tsx)
+    // Press the vendor badge (role="button" aria-pressed=false), then Save.
+    // A press changes only the screen; Save writes it.
+    // Badge: role="button" aria-pressed={isAssigned} (src/routes/items/$id/vendors.tsx:131)
     await this.page
       .getByRole('button', { name, exact: false, pressed: false })
       .click()
+    await this.saveRelations()
   }
 
   // ── Recipes tab ───────────────────────────────────────────────────────────────
 
   async clickNewRecipeButton() {
-    // "New Recipe" button inline with recipe badges (src/routes/items/$id/recipes.tsx)
+    // "New Recipe" button inline with recipe badges (src/routes/items/$id/recipes.tsx:176)
     await this.page.getByRole('button', { name: /new recipe/i }).click()
   }
 
   async fillRecipeName(name: string) {
     // AddNameDialog input: label "Name", placeholder "e.g., Pasta Sauce, Smoothie"
-    // (src/routes/items/$id/recipes.tsx, src/components/AddNameDialog/index.tsx)
+    // (src/routes/items/$id/recipes.tsx, src/components/shared/AddNameDialog/AddNameDialog.tsx:48)
     await this.page.getByRole('dialog').getByLabel('Name').fill(name)
   }
 
   async submitRecipeDialog() {
-    // "Add Recipe" submit button in AddNameDialog (src/routes/items/$id/recipes.tsx)
+    // "Add Recipe" submit button in AddNameDialog (src/routes/items/$id/recipes.tsx).
+    // The recipe is created at once, with no items, and shows as pressed.
+    // Only `saveRelations()` gives it the item.
     await this.page
       .getByRole('dialog')
       .getByRole('button', { name: /add recipe/i })
@@ -223,12 +259,13 @@ export class ItemPage {
   }
 
   getRecipeBadge(name: string) {
-    // Recipe badge: role="button" aria-pressed={isAssigned} (src/routes/items/$id/recipes.tsx)
+    // Recipe badge: role="button" aria-pressed={isAssigned} (src/routes/items/$id/recipes.tsx:151).
+    // Pressed means "shown as selected": saved, or pressed and not saved yet.
     return this.page.getByRole('button', { name, exact: false, pressed: true })
   }
 
   getRecipeDialog() {
-    // The AddNameDialog rendered as a dialog (src/components/AddNameDialog/index.tsx)
+    // The AddNameDialog rendered as a dialog (src/components/shared/AddNameDialog/AddNameDialog.tsx)
     return this.page.getByRole('dialog')
   }
 
@@ -261,12 +298,14 @@ export class ItemPage {
   }
 
   getTagBadge(name: string): Locator {
-    // Assigned tag badge: role="button" aria-pressed=true (src/routes/items/$id/tags.tsx)
+    // Selected tag badge: role="button" aria-pressed=true (src/routes/items/$id/tags.tsx:91).
+    // Pressed means "shown as selected": saved, or pressed and not saved yet.
     return this.page.getByRole('button', { name, exact: false, pressed: true })
   }
 
   getAssignedVendorBadge(name: string): Locator {
-    // Assigned vendor badge: role="button" aria-pressed=true (src/routes/items/$id/vendors.tsx)
+    // Selected vendor badge: role="button" aria-pressed=true (src/routes/items/$id/vendors.tsx:131).
+    // Pressed means "shown as selected": saved, or pressed and not saved yet.
     return this.page.getByRole('button', { name, exact: false, pressed: true })
   }
 

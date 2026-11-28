@@ -1,4 +1,6 @@
+import Dexie from 'dexie'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { NotConsumableError } from '@/lib/recipeConsumables'
 import { cartIdFor, DEFAULT_LOCATION_ID, TagColor } from '../types'
 import { db } from './index'
 
@@ -66,6 +68,7 @@ import {
   reorderShelfItems,
   reorderShelves,
   seedDefaultData,
+  setItemRecipesBatch,
   updateCartItem,
   updateItem,
   updateLocation,
@@ -3378,5 +3381,239 @@ describe('new stock rows are active (the Active here switch)', () => {
     expect(await getItemLogs(item.id)).toMatchObject([
       { logKey: 'stockCount', delta: 1, quantity: 3 },
     ])
+  })
+})
+
+// The local twin of the server's `setItemRecipes` (design, *Local mode*). The
+// same answers as `recipe-set-item.resolver.test.ts`, for one household.
+describe('setItemRecipesBatch', () => {
+  beforeEach(async () => {
+    await db.recipes.clear()
+    await db.items.clear()
+    await db.itemStocks.clear()
+  })
+
+  async function makeItem(
+    overrides: { consumeAmount?: number; consumable?: boolean } = {},
+  ) {
+    return createItem({
+      name: 'Flour',
+      tagIds: [],
+      targetUnit: 'package',
+      targetQuantity: 1,
+      refillThreshold: 0,
+      packedQuantity: 1,
+      unpackedQuantity: 0,
+      consumeAmount: overrides.consumeAmount ?? 3,
+      ...(overrides.consumable !== undefined
+        ? { consumable: overrides.consumable }
+        : {}),
+    })
+  }
+
+  // `updatedAt` is a `new Date()`; wait so a second write gets a later time.
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 5))
+
+  async function itemsOf(recipeId: string) {
+    return defined(await db.recipes.get(recipeId), `recipe ${recipeId}`).items
+  }
+
+  it('user can add an item to two recipes and remove it from one in one save', async () => {
+    // Given an item with consumeAmount 3, a recipe that holds it, a recipe
+    // that keeps it, and two recipes that do not hold it
+    const item = await makeItem({ consumeAmount: 3 })
+    const other = { itemId: 'item-other', defaultAmount: 7 }
+    const leaving = await createRecipe({
+      name: 'Bread',
+      items: [other, { itemId: item.id, defaultAmount: 2 }],
+    })
+    const staying = await createRecipe({
+      name: 'Cake',
+      items: [{ itemId: item.id, defaultAmount: 4 }],
+    })
+    const joinA = await createRecipe({ name: 'Pancakes', items: [other] })
+    const joinB = await createRecipe({ name: 'Waffles' })
+    await tick()
+
+    // When the save names the kept recipe and the two new ones
+    const changed = await setItemRecipesBatch(item.id, [
+      staying.id,
+      joinA.id,
+      joinB.id,
+    ])
+
+    // Then the item left one recipe and joined two, with consumeAmount
+    expect(await itemsOf(leaving.id)).toEqual([other])
+    expect(await itemsOf(joinA.id)).toEqual([
+      other,
+      { itemId: item.id, defaultAmount: 3 },
+    ])
+    expect(await itemsOf(joinB.id)).toEqual([
+      { itemId: item.id, defaultAmount: 3 },
+    ])
+    // And the kept recipe keeps its own amount and is not written
+    const kept = defined(await db.recipes.get(staying.id), 'kept recipe')
+    expect(kept.items).toEqual([{ itemId: item.id, defaultAmount: 4 }])
+    expect(kept.updatedAt.getTime()).toBe(staying.updatedAt.getTime())
+    // And the changed recipes are answered, not the kept one
+    expect(changed.map((r) => r.id).sort()).toEqual(
+      [leaving.id, joinA.id, joinB.id].sort(),
+    )
+    const joined = defined(await db.recipes.get(joinB.id), 'joined recipe')
+    expect(joined.updatedAt.getTime()).toBeGreaterThan(
+      joinB.updatedAt.getTime(),
+    )
+  })
+
+  it('a new link gets 1 when the item uses 0 per use', async () => {
+    // Given an item whose consumeAmount is 0 (so `||`/`> 0` and `??` differ)
+    const item = await makeItem({ consumeAmount: 0 })
+    const recipe = await createRecipe({ name: 'Soup' })
+
+    // When the item is added to the recipe
+    await setItemRecipesBatch(item.id, [recipe.id])
+
+    // Then the link amount is 1, not 0 (0 means "optional" in cooking)
+    expect(await itemsOf(recipe.id)).toEqual([
+      { itemId: item.id, defaultAmount: 1 },
+    ])
+  })
+
+  it('the same list twice writes nothing the second time', async () => {
+    // Given an item already saved into two recipes
+    const item = await makeItem()
+    const a = await createRecipe({ name: 'A' })
+    const b = await createRecipe({ name: 'B' })
+    await setItemRecipesBatch(item.id, [a.id, b.id])
+    const before = await db.recipes.toArray()
+    await tick()
+
+    // When the same list is saved again, with a repeated id
+    const changed = await setItemRecipesBatch(item.id, [b.id, a.id, a.id])
+
+    // Then nothing changed, and the answer is empty
+    expect(changed).toEqual([])
+    expect(await db.recipes.toArray()).toEqual(before)
+  })
+
+  it('a repeated id for a recipe that does not hold the item makes one link', async () => {
+    // Given a recipe that does not hold the item
+    const item = await makeItem({ consumeAmount: 3 })
+    const recipe = await createRecipe({ name: 'Soup' })
+
+    // When the save names that recipe twice
+    const changed = await setItemRecipesBatch(item.id, [recipe.id, recipe.id])
+
+    // Then the recipe holds ONE link to the item
+    expect(await itemsOf(recipe.id)).toEqual([
+      { itemId: item.id, defaultAmount: 3 },
+    ])
+    // And the recipe is answered once. (Without the fold the stored list
+    // still holds one link, because both writes start from the same old
+    // row; only the answer shows the second write.)
+    expect(changed.map((r) => r.id)).toEqual([recipe.id])
+  })
+
+  it('a missing item is refused', async () => {
+    const recipe = await createRecipe({ name: 'Soup' })
+    await expect(
+      setItemRecipesBatch('no-such-item', [recipe.id]),
+    ).rejects.toThrow('Item not found')
+    expect(await itemsOf(recipe.id)).toEqual([])
+  })
+
+  it('a missing recipe is refused and nothing is written', async () => {
+    // Given an item in one recipe, and a recipe it may join
+    const item = await makeItem()
+    const leaving = await createRecipe({
+      name: 'Bread',
+      items: [{ itemId: item.id, defaultAmount: 2 }],
+    })
+    const joining = await createRecipe({ name: 'Soup' })
+
+    // When the list also names a recipe that does not exist
+    await expect(
+      setItemRecipesBatch(item.id, [joining.id, 'no-such-recipe']),
+    ).rejects.toThrow('Recipe not found')
+
+    // Then neither the add nor the remove was written
+    expect(await itemsOf(joining.id)).toEqual([])
+    expect(await itemsOf(leaving.id)).toEqual([
+      { itemId: item.id, defaultAmount: 2 },
+    ])
+  })
+
+  it('a non-consumable item cannot join a recipe, and the remove in the same save is not written', async () => {
+    // Given a non-consumable item still in an old recipe (a link from before
+    // the rule), and a recipe it would join
+    const item = await makeItem({ consumable: false })
+    const leaving = await createRecipe({ name: 'Bread' })
+    await db.recipes.update(leaving.id, {
+      items: [{ itemId: item.id, defaultAmount: 2 }],
+    })
+    const joining = await createRecipe({ name: 'Soup' })
+
+    // When the save adds it to the new recipe and drops the old one
+    const save = setItemRecipesBatch(item.id, [joining.id])
+
+    // Then it is refused with NotConsumableError, and nothing is written
+    await expect(save).rejects.toBeInstanceOf(NotConsumableError)
+    expect(await itemsOf(joining.id)).toEqual([])
+    expect(await itemsOf(leaving.id)).toEqual([
+      { itemId: item.id, defaultAmount: 2 },
+    ])
+  })
+
+  it('a non-consumable item can still leave a recipe', async () => {
+    // Given a non-consumable item still in an old recipe
+    const item = await makeItem({ consumable: false })
+    const leaving = await createRecipe({ name: 'Bread' })
+    await db.recipes.update(leaving.id, {
+      items: [{ itemId: item.id, defaultAmount: 2 }],
+    })
+
+    // When the save removes it from every recipe
+    const changed = await setItemRecipesBatch(item.id, [])
+
+    // Then the remove is written
+    expect(await itemsOf(leaving.id)).toEqual([])
+    expect(changed.map((r) => r.id)).toEqual([leaving.id])
+  })
+
+  it('a failed write rolls back the writes before it', async () => {
+    // Given an item in one recipe, and a recipe it will join
+    const item = await makeItem()
+    const leaving = await createRecipe({
+      name: 'Bread',
+      items: [{ itemId: item.id, defaultAmount: 2 }],
+    })
+    const joining = await createRecipe({ name: 'Soup' })
+    // And the SECOND recipe write fails
+    const realUpdate = db.recipes.update.bind(db.recipes)
+    let calls = 0
+    const spy = vi
+      .spyOn(db.recipes, 'update')
+      .mockImplementation((...args: Parameters<typeof realUpdate>) => {
+        calls += 1
+        // A Dexie promise, like the real `update`, so the transaction zone holds.
+        if (calls === 2) return Dexie.Promise.reject(new Error('disk full'))
+        return realUpdate(...args)
+      })
+
+    // When the save runs
+    try {
+      await expect(setItemRecipesBatch(item.id, [joining.id])).rejects.toThrow(
+        'disk full',
+      )
+    } finally {
+      spy.mockRestore()
+    }
+
+    // Then the first write is rolled back too: both recipes are as before
+    expect(calls).toBe(2)
+    expect(await itemsOf(leaving.id)).toEqual([
+      { itemId: item.id, defaultAmount: 2 },
+    ])
+    expect(await itemsOf(joining.id)).toEqual([])
   })
 })

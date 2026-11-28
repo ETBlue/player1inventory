@@ -5,7 +5,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { render, screen, within } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db'
@@ -37,13 +37,15 @@ import {
 // differ only in the household role.
 vi.mock('@/hooks/usePermissions', async (importOriginal) => {
   const real = await importOriginal<typeof import('@/hooks/usePermissions')>()
-  const { roleOverride } = await import('@/test/rolePermissions')
+  const { useRoleOverride } = await import('@/test/rolePermissions')
   return {
     ...real,
     usePermissions: () => {
-      // The real hook always runs, so the hook order never changes
+      // The real hook always runs, so the hook order never changes. The
+      // hook form of the override, so a role change in a test (the demoted
+      // manager below) renders the page again.
       const live = real.usePermissions()
-      const role = roleOverride()
+      const role = useRoleOverride()
       return role ? real.permissionsFor(role) : live
     },
   }
@@ -202,8 +204,16 @@ describe.each(people)('$who on the item page', (person) => {
     if (person.canEdit) expect(add).toBeInTheDocument()
     else expect(add).toBeNull()
 
-    // When the person presses the badge
-    await userEvent.setup().click(row)
+    // When the person presses the badge, and Save. Since the item relations
+    // Save a press on any of the three tabs changes only the screen, and the
+    // top bar Save writes it.
+    const user = userEvent.setup()
+    await user.click(row)
+    const save = within(main).queryByRole('button', { name: /^save$/i })
+    if (person.canEdit) {
+      expect(save).toBeEnabled()
+      await user.click(save as HTMLElement)
+    }
 
     // Then only a manager's press assigns it
     if (person.canEdit) {
@@ -211,7 +221,11 @@ describe.each(people)('$who on the item page', (person) => {
         expect(await stored(milk.id)).toHaveLength(1),
       )
     } else {
+      // A member gets no Save, and the press changes nothing on screen
+      expect(save).toBeNull()
       expect(row).toHaveAttribute('aria-disabled', 'true')
+      expect(row).toHaveAttribute('aria-pressed', 'false')
+      expect(row).not.toHaveAttribute('tabindex')
       await new Promise((resolve) => setTimeout(resolve, 50))
       expect(await stored(milk.id)).toHaveLength(0)
     }
@@ -228,6 +242,96 @@ describe.each(people)('$who on the item page', (person) => {
     expect(packed).not.toHaveAttribute('readonly')
     expect(packed).not.toBeDisabled()
     expect(screen.getByRole('button', { name: /save/i })).toBeInTheDocument()
+  })
+})
+
+// Owner answer 5A of the item relations Save design
+// (docs/features/items/2026-11-27-item-relations-save-design.md, *Read
+// only*): a manager who is demoted to member in another tab while a press is
+// unsaved sees the saved state, read only, with no Save. The presses are
+// dropped, not only hidden: they could not be saved anyway.
+describe('a manager demoted while a press is unsaved', () => {
+  it.each([
+    {
+      tab: 'tags',
+      seed: async () => {
+        const type = await createTagType({ name: 'Storage' })
+        await createTag({ name: 'Dairy', typeId: type.id })
+      },
+      badge: /Dairy/,
+    },
+    {
+      tab: 'vendors',
+      seed: async () => {
+        await createVendor('iHerb')
+      },
+      badge: /iHerb/,
+    },
+    {
+      tab: 'recipes',
+      seed: async () => {
+        await createRecipe({ name: 'Pancakes' })
+      },
+      badge: /Pancakes/,
+    },
+  ])('user demoted on the $tab tab sees the saved state and no Save', async ({
+    tab,
+    seed,
+    badge,
+  }) => {
+    // Given a manager who pressed a badge on, not saved
+    await seed()
+    const milk = await makeMilk()
+    asHouseholdManager()
+    renderAt(`/items/${milk.id}/${tab}`)
+    const main = await screen.findByRole('main')
+    const user = userEvent.setup()
+    await user.click(await within(main).findByRole('button', { name: badge }))
+    expect(within(main).getByRole('button', { name: badge })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(within(main).getByRole('button', { name: /^save$/i })).toBeEnabled()
+
+    // When an owner makes them a member in another tab
+    act(() => asHouseholdMember())
+
+    // Then the badge shows the saved state, read only, and there is no Save
+    const row = within(main).getByRole('button', { name: badge })
+    expect(row).toHaveAttribute('aria-pressed', 'false')
+    expect(row).toHaveAttribute('aria-disabled', 'true')
+    expect(within(main).queryByRole('button', { name: /^save$/i })).toBeNull()
+
+    // And leaving the tab asks nothing: there is nothing unsaved
+    const logTab = screen.getByRole('link', { name: /^log$/i })
+    await user.click(logTab)
+    await vi.waitFor(() =>
+      expect(logTab).toHaveAttribute('aria-current', 'page'),
+    )
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  })
+
+  it('user made a manager again does not get the dropped press back', async () => {
+    // Given a manager who pressed a tag on, not saved, and was demoted
+    const type = await createTagType({ name: 'Storage' })
+    await createTag({ name: 'Dairy', typeId: type.id })
+    const milk = await makeMilk()
+    asHouseholdManager()
+    renderAt(`/items/${milk.id}/tags`)
+    const main = await screen.findByRole('main')
+    const user = userEvent.setup()
+    await user.click(await within(main).findByRole('button', { name: /Dairy/ }))
+    act(() => asHouseholdMember())
+
+    // When they are made a manager again
+    act(() => asHouseholdManager())
+
+    // Then the press is gone, and Save is off
+    expect(within(main).getByRole('button', { name: /Dairy/ })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+    expect(within(main).getByRole('button', { name: /^save$/i })).toBeDisabled()
   })
 })
 

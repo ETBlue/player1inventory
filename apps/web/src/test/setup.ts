@@ -253,6 +253,11 @@ vi.mock('@/generated/graphql', async (importOriginal) => {
       vi.fn().mockResolvedValue({ data: undefined }),
       {},
     ],
+    // The item Recipes tab's Save (item relations Save, task B.6)
+    useSetItemRecipesMutation: () => [
+      vi.fn().mockResolvedValue({ data: undefined }),
+      {},
+    ],
     useDeleteRecipeMutation: () => [
       vi.fn().mockResolvedValue({ data: undefined }),
       {},

@@ -116,3 +116,70 @@ export async function checkDialogA11y(page: Page, selector: string) {
     `color-contrast violations in ${selector} outside the known filled buttons`,
   ).toEqual([])
 }
+
+// ── Item Tags tab badges: one KNOWN defect, waiting for an owner decision ────
+//
+// Found 2026-11-28 (item relations Save, task B.8), the first time an axe scan
+// saw a tag badge on the item Tags tab (`/items/$id/tags`). Before that date
+// `a11y.spec.ts`'s `seedTag` wrote `tagTypeId`, a field nothing reads, so its
+// tag belonged to no type and the tab showed no badge at all.
+//
+// Measured by axe in `local`, every tag colour scanned (blue, green, orange):
+//
+// | Rule           | Theme      | What fails                                                      |
+// |----------------|------------|-----------------------------------------------------------------|
+// | color-contrast | light only | every tag badge. Selected (white on the colour): 3.11 to 3.43:1 |
+// |                |            | (blue 3.2, green 3.11, orange 3.43). Not selected (colour on    |
+// |                |            | its tint): 4.02 to 4.48:1 (blue 4.2, green 4.02, orange 4.48)   |
+//
+// KNOWN DEFECT, WAITING FOR AN OWNER DECISION. The colours are the tag palette
+// (`design-tokens/`). They are older than the relations Save branch, and that
+// branch does not change them: the owner decides on the palette separately.
+// Vendor and recipe badges pass.
+//
+// So a scan of the item Tags tab excludes tag badges from `color-contrast`
+// ONLY: every other WCAG AA rule still checks them (`target-size` included),
+// and a contrast failure on any other element still fails.
+//
+// History: B.8 also excluded tag badges from `target-size`. The last tag of
+// each type, right above "New Tag", was 20px high with 20px of clear space
+// (24px needed). It came from this branch: the badges got `tabIndex={0}`
+// (owner answer 8A), and axe's target-size rule checks only focusable targets.
+// The "New Tag" button's `-my-1` pulled it up against the last badge. The
+// branch's last task made that `-mb-1` (`routes/items/$id/tags.tsx`), so the
+// rule passes and the exclusion is gone.
+//
+// REMOVAL CONDITION: once the tag palette passes 4.5:1 in light mode, delete
+// `KNOWN_TAG_BADGE_DEFECTS` and scan the tab with
+// `checkA11y(page, undefined, AXE_OPTIONS)`.
+export const KNOWN_TAG_BADGE_DEFECTS = [['[role="button"][class*="bg-tag-"]']]
+
+/**
+ * Scan a page that shows item Tags tab badges with the WCAG AA rules,
+ * allowing only the known tag badge contrast defect above.
+ */
+export async function checkA11yAllowingKnownTagBadgeDefects(page: Page) {
+  const knownRules = ['color-contrast']
+  // 1. Every WCAG AA rule except color-contrast, nothing excluded.
+  const other = await getViolations(page, undefined, {
+    ...AXE_RUN_OPTIONS,
+    rules: Object.fromEntries(
+      knownRules.map((rule) => [rule, { enabled: false }]),
+    ),
+  })
+  expect(
+    other.flatMap((v) => v.nodes.map((n) => `${v.id}: ${n.target.join(' ')}`)),
+    'a11y violations outside color-contrast',
+  ).toEqual([])
+
+  // 2. color-contrast alone, without the tag badges.
+  const known = await getViolations(
+    page,
+    { include: [['body']], exclude: KNOWN_TAG_BADGE_DEFECTS },
+    { runOnly: { type: 'rule', values: knownRules } },
+  )
+  expect(
+    known.flatMap((v) => v.nodes.map((n) => `${v.id}: ${n.target.join(' ')}`)),
+    'color-contrast violations outside the tag badges',
+  ).toEqual([])
+}

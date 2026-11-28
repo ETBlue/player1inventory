@@ -9,18 +9,20 @@ interface ItemLayoutContextValue {
   isDirty: boolean
   registerDirtyState: (dirty: boolean) => void
   /**
-   * The Info form's save, for the unsaved-changes dialog's Save button
-   * (`components/shared/UnsavedChangesDialog`). `null` while no form is
-   * mounted. The form registers it with `registerSaveControl`.
+   * The current tab's save, for the unsaved-changes dialog's Save button
+   * (`components/shared/UnsavedChangesDialog`). `null` while no tab has
+   * registered one. Info and Stock register it through `ItemForm`; Tags,
+   * Vendors and Recipes through `useRelationTabSave`.
    */
   saveControl: SaveControl | null
   registerSaveControl: RegisterSaveControl
   /**
    * The place in the item page's top bar where the current tab's Save goes
    * (owner decision 2026-11-25, design 2026-11-24 part B, row 1). `$id.tsx`
-   * renders it and registers it with `setSaveSlot`; the Info and Stock tabs
-   * pass it to `ItemForm` as `submitSlot`. `null` until the top bar has
-   * mounted.
+   * renders it and registers it with `setSaveSlot`; the current tab puts
+   * its Save there (Info and Stock through `ItemForm`'s `submitSlot`, Tags,
+   * Vendors and Recipes through `TopBarSaveButton`). `null` until the top
+   * bar has mounted.
    */
   saveSlot: HTMLElement | null
   setSaveSlot: (element: HTMLElement | null) => void

@@ -64,4 +64,52 @@ describe('showSaveError', () => {
       'Could not save the change. Please try again.',
     )
   })
+
+  // Owner answer 6A, limited to catalog writes: a role taken away while the
+  // page was open says why. A location write's FORBIDDEN means something
+  // else (a location viewer), so the caller must ask for this text.
+  const CATALOG_TEXT = 'Only a household owner or manager can change this.'
+  const forbidden = () =>
+    new CombinedGraphQLErrors({
+      errors: [{ message: 'no', extensions: { code: 'FORBIDDEN' } }],
+    })
+
+  it('user sees why a catalog write was refused for the household role', () => {
+    showSaveError(forbidden(), { catalog: true })
+    expect(toastError).toHaveBeenCalledWith(CATALOG_TEXT)
+  })
+
+  it('the catalog text wins over a message the caller passes', () => {
+    showSaveError(forbidden(), {
+      catalog: true,
+      message: 'Could not add Milk.',
+    })
+    expect(toastError).toHaveBeenCalledWith(CATALOG_TEXT)
+  })
+
+  it('a FORBIDDEN without the catalog option still shows the general text', () => {
+    // Negative control: a location write must not claim a household role
+    showSaveError(forbidden())
+    expect(toastError).toHaveBeenCalledWith(
+      'Could not save the change. Please try again.',
+    )
+  })
+
+  it('a catalog write that fails for another reason shows its message', () => {
+    showSaveError(new Error('boom'), {
+      catalog: true,
+      message: 'Could not add Milk.',
+    })
+    expect(toastError).toHaveBeenCalledWith('Could not add Milk.')
+  })
+
+  it('a catalog write offline shows nothing', () => {
+    showSaveError(new OfflineWriteError(), { catalog: true })
+    expect(toastError).not.toHaveBeenCalled()
+  })
+
+  it('a catalog write refused as not consumable says so', () => {
+    showSaveError(new NotConsumableError(['item-cup']), { catalog: true })
+    expect(toastError).toHaveBeenCalledWith(NOT_CONSUMABLE_TEXT)
+  })
 })

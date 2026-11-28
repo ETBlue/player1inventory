@@ -12,7 +12,10 @@ import { routeTree } from '@/routeTree.gen'
 import {
   CLOUD_LOCATIONS,
   cloudItem,
+  cloudRecipe,
   cloudStock,
+  cloudTag,
+  cloudTagType,
   LOC_A,
   LOC_B,
 } from '@/test/cloudFixtures'
@@ -273,5 +276,137 @@ describe('Item page - Save in the unsaved-changes dialog (cloud)', () => {
         screen.getByRole('tab', { name: /cloud garage/i }),
       ).toHaveAttribute('aria-selected', 'true'),
     )
+  })
+
+  // The Tags, Vendors and Recipes tabs (item relations Save, design
+  // docs/features/items/2026-11-27-item-relations-save-design.md): the
+  // dialog's Save is the tab's own Save, so the page moves only after it.
+  describe('the relation tabs', () => {
+    const SOUP = cloudRecipe('recipe-soup', 'Soup')
+
+    beforeEach(() => {
+      cloudServer.queries.useGetRecipesQuery = { recipes: [BREAD, SOUP] }
+      cloudServer.results.useSetItemRecipesMutation = (vars) => {
+        const recipeIds = vars.recipeIds as string[]
+        const recipes = [BREAD, SOUP].map((recipe) => ({
+          ...recipe,
+          items: recipeIds.includes(recipe.id)
+            ? [
+                {
+                  __typename: 'RecipeItem' as const,
+                  itemId: 'item-flour',
+                  defaultAmount: 2,
+                },
+              ]
+            : [],
+        }))
+        cloudServer.queries.useGetRecipesQuery = { recipes }
+        return { setItemRecipes: recipes }
+      }
+    })
+
+    async function pressSoupAndLeave(user: ReturnType<typeof userEvent.setup>) {
+      await user.click(await screen.findByRole('button', { name: 'Soup' }))
+      await user.click(screen.getByRole('link', { name: /^log$/i }))
+      return screen.findByRole('alertdialog', { name: UNSAVED })
+    }
+
+    it('user moves from the Recipes tab only after the dialog save has finished', async () => {
+      const user = userEvent.setup()
+      // Given a server that holds the recipes write
+      const held = holdMutation('useSetItemRecipesMutation')
+      const router = renderPage('/items/item-flour/recipes')
+
+      // When the user presses "Soup", opens Log and presses Save
+      const dialog = await pressSoupAndLeave(user)
+      await user.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+      // Then ONE write with the list on screen is sent, and the page stays
+      // while it runs
+      await waitFor(() =>
+        expect(cloudServer.calls.useSetItemRecipesMutation).toEqual([
+          { itemId: 'item-flour', recipeIds: ['recipe-bread', 'recipe-soup'] },
+        ]),
+      )
+      expect(router.state.location.pathname).toBe('/items/item-flour/recipes')
+      expect(
+        within(dialog).getByRole('button', { name: 'Discard' }),
+      ).toBeDisabled()
+
+      // And only after it is answered does the page go to Log
+      held.release()
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe('/items/item-flour/log'),
+      )
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    })
+
+    it('user sees a message when the Recipes dialog save fails, and stays in the dialog', async () => {
+      const user = userEvent.setup()
+      // Given a server that refuses the recipes write
+      cloudServer.failing.add('useSetItemRecipesMutation')
+      const router = renderPage('/items/item-flour/recipes')
+
+      // When the user presses "Soup", opens Log and presses Save
+      const dialog = await pressSoupAndLeave(user)
+      await user.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+      // Then a message says why, the page stays, and the dialog is still
+      // open with Save ready to try again
+      expect(
+        await screen.findByText(
+          'Only a household owner or manager can change this.',
+        ),
+      ).toBeInTheDocument()
+      expect(router.state.location.pathname).toBe('/items/item-flour/recipes')
+      const still = screen.getByRole('alertdialog', { name: UNSAVED })
+      await waitFor(() =>
+        expect(
+          within(still).getByRole('button', { name: 'Save' }),
+        ).toBeEnabled(),
+      )
+      // And the press is kept on the page under the dialog
+      expect(
+        screen.getByRole('button', {
+          name: 'Soup',
+          pressed: true,
+          hidden: true,
+        }),
+      ).toBeInTheDocument()
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    })
+
+    it('user who discards on the Tags tab sends no write and keeps the created tag', async () => {
+      const user = userEvent.setup()
+      // Given a server that creates "dairy"
+      const DAIRY = cloudTag('tag-dairy', 'dairy', 'type-label')
+      cloudServer.queries.useGetTagTypesQuery = {
+        tagTypes: [cloudTagType('type-label', 'Label')],
+      }
+      cloudServer.queries.useGetTagsQuery = { tags: [DAIRY] }
+      cloudServer.results.useCreateTagMutation = () => ({ createTag: DAIRY })
+      const router = renderPage('/items/item-flour/tags')
+
+      // When the user creates "dairy", opens Log and presses Discard
+      await user.click(await screen.findByRole('button', { name: /new tag$/i }))
+      await user.type(screen.getByLabelText(/name/i), 'dairy')
+      await user.click(screen.getByRole('button', { name: /^add tag$/i }))
+      await screen.findByRole('button', { name: 'dairy', pressed: true })
+      await user.click(screen.getByRole('link', { name: /^log$/i }))
+      const dialog = await screen.findByRole('alertdialog', { name: UNSAVED })
+      await user.click(within(dialog).getByRole('button', { name: 'Discard' }))
+
+      // Then the page moves, the tag was created, and the item was not
+      // written (the tag stays, not given to the item; owner answer 1A)
+      await waitFor(() =>
+        expect(router.state.location.pathname).toBe('/items/item-flour/log'),
+      )
+      expect(cloudServer.calls.useCreateTagMutation).toHaveLength(1)
+      expect(cloudServer.calls.useUpdateItemMutation).toBeUndefined()
+      await rejections.settle()
+      expect(rejections.list).toEqual([])
+    })
   })
 })

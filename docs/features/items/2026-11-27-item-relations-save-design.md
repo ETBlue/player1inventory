@@ -107,11 +107,13 @@ tab enters `added` when the create returns. The list of rows is read again AFTER
 would show as not selected when it arrives: issue #402 again. So the rule drops only an id
 that WAS in the list and is gone now.
 
-**Save** sends `shown`. On success the draft is emptied, `toast.success(t('items.detail.saved'))`
-shows, and the page stays. Local `mutateAsync` waits for the refetch, and the cloud hooks wait
+**Save** sends `shown`. On success the draft takes out the ids that were sent
+(`reset(sent)`; as built, see *As built: PR B*: not "the draft is emptied"),
+`toast.success(t('items.detail.saved'))` shows, and the page stays. Local `mutateAsync` waits for the refetch, and the cloud hooks wait
 too (Apollo writes the mutation's answer to the cache, and `setItemRecipes` uses
-`refetchAfterWrite`), so `saved` already equals `shown` when the draft is emptied: the badges do
-not flicker back. On failure `showSaveError(err)` shows, and the draft is kept.
+`refetchAfterWrite`), so `saved` already equals `shown` when the draft is reset: the badges do
+not flicker back. On failure `showSaveError(err, { catalog: true })` shows, and the draft is
+kept.
 
 **Presses during a Save are ignored** (open question 9, recommended A). The badges get
 `aria-disabled` while `isPending`, so the list sent is the list on screen.
@@ -152,8 +154,10 @@ event refetches `GetHousehold`), the draft is dropped and the tab turns read onl
 
 **Keyboard.** The Save is a real `<button>`, so Tab reaches it and Enter or Space presses it.
 The badges are `role="button"` with no `tabIndex` and no key handler today, a known gap
-(`apps/web/src/routes/items/CLAUDE.md`, *What a household member sees*). Open question 8 asks
-whether PR B fixes it while the three tabs are rewritten.
+(`apps/web/src/routes/items/CLAUDE.md`, *What a household member sees*). Open question 8 asked
+whether PR B fixes it while the three tabs are rewritten. **Answered A and built in PR B:** a
+pressable badge has `tabIndex={0}`, and Enter or Space press it (`pressOnEnterOrSpace`,
+`apps/web/src/lib/pressKeys.ts`; a held key presses once).
 
 ## Tags tab (PR B)
 
@@ -181,7 +185,8 @@ whether PR B fixes it while the three tabs are rewritten.
 - Delete `togglingRecipeId`, its effect and the spinner.
 - `saved` = ids of recipes whose `items` hold this item. `shown` as above.
 - A press on a recipe not shown, for a non-consumable item, does nothing (today's rule,
-  `recipes.tsx:49`). A press that removes is always allowed.
+  `recipes.tsx:49`). A press that removes is always allowed, and so is the press that undoes
+  it (as built: a recipe in `draft.removed` stays pressable, by keyboard too).
 - `handleAddRecipe`: `await createRecipe.mutateAsync({ name, items: [] })` (answer 1A: NO
   items); on success `draft.add(recipe.id)`, close the dialog; on failure `showSaveError`,
   dialog stays. `mutateAsync`, not `mutate`: the cloud `mutate` calls `onSuccess()` with no
@@ -267,7 +272,8 @@ merges into `develop` only after Railway shows PR A deployed.
 ## As built: PR A (2026-11-27)
 
 Branch `feature/item-relations-save-server`, three commits on top of the docs (`c94b20c0`,
-`fcbb565e`). Not merged yet.
+`fcbb565e`). Merged into `develop` as #448 (merge `1626aae7`) and released to `main` in #449
+(`0bc5b87a`). (This said "Not merged yet." until PR B's last task.)
 
 | Commit | What |
 |---|---|
@@ -315,7 +321,10 @@ half does, and the code is the same shape).
 4. `toAdd` not empty and `!isConsumable(item)`: `throw new NotConsumableError([itemId])`
    (`showSaveError` shows `common.notConsumable` for it, `lib/saveError.ts:24-26`).
 5. Each recipe in `toRemove`: its `items` without this item; each in `toAdd`: its `items` plus
-   `{ itemId, defaultAmount: item.consumeAmount || 1 }`; `updatedAt: now`.
+   `{ itemId, defaultAmount: item.consumeAmount > 0 ? item.consumeAmount : 1 }`; `updatedAt: now`.
+   (This said `consumeAmount || 1` until 2026-11-28. As built, task B.1 uses the server's
+   rule, `consumeAmount > 0 ? consumeAmount : 1`, so the two modes give the same answer. The
+   two forms differ only for a negative amount, which `|| 1` would keep.)
 6. Return the changed recipes.
 
 Every await inside is a Dexie promise, so the zone rule of *Transactional batches*
@@ -463,6 +472,102 @@ remove `/tags` from `isOnEditableTab` (the dialog test); register
 batch (the `consumeAmount: 0` test); drop the `toAdd`-only condition from the local
 non-consumable check (the remove-only test).
 
+## As built: PR B (2026-11-28)
+
+Branch `feature/item-relations-save-web`, based on `develop` at `0bc5b87a` (after PR A #448,
+its release #449 and the Active switch PR 2 #447). Not merged; not deployed.
+
+| Commit | Task | What |
+|---|---|---|
+| `2c3a0643`, `43b3aa36` | B.1 | `setItemRecipesBatch` (`db/operations.ts`) and the `SetItemRecipes` document; 8 tests |
+| `d70334b0` | B.2 | `useSetItemRecipes()` (`hooks/useRecipes.ts`) |
+| `1fcc440f` | B.3 | `showSaveError(err, { catalog: true })` (opt-in, see owner answer 6) |
+| `058bf275`, `a63451dc`, `1d9add8b`, `aff41f40`, `cbc43d56` | B.3 | `useRelationDraft`, `useRelationTabSave`, `TopBarSaveButton`, `isOnEditableTab` as a list of five paths, the layout's dirty reset, and two review fixes |
+| `0d2e65cb`, `58aab4d0`, `46a51627` | B.4–B.6 | the Tags, Vendors and Recipes tabs on the draft and one Save; keyboard (8A); `aria-disabled` while saving (9A) |
+| `919255b6`, `b1e49baa` | review | a row created during a Save stays in the draft (`reset(sent)`); a held Enter or Space presses once |
+| `5baa9b07` | B.7 | the guard, the dialog and the read-only view, as tests |
+| `3ba44475`, `31ad8fdc`, `d34f3569` | B.8 | E2E: `saveRelations()`, the six a11y scans with a pressed badge, the new `item-relations-save.spec.ts` |
+| `cbfbc8a0`, `7fad441d`, `958c2532`, `af914b01`, `62c6626a` | B.9 | three review fixes (below), then these docs |
+
+What differs from this design and the plan:
+
+- **`reset(sent)`, not "the draft is emptied".** "New …" stays on while a Save runs. A row
+  created then went into the draft, and emptying the whole draft at the end of the Save
+  dropped it: the new badge showed as not selected and was never saved. Each tab now keeps
+  the list it sends, and `reset(sent)` takes out of the draft only the ids in that list
+  (`919255b6`; the cloud tests "… created during a Save stay selected" were red before it).
+- **`showSaveError`'s catalog text is opt-in**, `{ catalog: true }`, not the default (owner
+  answer 6, as-built note). Location writes also get `FORBIDDEN`, where the catalog text
+  would be wrong.
+- **`canEdit` and `canAdd` are options of `useRelationDraft`**, not tab code. `canEdit: false`
+  empties the draft (5A). `canAdd: false` is the Recipes rule for a non-consumable item: a
+  press that adds does nothing, and the adds are dropped when the item turns
+  non-consumable. The design described these as tab behaviour.
+- **The layout resets the dirty state on every path change** (`routes/items/$id.tsx`). Not
+  in the design. `ItemForm` does not report `false` on unmount, so a discarded Info edit
+  could keep the guard armed on Tags. The first two tests passed without the effect (a new
+  `ItemForm` mount reported `false` first), so `1d9add8b` added a tab that registers dirty
+  and never resets; removing the effect turns it red.
+- **The trap tests needed a live change.** On the Recipes tab the saved list and the recipe
+  list are ONE query (`GetRecipes`), so "the list arrives late" alone does not run the
+  clean-up while the new recipe is missing. The Recipes trap test changes the saved list
+  live to make the clean-up run at that moment (`relationSave.cloud.test.tsx`).
+- **`test/setup.ts` stubs `useSetItemRecipesMutation`**, like the other mutation hooks, so
+  every page test that mounts the Recipes tab renders without its own mock.
+- **The draft loop.** When the row list went from loaded back to `undefined`,
+  `useRelationDraft` set state on every render ("Too many re-renders"). The check now
+  compares with the value the update stores (`a63451dc`).
+- **The a11y findings (B.8).** `a11y.spec.ts`'s `seedTag` wrote `tagTypeId`, a field nothing
+  reads, so no scan had ever seen a tag badge on the item Tags tab. With it fixed, two
+  failures showed on tag badges:
+
+  | Rule | Theme | Cause | State |
+  |---|---|---|---|
+  | `color-contrast` | light | the tag palette, 3.11 to 4.48:1, older than this branch | **known defect, waiting for an owner decision**; tag badges are left out of this rule only (`KNOWN_TAG_BADGE_DEFECTS`, `e2e/helpers/axe.ts`) |
+  | `target-size` | light, dark | the last tag above "New Tag": 20px high, 20px of clear space. The "New Tag" button's `-my-1` pulled it against the badge, and the badges became focusable in this branch (8A), so axe started to check them | **fixed** in `958c2532`: `-mb-1` instead of `-my-1` on the Tags tab only, and the exclusion removed |
+
+  That `target-size` is new on this branch is read from axe's matcher (it checks only
+  focusable targets) and from `develop`'s badges having no `tabIndex`. It was not measured
+  on `develop`, because no scan there showed a tag badge.
+- **Three review fixes in B.9.** (1) On a non-consumable item a recipe pressed off was
+  `aria-disabled`, dim and out of the Tab order, so only a mouse could undo the remove; now a
+  badge in `draft.removed` is pressable (`cbfbc8a0`, a test that was red first). (2)
+  `test/rolePermissions.ts`'s header said to use `roleOverride()`; a test that changes the
+  role during the test must use `useRoleOverride()` (`7fad441d`). (3) The `target-size` fix
+  above.
+- **`settings/vendors.spec.ts` also needed a Save** (B.8). The plan's list did not name it.
+- **Not recorded here: the plan's E2E mutation "the Recipes Save sends one `updateRecipe`
+  per recipe".** The B.8 commits do not say whether it was run. Treat it as not proven.
+
+Measured numbers (2026-11-28):
+
+| What | `develop` `0bc5b87a` | this branch |
+|---|---|---|
+| web tests | 4403 / 407 files | **4504 / 415 files** |
+| server tests | 3048 / 95 files | 3048 / 95 files (PR B changes no server code) |
+| `scripts/spec` | — | 80 |
+| `--list` `local` | 226 in 27 files | 233 in 28 files |
+| `--list` `cloud` | 252 in 44 files | 259 in 45 files |
+| `--list` `pwa` | 77 in 2 files | 77 in 2 files |
+| `CLOUD_SPECS` | 44 of 48 spec files | **45 of 49** |
+
+The gate (`pnpm lint`, root `pnpm build` with no `TS6385`, `build-storybook`, `pnpm check`,
+`pnpm test`) was green at the end of B.9.
+
+The E2E gate, `pnpm test:e2e:all` at `62c6626a` (the docs commit; the code is the same as
+`af914b01`), 2026-11-28, first try, no retry, no flaky test, **all green**, about 23 minutes:
+
+| Row | Database | Time | Result |
+|---|---|---|---|
+| `local` | — | 4m44s | 220 passed / 13 skipped |
+| `cloud` | the local E2E database (23 migrations applied, 23 folders) | 4m44s | 251 passed / 8 skipped |
+| `cloud-neon` | the Neon test branch (the 8 `NEON_SPECS` files) | 11m46s | 40 passed |
+| `pwa` | — | 1m45s | 77 passed |
+
+Load average 4.88 (1 min) at the start, 2.39 at the end.
+`item-relations-save.spec.ts` is not in `NEON_SPECS`, so it has run on Neon only if a
+checkpoint gate (`pnpm test:e2e:all:neon`) runs it.
+
 ## Release order
 
 1. PR A (server) merges into `develop`.
@@ -470,7 +575,9 @@ non-consumable check (the remove-only test).
 3. Wait until Railway shows that commit's deployment active. Check that a deploy really
    started (release #403 needed a manual start).
 4. PR B (web) merges into `develop`, after the Active switch PR 2 if that one is still open,
-   and rebased on it. Then the next release.
+   and rebased on it. Then the next release. (As of PR B's last task: steps 1 and 2 are done,
+   #448 and #449; the Active switch PR 2 merged as #447 and PR B is based on `develop` at
+   `0bc5b87a`, after it. Step 3, the Railway check, is still owed before PR B merges.)
 
 **The overlap with the Active switch PR 2.** The brief for this design said the two overlap in
 `routes/items/$id.tsx` (`isOnEditableTab`). They do not today: `feature/item-stock-active-web`
@@ -493,8 +600,8 @@ press; the pantry group views' "add to" buttons; `createTag`, `createTagType`, `
   there later. Out of scope.
 - Two people saving the same item's recipes at the same moment: the last Save wins per recipe.
   No lock. Stated, not fixed.
-- Gap 3 above (`updateItem`'s two writes) stays unless open question 7 is A.
-- The badges' keyboard gap stays unless open question 8 is A.
+- Gap 3 above (`updateItem`'s two writes): closed in PR A (open question 7 was A, `3309692d`).
+- The badges' keyboard gap: closed in PR B (open question 8 was A).
 
 ## Owner questions
 
@@ -522,6 +629,22 @@ press; the pantry group views' "add to" buttons; `createTag`, `createTagType`, `
    - **A — chosen by the owner, 2026-11-27.** (recommended): in `showSaveError`, a `FORBIDDEN` error shows "Only a household owner or
      manager can change this." (`settings.catalogReadOnlyItem`, an existing key). One change
      covers every caller.
+   - **As built (task B.1, 2026-11-28): opt-in, not every caller.** `showSaveError(err, {
+     catalog: true })` (`apps/web/src/lib/saveError.ts`) shows the text; without the option a
+     `FORBIDDEN` still shows "Could not save the change.". The reason: many callers send
+     LOCATION writes (stock, carts, the location pages), where `FORBIDDEN` means the person is
+     only a viewer of the location, and the catalog text would be wrong there. So tasks B.4 to
+     B.6 must pass `{ catalog: true }` at these calls, all catalog writes:
+
+     | Call | Tab | Pass `{ catalog: true }` |
+     |---|---|---|
+     | `createTagType` | Tags | yes |
+     | `createTag` | Tags | yes |
+     | `createRecipe` | Recipes | yes |
+     | Save (`updateItem` with `tagIds`) | Tags | yes |
+     | Save (`updateItem` with `vendorIds`) | Vendors | yes |
+     | Save (`setItemRecipes`) | Recipes | yes |
+     | `createVendor` | Vendors | no: it keeps `showVendorCreateError`, which already shows its own `FORBIDDEN` text ("Only a household owner or manager can add a vendor."). `createVendor` also writes a cart, so its `FORBIDDEN` is not only a catalog refusal |
    - B: leave the generic message.
 7. **`updateItem` replaces the tag and vendor lists in two writes outside a transaction.** If
    the second fails, the item has no tags until the next Save.

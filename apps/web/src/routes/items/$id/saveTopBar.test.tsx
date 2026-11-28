@@ -148,10 +148,43 @@ describe('Item page - Save in the top bar', { timeout: 15_000 }, () => {
     })
   })
 
+  // The tabs that are not an `ItemForm` render `TopBarSaveButton` into the
+  // same slot (item relations Save, design
+  // `docs/features/items/2026-11-27-item-relations-save-design.md`). It is a
+  // plain `type="button"`: there is no form.
   it.each([
     ['Tags', 'tags'],
     ['Vendors', 'vendors'],
     ['Recipes', 'recipes'],
+  ])('user sees the Save in the top bar on the %s tab, off until a press', async (label, path) => {
+    const user = userEvent.setup()
+    // Given an item on its Info tab
+    const milk = await makeMilk()
+    const router = renderPage(`/items/${milk.id}`)
+    await screen.findByRole('textbox', { name: /^name/i })
+
+    // When the user opens the tab
+    await user.click(
+      screen.getByRole('link', { name: new RegExp(`^${label}$`, 'i') }),
+    )
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(`/items/${milk.id}/${path}`),
+    )
+
+    // Then the top bar has a Save, off because nothing is pressed, and it
+    // submits no form
+    await waitFor(() =>
+      expect(screen.queryByRole('textbox', { name: /^name/i })).toBeNull(),
+    )
+    const save = await screen.findByRole('button', { name: /^save$/i })
+    const heading = screen.getByRole('heading', { level: 1, name: 'Milk' })
+    expect(heading.parentElement?.contains(save)).toBe(true)
+    expect(save).toHaveAttribute('type', 'button')
+    expect(save).not.toHaveAttribute('form')
+    expect(save).toBeDisabled()
+  })
+
+  it.each([
     ['Log', 'log'],
   ])('user sees no Save on the %s tab', async (label, path) => {
     const user = userEvent.setup()

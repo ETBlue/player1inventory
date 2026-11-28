@@ -399,8 +399,16 @@ test.describe('recipe creation dialog from item recipes tab', () => {
     // Then: the dialog is no longer visible (closed)
     await expect(item.getRecipeDialog()).not.toBeVisible()
 
-    // And: a badge labelled "Pasta Salad" is visible and selected (assigned to the item)
-    // Recipe badge: role="button" aria-pressed=true when assigned (src/routes/items/$id/recipes.tsx)
+    // And: a badge labelled "Pasta Salad" is visible and selected
+    // Recipe badge: role="button" aria-pressed=true when selected (src/routes/items/$id/recipes.tsx:151)
+    await expect(item.getRecipeBadge('Pasta Salad')).toBeVisible()
+
+    // When: the user presses the top bar Save. The recipe was created with
+    // no items; only Save gives it the item (item relations Save).
+    await item.saveRelations()
+
+    // Then: after a reload the recipe is still selected, so it holds the item
+    await page.reload()
     await expect(item.getRecipeBadge('Pasta Salad')).toBeVisible()
   })
 })
